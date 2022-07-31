@@ -1,33 +1,55 @@
 package andy42.graph
 
 import java.time.Instant
+import zio.Task
 
 package object model {
 
-  def foo(x: Int | Long): Long = ???
-
-  // TODO: Render this as an enum
-
-  type ValueType = Unit |
-    Boolean | java.lang.Boolean | // java.lang.Boolean
-    Int | Long | java.lang.Integer | java.lang.Long | // => java.lang.Long
-    Float | Double | java.lang.Float | java.lang.Double | // => java.lang.Double
-    String |
-    Vector[Byte] |
+  type ScalarType = Unit | 
+    Boolean | 
+    Int | Long | 
+    Float | Double |
+    String | 
+    BinaryValue | 
     Instant
 
-  type ContainerType = Vector[ValueType] | Map[String, ValueType]
+  case class BinaryValue(value: Vector[Byte])
+  case class PropertyArrayValue(value: Vector[ScalarType])
+  case class PropertyMapValue(value: Map[String, ScalarType])  
 
-  type PropertyValueType = ValueType | ContainerType
+  type PropertyValueType = ScalarType | PropertyArrayValue | PropertyMapValue
 
+  type NodeId = Vector[Byte] // Always 8 bytes
 
-  // TODO: Do this as using new implicit mechanism
-  def minimize(x: PropertyValueType): ValueType | ContainerType = x match {
-    case v: Boolean => java.lang.Boolean.valueOf(v)
-    case v: java.lang.Boolean => v
-    case v: Int => java.lang.Integer.valueOf(v)
+  type EventTime = Long // Epoch Millis
+  val StartOfTime = Long.MinValue
+  val EndOfTime = Long.MaxValue
+
+  type Sequence = Int // Break ties when multiple groups of events are processed in the same EventTime
+
+  type PropertiesAtTime = Map[String, PropertyValueType] // Collapsed properties at some point in time
+
+  case class Edge(k: String, other: NodeId)
+
+  type EdgesAtTime = Set[Edge] // Collapsed properties at some point in time
+
+  type PackedNode = Array[Byte]
+
+  case class NodeStateAtTime(
+    eventTime: EventTime,
+    properties: PropertiesAtTime,
+    edges: EdgesAtTime)
+
+  trait Node {
+    def id: NodeId
+    def version: Int
+    
+    def current: Task[NodeStateAtTime]
+    def atTime(atTime: EventTime): Task[NodeStateAtTime]
+    
+    def packed: PackedNode
+
+    def isEmpty: Task[Boolean]
+    def wasAlwaysEmpty: Task[Boolean]
   }
-
-
-
 }
