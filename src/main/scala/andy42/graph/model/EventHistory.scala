@@ -6,15 +6,15 @@ import org.msgpack.core.MessageUnpacker
 import zio.Task
 import zio.ZIO
 
-object EventHistory {
+object EventHistory extends Unpackable[Vector[EventsAtTime]] {
 
   val empty: Vector[EventsAtTime] = Vector.empty
   
-  def unpack(implicit unpacker: MessageUnpacker): Task[Vector[EventsAtTime]] =
+  override def unpack(implicit unpacker: MessageUnpacker): Task[Vector[EventsAtTime]] =
     for {
       length <- ZIO.attempt(unpacker.unpackInt())
       a <- unpackToVector(EventsAtTime.unpack, length)
-    } yield a.toVector
+    } yield a
 
   def pack(eventHistory: Vector[EventsAtTime])(implicit packer: MessagePacker): MessagePacker = {
     packer.packInt(eventHistory.length)

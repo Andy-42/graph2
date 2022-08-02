@@ -15,7 +15,7 @@ case class NodeWithPackedHistory(id: NodeId,
   override lazy val current: Task[NodeStateAtTime] =
     for {
       eventsAtTime <- nodeEventsAtTime  
-    } yield CollapseNodeHistory.apply(eventsAtTime)
+    } yield CollapseNodeHistory(eventsAtTime)
 
   override def atTime(atTime: EventTime): Task[NodeStateAtTime] =
     for {

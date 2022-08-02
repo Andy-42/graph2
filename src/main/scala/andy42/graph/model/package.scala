@@ -22,8 +22,8 @@ package object model {
   type NodeId = Vector[Byte] // Always 8 bytes
 
   type EventTime = Long // Epoch Millis
-  val StartOfTime = Long.MinValue
-  val EndOfTime = Long.MaxValue
+  val StartOfTime: EventTime = Long.MinValue
+  val EndOfTime: EventTime = Long.MaxValue
 
   type Sequence = Int // Break ties when multiple groups of events are processed in the same EventTime
 

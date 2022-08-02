@@ -1,8 +1,8 @@
 package andy42.graph.cache
 
+import andy42.graph.model.{Node, NodeId, NodeWithPackedHistory, PackedNode}
 import zio.*
 import zio.stm.*
-import andy42.graph.model.*
 
 trait LRUCache {
   def get(id: NodeId): UIO[Option[Node]]
@@ -14,7 +14,6 @@ case class CacheItem(
     id: NodeId,
     version: Int,
     packed: PackedNode,
-
     left: CacheItem, // null if this is the first item in the cache
     right: CacheItem // null if this is the last item in the cache
 )
@@ -34,8 +33,8 @@ final case class LRUCacheLive private (
     capacity: Int,
     currentSize: TRef[Int],
     items: TMap[NodeId, CacheItem],
-    startRef: TRef[CacheItem], // null if the cache is empty
-    endRef: TRef[CacheItem] // null if the cache is empty
+    start: TRef[CacheItem], // null if the cache is empty
+    end: TRef[CacheItem] // null if the cache is empty
 ) extends LRUCache {
 
   override def get(id: NodeId): UIO[Option[Node]] =
@@ -44,11 +43,12 @@ final case class LRUCacheLive private (
   private def getSTM(id: NodeId): USTM[Option[Node]] =
     for {
       optionItem <- items.get(id)
-
-      startItem <- startRef.get
+      startItem <- start.get
 
       _ <- optionItem.fold(ZSTM.unit) { item =>
-        removeFromList(item) *> addToStartOfList(item, startItem) *> startRef.set(item)
+        removeFromList(item) *>
+          addToStartOfList(oldStart = startItem, newStart = item) *>
+          start.set(item)
       }
     } yield optionItem.map { item =>
       NodeWithPackedHistory(
@@ -67,29 +67,32 @@ final case class LRUCacheLive private (
 
       _ <- item match {
         case Some(item) =>
-          if (node.version == item.version + 1)
-            removeFromList(item) // existing entry will be updated in addToStartOfList; no size change
-          else
+          if (node.version == item.version + 1) {
+            // existing entry will be updated in addToStartOfList; no size change
+            removeFromList(item)
+          } else
             ZSTM.fail(
               VersionFailure(
                 id = node.id,
                 existing = item.version,
-                updateTo = node.version)
+                updateTo = node.version
+              )
             )
 
         case None =>
           if (node.version == 1)
-            removeOldestItemIfAtCapacity *> currentSize.update(_ + 1)
+            removeOldestItemIfAtCapacity() *> currentSize.update(_ + 1)
           else
             STM.fail(
               VersionFailure(
                 id = node.id,
                 existing = 0,
-                updateTo = node.version)
+                updateTo = node.version
+              )
             )
       }
 
-      oldStart <- startRef.get
+      oldStart <- start.get
 
       newItem = CacheItem(
         id = node.id,
@@ -100,24 +103,24 @@ final case class LRUCacheLive private (
       )
 
       _ <- items.put(k = node.id, v = newItem)
-      _ <- addToStartOfList(oldStart, newItem)
-      _ <- startRef.set(newItem)
+      _ <- addToStartOfList(oldStart = oldStart, newStart = newItem)
+      _ <- start.set(newItem)
     } yield ()
 
   /** Removes an item from the LRU list; does NOT remove from items */
   private def removeFromList(item: CacheItem): USTM[Unit] =
     item match {
-      case CacheItem(_, _, _, l, r) if l != null && r != null =>
-        updateLeftAndRightCacheItems(l, r)
-
-      case CacheItem(_, _, _, l, null) if l != null =>
-          items.put(l.id, l.copy(right = null)) *> endRef.set(l)
-
-      case CacheItem(_, _, _, null, r) if r != null =>
-        items.put(r.id, r.copy(left = null)) *> startRef.set(r)
-
       case CacheItem(_, _, _, null, null) =>
-        startRef.set(null) *> endRef.set(null)
+        start.set(null) *> end.set(null)
+
+      case CacheItem(_, _, _, l, null) =>
+        items.put(l.id, l.copy(right = null)) *> end.set(l)
+
+      case CacheItem(_, _, _, null, r) =>
+        items.put(r.id, r.copy(left = null)) *> start.set(r)
+
+      case CacheItem(_, _, _, l, r) =>
+        updateLeftAndRightCacheItems(l, r)
     }
 
   private def addToStartOfList(
@@ -131,15 +134,12 @@ final case class LRUCacheLive private (
 
   private def removeOldestItem(): USTM[Unit] =
     for {
-      oldEnd <- endRef.get
+      oldEnd <- end.get
 
       _ <-
         if (oldEnd == null) ZSTM.unit
         else if (oldEnd.left == null) ZSTM.unit
-        else {
-          val prev = oldEnd.left
-          items.put(prev.id, prev.copy(right = null))
-        }
+        else items.put(oldEnd.left.id, oldEnd.left.copy(right = null))
 
       _ <-
         if (oldEnd == null)

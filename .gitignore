@@ -1,4 +1,12 @@
 /target/**
+/project/.bloop
+/project/metals.sbt
+/project/project/metals.sbt
 /project/target/**
+/project/project/target/**
+/project/project/project/target/**
+.vscode
+.metals/**
 .idea/**
 .bsp/**
+.bloop/**

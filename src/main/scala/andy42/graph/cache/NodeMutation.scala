@@ -1,9 +1,6 @@
-package andy42.graph
+package andy42.graph.cache
 
-import andy42.graph.model.Event
-import andy42.graph.model.EventTime
-import andy42.graph.model.Node
-import andy42.graph.model.NodeId
+import andy42.graph.model.{Event, EventTime, Node, NodeId}
 import zio.*
 import zio.stm.*
 

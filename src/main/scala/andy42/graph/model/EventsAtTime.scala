@@ -41,9 +41,9 @@ case class EventsAtTime(eventTime: EventTime,
   }
 }
 
-object EventsAtTime {
+object EventsAtTime extends Unpackable[EventsAtTime] {
 
- def unpack(implicit unpacker: MessageUnpacker): Task[EventsAtTime] =
+ override def unpack(implicit unpacker: MessageUnpacker): Task[EventsAtTime] =
     for {
       eventTime <- ZIO.attempt(unpacker.unpackLong())
       sequence <- ZIO.attempt(unpacker.unpackInt())

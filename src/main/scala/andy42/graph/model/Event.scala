@@ -17,9 +17,9 @@ sealed trait Event extends Packable {
   override def pack(implicit packer: MessagePacker): MessagePacker
 }
 
-object Event {
+object Event extends Unpackable[Event] {
 
-  def unpack(implicit unpacker: MessageUnpacker): Task[Event] =
+  override def unpack(implicit unpacker: MessageUnpacker): Task[Event] =
     unpacker.unpackByte() match {
       case EventType.NODE_REMOVED => ZIO.succeed(NodeRemoved)
       case EventType.PROPERTY_ADDED => unpackPropertyAdded
