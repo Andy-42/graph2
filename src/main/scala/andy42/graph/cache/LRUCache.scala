@@ -2,8 +2,7 @@ package andy42.graph.cache
 
 import zio.*
 import zio.stm.*
-import andy42.graph.model._
-import andy42.graph.model.NodeWithPackedHistory
+import andy42.graph.model.*
 
 trait LRUCache {
   def get(id: NodeId): UIO[Option[Node]]
@@ -16,40 +15,48 @@ case class CacheItem(
     version: Int,
     packed: PackedNode,
 
-    // position in LRU cache TODO: Use direct references and nulls to avoid options and map lookups
-    left: Option[NodeId],
-    right: Option[NodeId]
+    left: CacheItem, // null if this is the first item in the cache
+    right: CacheItem // null if this is the last item in the cache
 )
 
+/** A version is created each time an [[EventsAtTime]] are appended to the
+  * history. The version number for a [[Node]] corresponds to number of
+  * [[EventsAtTime]] in its history. The version number is not associated with a
+  * particular [[EventsAtTime]] since they are not necessarily ingested in a
+  * monotonically increasing order of event time.
+  *
+  * The version check is a proof that some other mechanism (e.g.,
+  * [[NodeMutation]]) is ensuring that changes to a [[Node]] are serialized.
+  */
 case class VersionFailure(id: NodeId, existing: Int, updateTo: Int)
 
 final case class LRUCacheLive private (
     capacity: Int,
     currentSize: TRef[Int],
     items: TMap[NodeId, CacheItem],
-    startRef: TRef[Option[NodeId]],
-    endRef: TRef[Option[NodeId]]
+    startRef: TRef[CacheItem], // null if the cache is empty
+    endRef: TRef[CacheItem] // null if the cache is empty
 ) extends LRUCache {
 
   override def get(id: NodeId): UIO[Option[Node]] =
-    getSTM(id).commitEither
+    getSTM(id).commit
 
   private def getSTM(id: NodeId): USTM[Option[Node]] =
     for {
       optionItem <- items.get(id)
 
-      _ <- optionItem.fold(ZSTM.unit) { item =>
-        removeFromList(item) *> addToStartOfList(id) *> startRef.set(Some(id))
-      }
+      startItem <- startRef.get
 
-      optionNode = optionItem.map { item =>
-        NodeWithPackedHistory(
-          id = item.id,
-          version = item.version,
-          packed = item.packed
-        )
+      _ <- optionItem.fold(ZSTM.unit) { item =>
+        removeFromList(item) *> addToStartOfList(item, startItem) *> startRef.set(item)
       }
-    } yield optionNode
+    } yield optionItem.map { item =>
+      NodeWithPackedHistory(
+        id = item.id,
+        version = item.version,
+        packed = item.packed
+      )
+    }
 
   override def put(node: Node): IO[VersionFailure, Unit] =
     putSTM(node).commit
@@ -63,125 +70,99 @@ final case class LRUCacheLive private (
           if (node.version == item.version + 1)
             removeFromList(item) // existing entry will be updated in addToStartOfList; no size change
           else
-            STM.fail(VersionFailure(id = node.id, existing = item.version, updateTo = node.version))
+            ZSTM.fail(
+              VersionFailure(
+                id = node.id,
+                existing = item.version,
+                updateTo = node.version)
+            )
 
         case None =>
           if (node.version == 1)
             removeOldestItemIfAtCapacity *> currentSize.update(_ + 1)
           else
-            STM.fail(VersionFailure(id = node.id, existing = 0, updateTo = node.version))
+            STM.fail(
+              VersionFailure(
+                id = node.id,
+                existing = 0,
+                updateTo = node.version)
+            )
       }
 
-      oldOptionStartId <- startRef.get
+      oldStart <- startRef.get
 
-      _ <- items.put(
-        k = node.id,
-        v = CacheItem(
-          id = node.id,
-          version = node.version,
-          packed = node.packed,
-          left = None,
-          right = oldOptionStartId
-        )
+      newItem = CacheItem(
+        id = node.id,
+        version = node.version,
+        packed = node.packed,
+        left = null,
+        right = oldStart
       )
 
-      _ <- addToStartOfList(oldOptionStartId, node.id)
-
-      _ <- startRef.set(Some(node.id))
+      _ <- items.put(k = node.id, v = newItem)
+      _ <- addToStartOfList(oldStart, newItem)
+      _ <- startRef.set(newItem)
     } yield ()
-
-  private def removeFromList(id: NodeId): USTM[Unit] =
-    items.get(id).map { optionItem =>
-      optionItem.foreach(removeFromList)
-    }
 
   /** Removes an item from the LRU list; does NOT remove from items */
   private def removeFromList(item: CacheItem): USTM[Unit] =
     item match {
-      case CacheItem(_, _, _, Some(l), Some(r)) =>
+      case CacheItem(_, _, _, l, r) if l != null && r != null =>
         updateLeftAndRightCacheItems(l, r)
 
-      case CacheItem(_, _, _, Some(l), None) =>
-        setNewEnd(l) *> endRef.set(Some(l))
+      case CacheItem(_, _, _, l, null) if l != null =>
+          items.put(l.id, l.copy(right = null)) *> endRef.set(l)
 
-      case CacheItem(_, _, _, None, Some(r)) =>
-        setNewStart(r) *> startRef.set(Some(r))
+      case CacheItem(_, _, _, null, r) if r != null =>
+        items.put(r.id, r.copy(left = null)) *> startRef.set(r)
 
-      case CacheItem(_, _, _, None, None) =>
-        startRef.set(None) *> endRef.set(None)
+      case CacheItem(_, _, _, null, null) =>
+        startRef.set(null) *> endRef.set(null)
     }
-
-  private def addToStartOfList(newStartId: NodeId): USTM[Unit] =
-    for {
-      oldOptionStartId <- startRef.get
-    } yield addToStartOfList(oldOptionStartId, newStartId)
 
   private def addToStartOfList(
-      oldOptionStartId: Option[NodeId],
-      newStartId: NodeId
+      oldStart: CacheItem, // nullable
+      newStart: CacheItem
   ): USTM[Unit] =
-    oldOptionStartId.fold(ZSTM.unit) { oldStartId =>
-      items.get(oldStartId).map { optionOldStartItem =>
-        optionOldStartItem.fold(ZSTM.unit) { oldStartItem =>
-          items.put(oldStartId, oldStartItem.copy(left = Some(newStartId)))
-        }
-      }
-    }
+    if (oldStart == null)
+      ZSTM.unit
+    else
+      items.put(oldStart.id, oldStart.copy(left = newStart))
 
-  private def removeOldestItem: USTM[Unit] =
+  private def removeOldestItem(): USTM[Unit] =
     for {
-      optionOldEndId <- endRef.get
+      oldEnd <- endRef.get
 
-      _ <- optionOldEndId.fold(ZSTM.unit) { oldEndId =>
-        removeFromList(oldEndId) *> items.delete(oldEndId)
-      }
-    } yield currentSize.update(_ - 1)
+      _ <-
+        if (oldEnd == null) ZSTM.unit
+        else if (oldEnd.left == null) ZSTM.unit
+        else {
+          val prev = oldEnd.left
+          items.put(prev.id, prev.copy(right = null))
+        }
 
-  private def removeOldestItemIfAtCapacity: USTM[Unit] =
-    ZSTM.ifSTM(currentSize.get.map(_ == capacity))(removeOldestItem, STM.unit)
+      _ <-
+        if (oldEnd == null)
+          ZSTM.unit
+        else
+          items.delete(oldEnd.id) *> currentSize.update(_ - 1)
+
+    } yield ()
+
+  private def removeOldestItemIfAtCapacity(): USTM[Unit] =
+    ZSTM.ifSTM(currentSize.get.map(_ == capacity))(removeOldestItem(), STM.unit)
 
   /** Removes an item from the LRU list by making its left and right cache
     * entries reference each other.
     */
   private def updateLeftAndRightCacheItems(
-      leftId: NodeId,
-      rightId: NodeId
+      left: CacheItem,
+      right: CacheItem
   ): USTM[Unit] =
-    updateLeftCacheItem(leftId, rightId) *> updateRightCacheItem(
-      leftId,
-      rightId
-    )
-
-  private def updateLeftCacheItem(leftId: NodeId, rightId: NodeId): USTM[Unit] =
-    items.get(leftId).map { optionLeftCacheItem =>
-      optionLeftCacheItem.map { leftCacheItem =>
-        items.put(leftId, leftCacheItem.copy(right = Some(rightId)))
-      }
-    }
-
-  private def updateRightCacheItem(
-      leftId: NodeId,
-      rightId: NodeId
-  ): USTM[Unit] =
-    items.get(rightId).map { optionRightCacheItem =>
-      optionRightCacheItem.map { rightCacheItem =>
-        items.put(rightId, rightCacheItem.copy(left = Some(leftId)))
-      }
-    }
-
-  private def setNewEnd(newEndId: NodeId): USTM[Unit] =
-    items.get(newEndId).map { optionNewEndItem =>
-      optionNewEndItem.map { newEndItem =>
-        items.put(newEndId, newEndItem.copy(right = None))
-      }
-    }
-
-  private def setNewStart(newStartId: NodeId): USTM[Unit] =
-    items.get(newStartId).map { optionCacheItem =>
-      optionCacheItem.map { cacheItem =>
-        items.put(newStartId, cacheItem.copy(left = None))
-      }
-    }
+    for {
+      _ <- items.put(left.id, left.copy(right = right))
+      _ <- items.put(right.id, right.copy(left = left))
+    } yield ()
 }
 
 object LRUCacheLive {
@@ -193,8 +174,8 @@ object LRUCacheLive {
       val makeCacheTransaction = for {
         currentSize <- TRef.make(0)
         items <- TMap.empty[NodeId, CacheItem]
-        startRef <- TRef.make(Option.empty[NodeId])
-        endRef <- TRef.make(Option.empty[NodeId])
+        startRef <- TRef.make(null.asInstanceOf[CacheItem])
+        endRef <- TRef.make(null.asInstanceOf[CacheItem])
       } yield LRUCacheLive(capacity, currentSize, items, startRef, endRef)
 
       makeCacheTransaction.commit

@@ -15,10 +15,12 @@ import zio.stm.*
  * have changes currently in flight in a transactional set.
  */
 trait NodeMutation {
-  /**
-   * Append events at a point in time.
-   * This is the fundamental API that all mutation events are based on.
-   */
+
+  /** Append events at a point in time. This is the fundamental API that all
+    * mutation events are based on.
+    * 
+    * TODO: Narrow failure type
+    */
   def append(id: NodeId, atTime: EventTime, events: Vector[Event]): Task[Node]
 }
 
@@ -37,14 +39,17 @@ case class NodeMutationLive(inFlight: TSet[NodeId]) extends NodeMutation {
 
   def append(id: NodeId, atTime: EventTime, events: Vector[Event]): Task[Node] =
     ZIO.scoped {
-      withNodeMutationPermit(id).flatMap { _ =>
-        ???
-      }
+      for {
+        _ <- withNodeMutationPermit(id)
+      } yield ???
     }
 }
 
 object NodeMutationLive {
-  val layer = for {
-    inFlight <- TSet.empty[NodeId].commit
-  } yield NodeMutationLive(inFlight)
+  val layer: ULayer[NodeMutation] =
+    ZLayer {
+      for {
+        inFlight <- TSet.empty[NodeId].commit
+      } yield NodeMutationLive(inFlight)
+    }
 }
