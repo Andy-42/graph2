@@ -25,7 +25,13 @@ object EventHasEffectOps {
       case EdgeAdded(edge) =>
         !nodeState.edges.contains(edge)
 
+      case FarEdgeAdded(edge) =>
+        !nodeState.edges.contains(edge)
+
       case EdgeRemoved(edge) =>
+        nodeState.edges.contains(edge)
+
+      case FarEdgeRemoved(edge) =>
         nodeState.edges.contains(edge)
     }
 }

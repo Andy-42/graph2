@@ -46,10 +46,14 @@ trait Graph { self => // TODO: Check use of self here
 case class GraphLive(
     inFlight: TSet[NodeId],
     cache: LRUCache,
-    persistor: Persistor
+    persistor: Persistor,
+    edgeSynchronization: EdgeSynchronization,
+    standingQueryEvaluation: StandingQueryEvaluation
 ) extends Graph {
 
-  override def get(id: NodeId): IO[UnpackFailure | ReadFailure, Node with PackedNode] =
+  override def get(
+      id: NodeId
+  ): IO[UnpackFailure | ReadFailure, Node with PackedNode] =
     ZIO.scoped {
       for {
         _ <- withNodeMutationPermit(id) // TODO: Rename?
@@ -165,26 +169,36 @@ case class GraphLive(
     val newNode = Node(id, newEventHistory)
 
     for {
-      //  TODO: Fire node changed event in standing query processor
+      // Evaluate any standing queries that would affect this node.
+      // This is done before it is committed to ensure at-least-once semantics for queries.
+      _ <- standingQueryEvaluation.nodeChanged(newNode, newEventsWithEffect)
+
+      // TODO: Commentary on ordering of persistor.append/cache.put
+      // The cache can only contain contents that are persisted.
+      // Persistor has to do upsert
+      // Potential to revise history, but that can be done safely
 
       _ <- persistor.append(id, newEventsWithEffect)
 
-      // TODO: Send edge changed events to service that fills in other edges
-      // TODO: Send edge change events to service that tallies up edges.
-
       _ <- cache.put(newNode)
+
+      // Synchronize any far edges with any edge events
+      _ <- edgeSynchronization.nearEdgesSet(id, newEventsWithEffect)
+
     } yield newNode
   }
 
 }
 
 object Graph {
-  val layer: URLayer[LRUCache & Persistor, Graph] =
+  val layer: URLayer[LRUCache & Persistor & EdgeSynchronization & StandingQueryEvaluation, Graph] =
     ZLayer {
       for {
         inFlight <- TSet.empty[NodeId].commit
         lruCache <- ZIO.service[LRUCache]
         persistor <- ZIO.service[Persistor]
-      } yield GraphLive(inFlight, lruCache, persistor)
+        edgeSynchronization <- ZIO.service[EdgeSynchronization]
+        standingQueryEvaluation <- ZIO.service[StandingQueryEvaluation]
+      } yield GraphLive(inFlight, lruCache, persistor, edgeSynchronization, standingQueryEvaluation)
     }
 }

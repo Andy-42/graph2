@@ -1,6 +1,6 @@
 package andy42.graph.cache
 
-import andy42.graph.model.{EventTime, Node, NodeId, NodeWithPackedHistory, PackedNode}
+import andy42.graph.model._
 import zio.*
 import zio.stm.*
 import andy42.graph.model.PackedNodeContents
@@ -29,7 +29,8 @@ case class CacheItem(
   * The version check is a proof that some other mechanism (e.g.,
   * [[NodeMutation]]) is ensuring that changes to a [[Node]] are serialized.
   */
-case class VersionFailure(id: NodeId, existing: Int, updateTo: Int) extends IllegalStateException("Version failure")
+case class VersionFailure(id: NodeId, existing: Int, updateTo: Int)
+    extends IllegalStateException("Version failure")
 
 final case class LRUCacheLive private (
     capacity: Int,
@@ -166,19 +167,28 @@ final case class LRUCacheLive private (
     } yield ()
 }
 
-object LRUCacheLive {
+object LRUCacheLive { // Note that this does not follow ZIO convention due to private ctor
 
-  // TODO: The capacity should come from config
+  val layer: URLayer[Config, LRUCache] =
+    ZLayer {
+      for {
+        config <- ZIO.service[Config]
+        layer <- make(config)
+      } yield layer
+    }
 
-  def make(capacity: Int): IO[IllegalArgumentException, LRUCacheLive] =
-    if (capacity > 0) {
-      val makeCacheTransaction = for {
-        currentSize <- TRef.make(0)
-        items <- TMap.empty[NodeId, CacheItem]
-        startRef <- TRef.make(null.asInstanceOf[CacheItem])
-        endRef <- TRef.make(null.asInstanceOf[CacheItem])
-      } yield LRUCacheLive(capacity, currentSize, items, startRef, endRef)
-
-      makeCacheTransaction.commit
-    } else ZIO.fail(new IllegalArgumentException("Capacity must be > 0"))
+  def make(config: Config): UIO[LRUCache] = {
+    for {
+      currentSize <- TRef.make(0)
+      items <- TMap.empty[NodeId, CacheItem]
+      startRef <- TRef.make(null.asInstanceOf[CacheItem])
+      endRef <- TRef.make(null.asInstanceOf[CacheItem])
+    } yield LRUCacheLive(
+      capacity = config.lruCacheCapacity,
+      currentSize = currentSize,
+      items = items,
+      start = startRef,
+      end = endRef
+    )
+  }.commit
 }

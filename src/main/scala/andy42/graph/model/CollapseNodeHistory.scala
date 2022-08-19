@@ -45,7 +45,13 @@ object CollapseNodeHistory {
       case EdgeAdded(edge) =>
         edges = edges + edge
 
+      case FarEdgeAdded(edge) =>
+        edges = edges + edge
+
       case EdgeRemoved(edge) =>
+        edges = edges - edge
+
+      case FarEdgeRemoved(edge) =>
         edges = edges - edge
     }
 

@@ -73,5 +73,7 @@ object EventDeduplicationOps {
 
       case EdgeAdded(edge) => isDuplicateEdgeEvent(edge, laterEvent)
       case EdgeRemoved(edge) => isDuplicateEdgeEvent(edge, laterEvent)
+      case FarEdgeAdded(edge) => isDuplicateEdgeEvent(edge, laterEvent)
+      case FarEdgeRemoved(edge) => isDuplicateEdgeEvent(edge, laterEvent)
     }
 }
