@@ -13,13 +13,16 @@ object EventType {
   val PROPERTY_REMOVED: Byte = 2.toByte
   val EDGE_ADDED: Byte = 3.toByte
   val EDGE_REMOVED: Byte = 4.toByte
+  val FAR_EDGE_ADDED: Byte = 5.toByte
+  val FAR_EDGE_REMOVED: Byte = 6.toByte
 }
-
-// TODO: Re-introduce the FAR_EDGE_* events
 
 sealed trait Event extends Packable {
   override def pack(implicit packer: MessagePacker): MessagePacker
 }
+
+type NearEdgeEvent = EdgeAdded | EdgeRemoved
+type FarEdgeEvent = FarEdgeAdded | FarEdgeRemoved
 
 object Event extends Unpackable[Event] {
 
@@ -30,8 +33,10 @@ object Event extends Unpackable[Event] {
       case EventType.NODE_REMOVED     => ZIO.succeed(NodeRemoved)
       case EventType.PROPERTY_ADDED   => unpackPropertyAdded
       case EventType.PROPERTY_REMOVED => unpackPropertyRemoved
-      case EventType.EDGE_ADDED       => unpackEdgeAdded
-      case EventType.EDGE_REMOVED     => unpackEdgeRemoved
+      case EventType.EDGE_ADDED       => unpackEdgeAdded(isFar = false)
+      case EventType.EDGE_REMOVED     => unpackEdgeRemoved(isFar = false)
+      case EventType.FAR_EDGE_ADDED   => unpackEdgeAdded(isFar = true)
+      case EventType.FAR_EDGE_REMOVED => unpackEdgeRemoved(isFar = true)
 
       case unexpectedEventType: Byte =>
         ZIO.fail(UnexpectedDiscriminator(unexpectedEventType, "EventType"))
@@ -55,24 +60,28 @@ object Event extends Unpackable[Event] {
     } yield PropertyRemoved(k)
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpackEdgeAdded(implicit
+  def unpackEdgeAdded(isFar: Boolean)(implicit
       unpacker: MessageUnpacker
-  ): IO[UnpackFailure, EdgeAdded] = {
+  ): IO[UnpackFailure, EdgeAdded | FarEdgeAdded] =
     for {
-      k <- ZIO.attempt { unpacker.unpackString() }
-      length <- ZIO.attempt { unpacker.unpackBinaryHeader() }
-      other <- ZIO.attempt { unpacker.readPayload(length).toVector }
-    } yield EdgeAdded(Edge(k, other))
-  }.refineOrDie(UnpackFailure.refine)
+      edge <- unpackEdge
+    } yield if (isFar) FarEdgeAdded(edge) else EdgeAdded(edge)
 
-  def unpackEdgeRemoved(implicit
+  def unpackEdgeRemoved(isFar: Boolean)(implicit
       unpacker: MessageUnpacker
-  ): IO[UnpackFailure, EdgeRemoved] = {
+  ): IO[UnpackFailure, EdgeRemoved | FarEdgeRemoved] =
+    for {
+      edge <- unpackEdge
+    } yield if (isFar) FarEdgeRemoved(edge) else EdgeRemoved(edge)
+
+  private def unpackEdge(implicit
+      unpacker: MessageUnpacker
+  ): IO[UnpackFailure, Edge] = {
     for {
       k <- ZIO.attempt { unpacker.unpackString() }
       length <- ZIO.attempt { unpacker.unpackBinaryHeader() }
       other <- ZIO.attempt { unpacker.readPayload(length).toVector }
-    } yield EdgeRemoved(Edge(k, other))
+    } yield Edge(k, other)
   }.refineOrDie(UnpackFailure.refine)
 }
 
@@ -112,11 +121,31 @@ case class EdgeAdded(edge: Edge) extends Event {
       .writePayload(edge.other.to(Array))
 }
 
+case class FarEdgeAdded(edge: Edge) extends Event {
+
+  override def pack(implicit packer: MessagePacker): MessagePacker =
+    packer
+      .packByte(EventType.FAR_EDGE_ADDED)
+      .packString(edge.k)
+      .packBinaryHeader(edge.other.length)
+      .writePayload(edge.other.to(Array))
+}
+
 case class EdgeRemoved(edge: Edge) extends Event {
 
   override def pack(implicit packer: MessagePacker): MessagePacker =
     packer
       .packByte(EventType.EDGE_REMOVED)
+      .packString(edge.k)
+      .packBinaryHeader(edge.other.length)
+      .writePayload(edge.other.to(Array))
+}
+
+case class FarEdgeRemoved(edge: Edge) extends Event {
+
+  override def pack(implicit packer: MessagePacker): MessagePacker =
+    packer
+      .packByte(EventType.FAR_EDGE_REMOVED)
       .packString(edge.k)
       .packBinaryHeader(edge.other.length)
       .writePayload(edge.other.to(Array))
