@@ -5,10 +5,13 @@ import org.msgpack.core.MessagePacker
 import org.msgpack.value.ValueType
 import zio._
 import java.time.Instant
+import java.io.IOException
 
 object PropertyValue {
 
-  private def unpackScalar(implicit unpacker: MessageUnpacker): Task[ScalarType] =
+  private def unpackScalar(implicit
+      unpacker: MessageUnpacker
+  ): IO[UnpackFailure, ScalarType] = {
     unpacker.getNextFormat.getValueType match {
       case ValueType.NIL     => ZIO.unit
       case ValueType.BOOLEAN => ZIO.attempt { unpacker.unpackBoolean() }
@@ -23,12 +26,14 @@ object PropertyValue {
 
       case ValueType.EXTENSION => ZIO.attempt { unpacker.unpackTimestamp() }
 
-      case _ => ZIO.fail(new IllegalStateException("Unexpected value type"))
+      case valueType: ValueType =>
+        ZIO.fail(UnexpectedValueType(valueType, "unpackScalar"))
     }
+  }.refineOrDie(UnpackFailure.refine)
 
   def unpack(implicit
       unpacker: MessageUnpacker
-  ): Task[PropertyValueType] =
+  ): IO[UnpackFailure, PropertyValueType] = {
     unpacker.getNextFormat.getValueType match {
       case ValueType.NIL       => ZIO.unit
       case ValueType.BOOLEAN   => ZIO.attempt { unpacker.unpackBoolean() }
@@ -54,6 +59,7 @@ object PropertyValue {
           m <- unpackToMap(length)
         } yield PropertyMapValue(m)
     }
+  }.refineOrDie(UnpackFailure.refine)
 
   def pack(value: PropertyValueType)(implicit packer: MessagePacker): Unit =
     value match {
@@ -81,10 +87,12 @@ object PropertyValue {
 
   private def unpackToVector(
       length: Int
-  )(implicit unpacker: MessageUnpacker): Task[Vector[ScalarType]] = {
+  )(implicit
+      unpacker: MessageUnpacker
+  ): IO[UnpackFailure, Vector[ScalarType]] = {
     val a = Array.ofDim[ScalarType](length)
 
-    def accumulate(i: Int = 0): Task[Vector[ScalarType]] =
+    def accumulate(i: Int = 0): IO[UnpackFailure, Vector[ScalarType]] =
       if (i == length)
         ZIO.succeed(a.toVector)
       else
@@ -100,18 +108,19 @@ object PropertyValue {
       length: Int
   )(implicit
       unpacker: MessageUnpacker
-  ): Task[Map[String, ScalarType]] = {
+  ): IO[UnpackFailure, Map[String, ScalarType]] = {
     val a = Array.ofDim[(String, ScalarType)](length)
 
     def nextKV(implicit
         unpacker: MessageUnpacker
-    ): Task[(String, ScalarType)] =
+    ): IO[UnpackFailure, (String, ScalarType)] = {
       for {
         k <- ZIO.attempt { unpacker.unpackString() }
         v <- unpackScalar
       } yield k -> v
+    }.refineOrDie(UnpackFailure.refine)
 
-    def accumulate(i: Int = 0): Task[Map[String, ScalarType]] =
+    def accumulate(i: Int = 0): IO[UnpackFailure, Map[String, ScalarType]] =
       if (i == length)
         ZIO.succeed(a.toMap)
       else

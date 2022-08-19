@@ -1,19 +1,21 @@
 package andy42.graph.cache
 
-import andy42.graph.model.{Node, NodeId, NodeWithPackedHistory, PackedNode}
+import andy42.graph.model.{EventTime, Node, NodeId, NodeWithPackedHistory, PackedNode}
 import zio.*
 import zio.stm.*
+import andy42.graph.model.PackedNodeContents
 
 trait LRUCache {
-  def get(id: NodeId): UIO[Option[Node]]
+  def get(id: NodeId): UIO[Option[Node with PackedNode]]
 
-  def put(node: Node): IO[VersionFailure, Unit]
+  def put(node: Node with PackedNode): UIO[Node with PackedNode]
 }
 
 case class CacheItem(
     id: NodeId,
     version: Int,
-    packed: PackedNode,
+    latest: EventTime,
+    packed: PackedNodeContents,
     left: CacheItem, // null if this is the first item in the cache
     right: CacheItem // null if this is the last item in the cache
 )
@@ -27,7 +29,7 @@ case class CacheItem(
   * The version check is a proof that some other mechanism (e.g.,
   * [[NodeMutation]]) is ensuring that changes to a [[Node]] are serialized.
   */
-case class VersionFailure(id: NodeId, existing: Int, updateTo: Int)
+case class VersionFailure(id: NodeId, existing: Int, updateTo: Int) extends IllegalStateException("Version failure")
 
 final case class LRUCacheLive private (
     capacity: Int,
@@ -37,10 +39,7 @@ final case class LRUCacheLive private (
     end: TRef[CacheItem] // null if the cache is empty
 ) extends LRUCache {
 
-  override def get(id: NodeId): UIO[Option[Node]] =
-    getSTM(id).commit
-
-  private def getSTM(id: NodeId): USTM[Option[Node]] =
+  override def get(id: NodeId): UIO[Option[Node with PackedNode]] = {
     for {
       optionItem <- items.get(id)
       startItem <- start.get
@@ -51,27 +50,26 @@ final case class LRUCacheLive private (
           start.set(item)
       }
     } yield optionItem.map { item =>
-      NodeWithPackedHistory(
+      Node(
         id = item.id,
         version = item.version,
+        latest = item.latest,
         packed = item.packed
       )
     }
+  }.commit
 
-  override def put(node: Node): IO[VersionFailure, Unit] =
-    putSTM(node).commit
-
-  private def putSTM(node: Node): STM[VersionFailure, Unit] =
+  override def put(node: Node with PackedNode): UIO[Node with PackedNode] = {
     for {
       item <- items.get(node.id)
 
       _ <- item match {
         case Some(item) =>
-          if (node.version == item.version + 1) {
+          if (node.version == item.version + 1)
             // existing entry will be updated in addToStartOfList; no size change
             removeFromList(item)
-          } else
-            ZSTM.fail(
+          else
+            ZSTM.die(
               VersionFailure(
                 id = node.id,
                 existing = item.version,
@@ -83,7 +81,7 @@ final case class LRUCacheLive private (
           if (node.version == 1)
             removeOldestItemIfAtCapacity() *> currentSize.update(_ + 1)
           else
-            STM.fail(
+            STM.die(
               VersionFailure(
                 id = node.id,
                 existing = 0,
@@ -97,6 +95,7 @@ final case class LRUCacheLive private (
       newItem = CacheItem(
         id = node.id,
         version = node.version,
+        latest = node.latest,
         packed = node.packed,
         left = null,
         right = oldStart
@@ -105,21 +104,22 @@ final case class LRUCacheLive private (
       _ <- items.put(k = node.id, v = newItem)
       _ <- addToStartOfList(oldStart = oldStart, newStart = newItem)
       _ <- start.set(newItem)
-    } yield ()
+    } yield node
+  }.commit
 
   /** Removes an item from the LRU list; does NOT remove from items */
   private def removeFromList(item: CacheItem): USTM[Unit] =
     item match {
-      case CacheItem(_, _, _, null, null) =>
+      case CacheItem(_, _, _, _, null, null) =>
         start.set(null) *> end.set(null)
 
-      case CacheItem(_, _, _, l, null) =>
+      case CacheItem(_, _, _, _, l, null) =>
         items.put(l.id, l.copy(right = null)) *> end.set(l)
 
-      case CacheItem(_, _, _, null, r) =>
+      case CacheItem(_, _, _, _, null, r) =>
         items.put(r.id, r.copy(left = null)) *> start.set(r)
 
-      case CacheItem(_, _, _, l, r) =>
+      case CacheItem(_, _, _, _, l, r) =>
         updateLeftAndRightCacheItems(l, r)
     }
 
@@ -137,9 +137,10 @@ final case class LRUCacheLive private (
       oldEnd <- end.get
 
       _ <-
-        if (oldEnd == null) ZSTM.unit
-        else if (oldEnd.left == null) ZSTM.unit
-        else items.put(oldEnd.left.id, oldEnd.left.copy(right = null))
+        if (oldEnd == null || oldEnd.left == null)
+          ZSTM.unit
+        else
+          items.put(oldEnd.left.id, oldEnd.left.copy(right = null))
 
       _ <-
         if (oldEnd == null)

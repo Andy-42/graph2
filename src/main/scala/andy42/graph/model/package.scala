@@ -1,7 +1,7 @@
 package andy42.graph
 
 import java.time.Instant
-import zio.Task
+import zio.IO
 
 package object model {
 
@@ -33,23 +33,20 @@ package object model {
 
   type EdgesAtTime = Set[Edge] // Collapsed properties at some point in time
 
-  type PackedNode = Array[Byte]
-
   case class NodeStateAtTime(
     eventTime: EventTime,
     properties: PropertiesAtTime,
     edges: EdgesAtTime)
-
+  
   trait Node {
     def id: NodeId
     def version: Int
+    def latest: EventTime
     
-    def current: Task[NodeStateAtTime]
-    def atTime(atTime: EventTime): Task[NodeStateAtTime]
-    
-    def packed: PackedNode
+    def current: IO[UnpackFailure, NodeStateAtTime]
+    def atTime(atTime: EventTime): IO[UnpackFailure, NodeStateAtTime]
 
-    def isEmpty: Task[Boolean]
-    def wasAlwaysEmpty: Task[Boolean]
+    def isEmpty: IO[UnpackFailure, Boolean]
+    def wasAlwaysEmpty: IO[UnpackFailure, Boolean]
   }
 }
