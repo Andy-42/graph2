@@ -19,8 +19,7 @@ trait Graph { self => // TODO: Check use of self here
   def get(id: NodeId): IO[UnpackFailure | ReadFailure, Node with PackedNode]
 
   /** Append events to a Node's history. This is the fundamental API that
-    * allmutation events are based on. TODO: Narrow the Thowable type to a Write
-    * failure
+    * all mutation events are based on.
     */
   def append(
       id: NodeId,
@@ -56,7 +55,7 @@ case class GraphLive(
   ): IO[UnpackFailure | ReadFailure, Node with PackedNode] =
     ZIO.scoped {
       for {
-        _ <- withNodeMutationPermit(id) // TODO: Rename?
+        _ <- withNodeMutationPermit(id)
         optionNode <- cache.get(id)
         newOrExistingNode <- optionNode.fold {
           // Node does not exist in cache
@@ -65,16 +64,16 @@ case class GraphLive(
               // Node doesn't have any history in the persisted store, so synthesize an empty node.
               // Since a node with an empty history is always considered to exist, there is no point adding it to the cache.
               ZIO.succeed(Node(id))
-            else
+            else {
+              val node = Node(id, eventsAtTime)
               // Create a node from the non-empty history and add it to the cache.
-              cache.put(Node(id, eventsAtTime))
+              cache.put(node) *> ZIO.succeed(node)
+            }
           }
         } { ZIO.succeed(_) } // Node was fetched from the cache
       } yield newOrExistingNode
     }
 
-  // TODO: sending far edge events to another edge service
-  // TODO: run updated node through standing queries
   override def append(
       id: NodeId,
       atTime: EventTime,
@@ -187,7 +186,6 @@ case class GraphLive(
 
     } yield newNode
   }
-
 }
 
 object Graph {

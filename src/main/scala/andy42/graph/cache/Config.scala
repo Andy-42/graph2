@@ -5,7 +5,8 @@ import zio.config.magnolia.Descriptor
 import zio.config.magnolia.descriptor
 
 final case class Config(
-    lruCacheCapacity: Int // TODO: must be positive
+    lruCacheCapacity: Int, // TODO: must be positive
+    fractionOfCacheToRetainOnTrim: Float
 )
 
 object Config {
