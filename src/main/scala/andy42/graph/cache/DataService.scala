@@ -2,32 +2,15 @@ package andy42.graph.cache
 
 import andy42.graph.model._
 import io.getquill._
+import io.getquill.context.qzio.ImplicitSyntax._
 import io.getquill.jdbczio.Quill
 import zio._
 
-import java.sql.SQLException
 import javax.sql.DataSource
-
-sealed trait PersistenceFailure extends Throwable {
-  def id: NodeId
-}
-trait ReadFailure extends PersistenceFailure
-trait WriteFailure extends PersistenceFailure
-
-trait SQLFailure {
-  def ex: SQLException
-}
-
-case class SQLReadFailure(id: NodeId, ex: SQLException)
-    extends ReadFailure
-    with SQLFailure
-case class SQLWriteFailure(id: NodeId, ex: SQLException)
-    extends WriteFailure
-    with SQLFailure
 
 trait DataService {
   def runNodeHistory(id: NodeId): IO[ReadFailure, List[GraphHistory]]
-  def runAppend(graphHistory: GraphHistory): IO[WriteFailure, Long]
+  def runAppend(graphHistory: GraphHistory): IO[WriteFailure, Unit]
 }
 
 case class GraphHistory(
@@ -42,7 +25,7 @@ case class DataServiceLive(ds: DataSource) extends DataService {
   val ctx = new PostgresZioJdbcContext(Literal)
   import ctx._
 
-  val dsLayer = ZLayer.succeed(ds)
+  implicit val env: Implicit[DataSource] = Implicit(ds)
 
   inline def graph = quote { query[GraphHistory] }
 
@@ -65,12 +48,19 @@ case class DataServiceLive(ds: DataSource) extends DataService {
   override def runNodeHistory(id: NodeId): IO[ReadFailure, List[GraphHistory]] =
     run(nodeHistory(id))
       .mapError(SQLReadFailure(id, _))
-      .provideLayer(dsLayer)
-
-  override def runAppend(graphHistory: GraphHistory): IO[WriteFailure, Long] =
+      .implicitly
+  override def runAppend(graphHistory: GraphHistory): IO[WriteFailure, Unit] =
     run(append(graphHistory))
       .mapError(SQLWriteFailure(graphHistory.id, _))
-      .provideLayer(dsLayer)
+      .flatMap { count =>
+        if (count != 1L)
+          ZIO.fail(
+            CountPersistenceFailure(graphHistory.id, expected = 1L, was = count)
+          )
+        else
+          ZIO.unit
+      }
+      .implicitly
 }
 
 object DataService {

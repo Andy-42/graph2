@@ -23,7 +23,7 @@ trait Persistor {
   def append(
       id: NodeId,
       eventsAtTime: EventsAtTime
-  ): IO[PersistenceFailure, Long]
+  ): IO[PersistenceFailure, Unit]
 }
 
 object Conversion {
@@ -49,22 +49,20 @@ object Conversion {
 
 case class PersistorLive(dataService: DataService) extends Persistor {
 
-  import Conversion._
-
   override def get(
       id: NodeId
   ): IO[ReadFailure | UnpackFailure, Vector[EventsAtTime]] =
     dataService
       .runNodeHistory(id)
-      .flatMap((history: List[GraphHistory]) =>
-        ZIO.foreach(history.toVector)(toEventsAtTime)
-      )
+      .flatMap { (history: List[GraphHistory]) =>
+        ZIO.foreach(history.toVector)(Conversion.toEventsAtTime)
+      }
 
   override def append(
       id: NodeId,
       eventsAtTime: EventsAtTime
-  ): IO[WriteFailure, Long] =
-    dataService.runAppend(toGraphHistory(id, eventsAtTime))
+  ): IO[WriteFailure, Unit] =
+    dataService.runAppend(Conversion.toGraphHistory(id, eventsAtTime))
 }
 
 object Persistor {
