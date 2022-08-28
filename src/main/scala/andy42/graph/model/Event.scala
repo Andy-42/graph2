@@ -1,11 +1,12 @@
 package andy42.graph.model
 
-import org.msgpack.core.{MessagePacker, MessageUnpacker}
+import org.msgpack.core.{MessagePacker, MessageUnpacker, MessagePack}
 import andy42.graph.model.PropertyValue
+import andy42.graph.model.UnpackOperations.unpackToVector
 
 import java.io.IOException
 
-import zio.{IO, ZIO}
+import zio._
 
 object EventType {
   val NODE_REMOVED: Byte = 0.toByte
@@ -149,4 +150,26 @@ case class FarEdgeRemoved(edge: Edge) extends Event {
       .packString(edge.k)
       .packBinaryHeader(edge.other.length)
       .writePayload(edge.other.to(Array))
+}
+
+object Events {
+
+  def pack(events: Vector[Event]): Array[Byte] = {
+
+    implicit val packer = MessagePack.newDefaultBufferPacker()
+
+    packer.packInt(events.length)
+    events.foreach(_.pack)
+    packer.toByteArray()
+  }
+
+  def unpack(packed: Array[Byte]): IO[UnpackFailure, Vector[Event]] = {
+
+    implicit val unpacker: MessageUnpacker = MessagePack.newDefaultUnpacker(packed)
+
+    for {
+       length <- ZIO.attempt { unpacker.unpackInt() }
+       events <- unpackToVector(Event.unpack, length)
+    } yield events
+  }.refineOrDie(UnpackFailure.refine)
 }

@@ -71,6 +71,7 @@ object EventsAtTime extends Unpackable[EventsAtTime] {
   )(implicit packer: MessagePacker): MessagePacker = {
     packer.packLong(eventsAtTime.eventTime)
     packer.packInt(eventsAtTime.sequence)
+    packer.packInt(eventsAtTime.events.length)
     eventsAtTime.events.foreach(_.pack)
     packer
   }
