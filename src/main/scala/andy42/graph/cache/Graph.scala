@@ -16,7 +16,7 @@ import zio.stm.*
  */
 trait Graph { self => // TODO: Check use of self here
 
-  def get(id: NodeId): IO[UnpackFailure | ReadFailure, Node with PackedNode]
+  def get(id: NodeId): IO[UnpackFailure | ReadFailure, Node]
 
   /** Append events to a Node's history. This is the fundamental API that
     * all mutation events are based on.
@@ -52,7 +52,7 @@ case class GraphLive(
 
   override def get(
       id: NodeId
-  ): IO[UnpackFailure | ReadFailure, Node with PackedNode] =
+  ): IO[UnpackFailure | ReadFailure, Node] =
     ZIO.scoped {
       for {
         _ <- withNodeMutationPermit(id)
@@ -101,7 +101,7 @@ case class GraphLive(
   private def applyEvents(
       atTime: EventTime,
       newEvents: Vector[Event],
-      node: Node with PackedNode
+      node: Node
   ): IO[UnpackFailure | PersistenceFailure, Node] =
     for {
       // The accumulated node state for all event up to and including atTime
@@ -124,7 +124,7 @@ case class GraphLive(
     } yield newNode
 
   private def mergeInNewEvents(
-      node: Node with PackedNode,
+      node: Node,
       newEvents: Vector[Event],
       atTime: EventTime
   ): IO[UnpackFailure | PersistenceFailure, Node] =

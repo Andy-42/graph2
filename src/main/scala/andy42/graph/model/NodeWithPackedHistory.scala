@@ -1,66 +1,74 @@
 package andy42.graph.model
 
-import zio.{IO, ZIO}
+import zio._
 import org.msgpack.core.MessageUnpacker
 import org.msgpack.core.MessagePack
-import andy42.graph.model.PackedNode
 
-// TODO: Two cases:
-// Node from packed history (i.e., from cache)
-// Node from Vector[EventsAtTime] (i.e., from persistence)
-
-case class NodeWithPackedHistory(
+case class NodeFromEventsAtTime(
     id: NodeId,
-    version: Int, // Could be calculated for node from eventsAtTime case
-    latest: EventTime, // Could be calculated for not from eventsAtTime case
-    packed: PackedNodeContents // This is calculated from Vector[EventsAtTime] for node from eventsAtTime case
-) extends Node with PackedNode {
+    version: Int,
+    latest: EventTime,
+    unpackedEventsAtTime: Vector[EventsAtTime]
+) extends Node {
 
-  // TODO: This should be part of the Node trait - will read from persistor this way
-  lazy val nodeEventsAtTime: IO[UnpackFailure, Vector[EventsAtTime]] =
-    EventHistory.unpack(MessagePack.newDefaultUnpacker(packed))
-
-  override lazy val current: IO[UnpackFailure, NodeStateAtTime] =
-    for {
-      eventsAtTime <- nodeEventsAtTime
-    } yield CollapseNodeHistory(eventsAtTime, latest)
-
-  override def atTime(atTime: EventTime): IO[UnpackFailure, NodeStateAtTime] =
-    if (atTime >= latest)
-      current
-    else
-      for {
-        eventsAtTime <- nodeEventsAtTime
-      } yield CollapseNodeHistory(eventsAtTime, atTime)
+  override def eventsAtTime: IO[UnpackFailure, Vector[EventsAtTime]] =
+    ZIO.succeed(unpackedEventsAtTime)
 
   override def isCurrentlyEmpty: IO[UnpackFailure, Boolean] =
-    for {
-      x <- current
-    } yield x.properties.isEmpty && x.edges.isEmpty
+    if (unpackedEventsAtTime.isEmpty)
+      ZIO.succeed(true)
+    else
+      super.isCurrentlyEmpty
+
+  override def wasAlwaysEmpty: IO[UnpackFailure, Boolean] =
+    ZIO.succeed(unpackedEventsAtTime.isEmpty)
+
+  override def packed: Array[Byte] =
+    EventHistory.packToArray(unpackedEventsAtTime)
+}
+
+case class NodeFromPackedHistory(
+    id: NodeId,
+    version: Int,
+    latest: EventTime,
+    packed: PackedNodeContents
+) extends Node {
+
+  override lazy val eventsAtTime: IO[UnpackFailure, Vector[EventsAtTime]] =
+    EventHistory.unpack(MessagePack.newDefaultUnpacker(packed))
+
+  override def isCurrentlyEmpty: IO[UnpackFailure, Boolean] =
+    if (packed.isEmpty)
+      ZIO.succeed(true)
+    else
+      super.isCurrentlyEmpty
 
   override def wasAlwaysEmpty: IO[UnpackFailure, Boolean] =
     ZIO.succeed(packed.isEmpty)
 }
 
 object Node {
-  
-  def apply(id: NodeId): Node with PackedNode =
-     NodeWithPackedHistory(
-      id = id,
-      version = 0,
-      latest = StartOfTime,
-      packed = Array.empty[Byte]
-    )
+
+  def apply(id: NodeId): Node =
+    new Node {
+      val id: NodeId = id
+      def version: Int = 0
+      def latest: EventTime = StartOfTime
+      def packed: PackedNodeContents = Array.empty[Byte]
+      def eventsAtTime: UIO[Vector[EventsAtTime]] = ZIO.succeed(Vector.empty)
+      override def isCurrentlyEmpty: UIO[Boolean] = ZIO.succeed(true)
+      def wasAlwaysEmpty: UIO[Boolean] = ZIO.succeed(true)
+    }
 
   def apply(
       id: NodeId,
       eventsAtTime: Vector[EventsAtTime]
-  ): Node with PackedNode =
-    NodeWithPackedHistory( // TODO: This should be a different implementation
+  ): Node =
+    NodeFromEventsAtTime(
       id = id,
       version = eventsAtTime.length,
-      latest = eventsAtTime.last.eventTime,
-      packed = EventHistory.packToArray(eventsAtTime)
+      latest = eventsAtTime.lastOption.fold(StartOfTime)(_.eventTime),
+      unpackedEventsAtTime = eventsAtTime
     )
 
   def apply(
@@ -68,12 +76,11 @@ object Node {
       version: Int,
       latest: EventTime,
       packed: PackedNodeContents
-      ): Node with PackedNode =
-        NodeWithPackedHistory(
-          id = id,
-          version = version,
-          latest = latest,
-          packed = packed
-        )
-
+  ): Node =
+    NodeFromPackedHistory(
+      id = id,
+      version = version,
+      latest = latest,
+      packed = packed
+    )
 }

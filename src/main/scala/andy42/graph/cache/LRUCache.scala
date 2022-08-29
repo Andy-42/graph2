@@ -6,9 +6,9 @@ import zio.stm._
 import andy42.graph.model._
 
 trait LRUCache {
-  def get(id: NodeId): UIO[Option[Node with PackedNode]]
+  def get(id: NodeId): UIO[Option[Node]]
 
-  def put(node: Node with PackedNode): UIO[Unit]
+  def put(node: Node): UIO[Unit]
 }
 
 type AccessTime = Long // epoch millis
@@ -28,7 +28,7 @@ final case class LRUCacheLive(
     items: TMap[NodeId, CacheItem]
 ) extends LRUCache {
 
-  override def get(id: NodeId): UIO[Option[Node with PackedNode]] =
+  override def get(id: NodeId): UIO[Option[Node]] =
     for {
       now <- clock.currentTime(MILLIS)
       optionNode <- getSTM(id, now).commit
@@ -37,7 +37,7 @@ final case class LRUCacheLive(
   private def getSTM(
       id: NodeId,
       now: AccessTime
-  ): USTM[Option[Node with PackedNode]] =
+  ): USTM[Option[Node]] =
     for {
       optionItem <- items.updateWith(id)(_.map(_.copy(lastAccess = now)))
     } yield optionItem.map { item =>
@@ -49,7 +49,7 @@ final case class LRUCacheLive(
       )
     }
 
-  override def put(node: Node with PackedNode): UIO[Unit] =
+  override def put(node: Node): UIO[Unit] =
     for {
       now <- clock.currentTime(MILLIS)
       _ <- trimIfOverCapacity(now).commit
@@ -57,7 +57,7 @@ final case class LRUCacheLive(
     } yield ()
 
   private def putSTM(
-      node: Node with PackedNode,
+      node: Node,
       now: AccessTime
   ): USTM[Unit] =
     for {

@@ -38,22 +38,36 @@ package object model {
     eventTime: EventTime,
     properties: PropertiesAtTime,
     edges: EdgesAtTime)
+
+  type PackedNodeContents = Array[Byte]
   
   trait Node {
     def id: NodeId
 
-    def version: Int // This is the same as eventsAtTime.length
-    def latest: EventTime // This is the same as eventsAtTime.lastOption.getOrElse(StartOfTime)
+    def version: Int
+    def latest: EventTime
 
-    // TODO: Implement these in various ways - remove PackedNode
-    // def eventsAtTime: Vector[EventsAtTime]
+    def eventsAtTime: IO[UnpackFailure, Vector[EventsAtTime]]
+    def packed: Array[Byte]
     
-    // def packed: Array[Byte]
-    
-    def current: IO[UnpackFailure, NodeStateAtTime]
-    def atTime(atTime: EventTime): IO[UnpackFailure, NodeStateAtTime]
+    lazy val current: IO[UnpackFailure, NodeStateAtTime] =
+      for {
+        eventsAtTime <- eventsAtTime
+      } yield CollapseNodeHistory(eventsAtTime, latest)
 
-    def isCurrentlyEmpty: IO[UnpackFailure, Boolean]
+    def atTime(atTime: EventTime): IO[UnpackFailure, NodeStateAtTime] =
+      if (atTime >= latest)
+        current
+      else
+        for {
+          eventsAtTime <- eventsAtTime
+        } yield CollapseNodeHistory(eventsAtTime, atTime)
+
+    def isCurrentlyEmpty: IO[UnpackFailure, Boolean] =
+      for {
+        x <- current
+      } yield x.properties.isEmpty && x.edges.isEmpty
+
     def wasAlwaysEmpty: IO[UnpackFailure, Boolean]
   }
 }
