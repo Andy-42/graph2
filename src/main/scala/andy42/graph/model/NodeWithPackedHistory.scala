@@ -5,13 +5,18 @@ import org.msgpack.core.MessageUnpacker
 import org.msgpack.core.MessagePack
 import andy42.graph.model.PackedNode
 
+// TODO: Two cases:
+// Node from packed history (i.e., from cache)
+// Node from Vector[EventsAtTime] (i.e., from persistence)
+
 case class NodeWithPackedHistory(
     id: NodeId,
-    version: Int,
-    latest: EventTime,
-    packed: PackedNodeContents
+    version: Int, // Could be calculated for node from eventsAtTime case
+    latest: EventTime, // Could be calculated for not from eventsAtTime case
+    packed: PackedNodeContents // This is calculated from Vector[EventsAtTime] for node from eventsAtTime case
 ) extends Node with PackedNode {
 
+  // TODO: This should be part of the Node trait - will read from persistor this way
   lazy val nodeEventsAtTime: IO[UnpackFailure, Vector[EventsAtTime]] =
     EventHistory.unpack(MessagePack.newDefaultUnpacker(packed))
 
@@ -28,7 +33,7 @@ case class NodeWithPackedHistory(
         eventsAtTime <- nodeEventsAtTime
       } yield CollapseNodeHistory(eventsAtTime, atTime)
 
-  override def isEmpty: IO[UnpackFailure, Boolean] =
+  override def isCurrentlyEmpty: IO[UnpackFailure, Boolean] =
     for {
       x <- current
     } yield x.properties.isEmpty && x.edges.isEmpty
@@ -51,7 +56,7 @@ object Node {
       id: NodeId,
       eventsAtTime: Vector[EventsAtTime]
   ): Node with PackedNode =
-    NodeWithPackedHistory(
+    NodeWithPackedHistory( // TODO: This should be a different implementation
       id = id,
       version = eventsAtTime.length,
       latest = eventsAtTime.last.eventTime,

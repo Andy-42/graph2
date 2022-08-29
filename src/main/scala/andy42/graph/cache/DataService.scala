@@ -3,7 +3,6 @@ package andy42.graph.cache
 import andy42.graph.model._
 import io.getquill._
 import io.getquill.context.qzio.ImplicitSyntax._
-import io.getquill.jdbczio.Quill
 import zio._
 
 import javax.sql.DataSource
@@ -25,8 +24,6 @@ case class DataServiceLive(ds: DataSource) extends DataService {
   val ctx = new PostgresZioJdbcContext(Literal)
   import ctx._
 
-  implicit val env: Implicit[DataSource] = Implicit(ds)
-
   inline def graph = quote { query[GraphHistory] }
 
   inline def nodeHistory(id: NodeId) = quote {
@@ -45,6 +42,8 @@ case class DataServiceLive(ds: DataSource) extends DataService {
       )
   }
 
+  implicit val env: Implicit[DataSource] = Implicit(ds)
+
   override def runNodeHistory(id: NodeId): IO[ReadFailure, List[GraphHistory]] =
     run(nodeHistory(id))
       .mapError(SQLReadFailure(id, _))
@@ -52,10 +51,10 @@ case class DataServiceLive(ds: DataSource) extends DataService {
   override def runAppend(graphHistory: GraphHistory): IO[WriteFailure, Unit] =
     run(append(graphHistory))
       .mapError(SQLWriteFailure(graphHistory.id, _))
-      .flatMap { count =>
-        if (count != 1L)
+      .flatMap { rowsInsertedOrUpdated =>
+        if (rowsInsertedOrUpdated != 1)
           ZIO.fail(
-            CountPersistenceFailure(graphHistory.id, expected = 1L, was = count)
+            CountPersistenceFailure(graphHistory.id, expected = 1, was = rowsInsertedOrUpdated)
           )
         else
           ZIO.unit

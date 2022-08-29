@@ -59,7 +59,7 @@ case class GraphLive(
         optionNode <- cache.get(id)
         newOrExistingNode <- optionNode.fold {
           // Node does not exist in cache
-          persistor.get(id).flatMap { eventsAtTime =>
+          persistor.get(id).flatMap { (eventsAtTime: Vector[EventsAtTime]) =>
             if (eventsAtTime.isEmpty)
               // Node doesn't have any history in the persisted store, so synthesize an empty node.
               // Since a node with an empty history is always considered to exist, there is no point adding it to the cache.

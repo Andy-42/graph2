@@ -1,11 +1,9 @@
 package andy42.graph.cache
 
 import andy42.graph.model._
-
-import zio._
-import java.sql.SQLException
-import io.getquill.jdbczio.Quill
 import io.getquill._
+import zio._
+
 import java.sql.SQLException
 
 trait Persistor {
@@ -26,27 +24,6 @@ trait Persistor {
   ): IO[PersistenceFailure, Unit]
 }
 
-object Conversion {
-  def toEventsAtTime(
-      graphHistory: GraphHistory
-  ): IO[UnpackFailure, EventsAtTime] =
-    for {
-      events <- Events.unpack(graphHistory.events)
-    } yield EventsAtTime(
-      eventTime = graphHistory.eventTime,
-      sequence = graphHistory.sequence,
-      events = events
-    )
-
-  def toGraphHistory(id: NodeId, eventsAtTime: EventsAtTime): GraphHistory =
-    GraphHistory(
-      id = id,
-      eventTime = eventsAtTime.eventTime,
-      sequence = eventsAtTime.sequence,
-      events = Events.pack(eventsAtTime.events)
-    )
-}
-
 case class PersistorLive(dataService: DataService) extends Persistor {
 
   override def get(
@@ -55,14 +32,14 @@ case class PersistorLive(dataService: DataService) extends Persistor {
     dataService
       .runNodeHistory(id)
       .flatMap { (history: List[GraphHistory]) =>
-        ZIO.foreach(history.toVector)(Conversion.toEventsAtTime)
+        ZIO.foreach(history.toVector)(PersistenceConversions.toEventsAtTime)
       }
 
   override def append(
       id: NodeId,
       eventsAtTime: EventsAtTime
   ): IO[WriteFailure, Unit] =
-    dataService.runAppend(Conversion.toGraphHistory(id, eventsAtTime))
+    dataService.runAppend(PersistenceConversions.toGraphHistory(id, eventsAtTime))
 }
 
 object Persistor {

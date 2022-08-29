@@ -7,8 +7,8 @@ package object model {
 
   type ScalarType = Unit | 
     Boolean | 
-    Int | Long | 
-    Float | Double |
+    Int | Long | // Integral types will be promoted to Long
+    Float | Double | // Floating point types will be promoted to Double
     String | 
     BinaryValue | 
     Instant
@@ -29,6 +29,7 @@ package object model {
 
   type PropertiesAtTime = Map[String, PropertyValueType] // Collapsed properties at some point in time
 
+  // TODO: Enrich this type: direction/direction-less
   case class Edge(k: String, other: NodeId)
 
   type EdgesAtTime = Set[Edge] // Collapsed properties at some point in time
@@ -40,13 +41,19 @@ package object model {
   
   trait Node {
     def id: NodeId
-    def version: Int
-    def latest: EventTime
+
+    def version: Int // This is the same as eventsAtTime.length
+    def latest: EventTime // This is the same as eventsAtTime.lastOption.getOrElse(StartOfTime)
+
+    // TODO: Implement these in various ways - remove PackedNode
+    // def eventsAtTime: Vector[EventsAtTime]
+    
+    // def packed: Array[Byte]
     
     def current: IO[UnpackFailure, NodeStateAtTime]
     def atTime(atTime: EventTime): IO[UnpackFailure, NodeStateAtTime]
 
-    def isEmpty: IO[UnpackFailure, Boolean]
+    def isCurrentlyEmpty: IO[UnpackFailure, Boolean]
     def wasAlwaysEmpty: IO[UnpackFailure, Boolean]
   }
 }
