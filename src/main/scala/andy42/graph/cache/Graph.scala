@@ -18,8 +18,7 @@ trait Graph { self => // TODO: Check use of self here
 
   def get(id: NodeId): IO[UnpackFailure | ReadFailure, Node]
 
-  /** Append events to a Node's history. This is the fundamental API that
-    * all mutation events are based on.
+  /** Append events to a Node's history. This is the fundamental API that all mutation events are based on.
     */
   def append(
       id: NodeId,
@@ -111,16 +110,12 @@ case class GraphLive(
       deduplicated = EventDeduplicationOps.deduplicateWithinEvents(newEvents)
 
       // Discard any events that would have no effect on the current state
-      eventsWithEffect = EventHasEffectOps.filterHasEffect(
-        events = deduplicated,
-        nodeState = nodeStateAtTime
-      )
+      eventsWithEffect = EventHasEffectOps.filterHasEffect(events = deduplicated, nodeState = nodeStateAtTime)
 
+      // TODO: Should still do standing query eval and edge sync even if no change
       newNode <-
-        if (eventsWithEffect.isEmpty)
-          ZIO.succeed(node)
-        else
-          mergeInNewEvents(node, eventsWithEffect, atTime)
+        if eventsWithEffect.isEmpty then ZIO.succeed(node)
+        else mergeInNewEvents(node, eventsWithEffect, atTime)
     } yield newNode
 
   private def mergeInNewEvents(
@@ -158,7 +153,7 @@ case class GraphLive(
     val sequence = before.lastOption match {
       case None                                                  => 0
       case Some(eventsAtTime) if eventsAtTime.eventTime < atTime => 0
-      case Some(eventsAtTime) => eventsAtTime.sequence + 1
+      case Some(eventsAtTime)                                    => eventsAtTime.sequence + 1
     }
 
     val newEventsWithEffect =
@@ -166,6 +161,8 @@ case class GraphLive(
 
     val newEventHistory = (before :+ newEventsWithEffect) ++ after
     val newNode = Node(id, newEventHistory)
+
+    // FIXME: Needs some re-structuring since want to SQE+edge sync even if the node doesn't change (or is this configurable?)
 
     for {
       // Evaluate any standing queries that would affect this node.
@@ -182,7 +179,7 @@ case class GraphLive(
       _ <- cache.put(newNode)
 
       // Synchronize any far edges with any edge events
-      _ <- edgeSynchronization.nearEdgesSet(id, newEventsWithEffect)
+      _ <- edgeSynchronization.eventsAppended(id, newEventsWithEffect)
 
     } yield newNode
   }

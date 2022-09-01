@@ -1,10 +1,9 @@
 package andy42.graph.cache
 
-import zio.UIO
+import zio._
+import zio.stm.STM
+import zio.stm.TQueue
 import andy42.graph.model.Node
-import zio.ZLayer
-import zio.URLayer
-import zio.ZIO
 import andy42.graph.model.EventsAtTime
 
 /** Observe a node that is changed.
@@ -16,6 +15,9 @@ trait StandingQueryEvaluation {
     *
     * This node may have additional history appended to it that is not yet
     * persisted.
+    * 
+    * Since far edged might not be synced yet, when we pull in node for matching,
+    * we can patch the far edges up to that they are consistent.
     */
   def nodeChanged(node: Node, newEvents: EventsAtTime): UIO[Unit]
 

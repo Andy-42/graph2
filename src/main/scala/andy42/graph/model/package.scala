@@ -2,6 +2,7 @@ package andy42.graph
 
 import java.time.Instant
 import zio.IO
+import scala.util.hashing.MurmurHash3
 
 package object model {
 
@@ -30,7 +31,14 @@ package object model {
   type PropertiesAtTime = Map[String, PropertyValueType] // Collapsed properties at some point in time
 
   // TODO: Enrich this type: direction/direction-less
-  case class Edge(k: String, other: NodeId)
+  case class Edge(k: String, other: NodeId) {
+    def reverse(id: NodeId): Edge = copy(other = id)
+
+    def edgeHash(id: NodeId): Long =
+      MurmurHash3.stringHash(k) ^
+       MurmurHash3.arrayHash(id.toArray) ^
+       MurmurHash3.arrayHash(other.toArray)
+  }
 
   type EdgesAtTime = Set[Edge] // Collapsed properties at some point in time
 
