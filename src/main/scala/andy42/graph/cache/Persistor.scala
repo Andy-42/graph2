@@ -24,7 +24,7 @@ trait Persistor {
   ): IO[PersistenceFailure, Unit]
 }
 
-case class PersistorLive(dataService: DataService) extends Persistor {
+case class PersistorLive(dataService: NodeDataService) extends Persistor {
 
   override def get(
       id: NodeId
@@ -43,10 +43,10 @@ case class PersistorLive(dataService: DataService) extends Persistor {
 }
 
 object Persistor {
-  val layer: URLayer[DataService, Persistor] =
+  val layer: URLayer[NodeDataService, Persistor] =
     ZLayer {
       for {
-        dataService <- ZIO.service[DataService]
+        dataService <- ZIO.service[NodeDataService]
       } yield PersistorLive(dataService)
     }
 }

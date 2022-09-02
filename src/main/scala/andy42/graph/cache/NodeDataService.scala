@@ -7,7 +7,7 @@ import zio._
 
 import javax.sql.DataSource
 
-trait DataService {
+trait NodeDataService {
   def runNodeHistory(id: NodeId): IO[ReadFailure, List[GraphHistory]]
   def runAppend(graphHistory: GraphHistory): IO[WriteFailure, Unit]
 }
@@ -19,7 +19,7 @@ case class GraphHistory(
     events: Array[Byte] // packed payload
 )
 
-case class DataServiceLive(ds: DataSource) extends DataService {
+case class NodeDataServiceLive(ds: DataSource) extends NodeDataService {
 
   val ctx = new PostgresZioJdbcContext(Literal)
   import ctx._
@@ -37,9 +37,7 @@ case class DataServiceLive(ds: DataSource) extends DataService {
   inline def append(graphHistory: GraphHistory) = quote {
     graph
       .insertValue(lift(graphHistory))
-      .onConflictUpdate(_.id, _.eventTime, _.sequence)((target, excluded) =>
-        target.events -> excluded.events
-      )
+      .onConflictUpdate(_.id, _.eventTime, _.sequence)((table, excluded) => table.events -> excluded.events)
   }
 
   implicit val env: Implicit[DataSource] = Implicit(ds)
@@ -62,11 +60,11 @@ case class DataServiceLive(ds: DataSource) extends DataService {
       .implicitly
 }
 
-object DataService {
-  val layer: URLayer[DataSource, DataService] =
+object NodeDataService {
+  val layer: URLayer[DataSource, NodeDataService] =
     ZLayer {
       for {
         ds <- ZIO.service[DataSource]
-      } yield DataServiceLive(ds)
+      } yield NodeDataServiceLive(ds)
     }
 }

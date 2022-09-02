@@ -1,5 +1,6 @@
 package andy42.graph.cache
 
+import andy42.graph.cache.EdgeReconciliationConfig
 import andy42.graph.model._
 import zio._
 import zio.stm._
@@ -23,7 +24,7 @@ trait EdgeSynchronization {
       eventsAtTime: EventsAtTime
   ): UIO[Unit]
 
-  def startReconciliation(state: ReconciliationState): URIO[Clock, Unit]
+  def startReconciliation(config: EdgeReconciliationConfig): URIO[Clock & EdgeReconciliationDataService, Unit]
 }
 
 case class EdgeReconciliationEvent(
@@ -44,83 +45,50 @@ case class EdgeSynchronizationLive(
       eventsAtTime: EventsAtTime
   ): UIO[Unit] =
     for {
-      _ <- ZIO
-        .foreach(eventsAtTime.events) { event =>
-          propagateEdgeEventsToFarNode(id, eventsAtTime.eventTime, event)
-        }
-      _ <- ZIO
-        .foreach(eventsAtTime.events) { event =>
-          reconcileEvents(id, eventsAtTime.eventTime, event)
-        }
+      _ <- ZIO.foreach(eventsAtTime.events) {
+
+        case EdgeAdded(edge) =>
+          graph
+            .append(edge.other, eventsAtTime.eventTime, Vector(FarEdgeAdded(edge.reverse(id))))
+            .fork // TODO: Handle fiber exit
+
+        case EdgeRemoved(edge) =>
+          graph
+            .append(edge.other, eventsAtTime.eventTime, Vector(FarEdgeRemoved(edge.reverse(id))))
+            .fork // TODO: Handle fiber exit
+
+        case _ => ZIO.unit
+      }
+      _ <- ZIO.foreach(eventsAtTime.events) {
+        case edgeEvent: EdgeEvent =>
+          queue.offer(EdgeReconciliationEvent(id, eventsAtTime.eventTime, edgeEvent))
+
+        case _ => ZIO.unit
+      }
     } yield ()
 
-  def propagateEdgeEventsToFarNode(
-      id: NodeId,
-      atTime: EventTime,
-      event: Event
-  ): UIO[Unit] = event match {
-    case EdgeAdded(edge) =>
-      graph
-        .append(id, atTime, Vector(FarEdgeAdded(edge.reverse(id))))
-        .mapError { e =>
-          handleFailureToPropagateEdgeToFarNode(id, atTime, event, e)
-        }
-        .fork *> ZIO.unit
-    case EdgeRemoved(edge) =>
-      graph
-        .append(id, atTime, Vector(FarEdgeRemoved(edge.reverse(id))))
-        .mapError { e =>
-          handleFailureToPropagateEdgeToFarNode(id, atTime, event, e)
-        }
-        .fork *> ZIO.unit
-    case _ => ZIO.unit
-  }
+  // TODO: Need unit tests on hash reconciliation scheme to show algebra works 
 
-  def handleFailureToPropagateEdgeToFarNode(
-      id: NodeId,
-      atTime: EventTime,
-      event: Event,
-      e: UnpackFailure | PersistenceFailure
-  ): UIO[Unit] = ZIO.unit // TODO: Do some logging
-
-  def reconcileEvents(id: NodeId, atTime: EventTime, event: Event): UIO[Unit] =
-    event match {
-      case e: EdgeEvent =>
-        queue.offer(EdgeReconciliationEvent(id, atTime, e)) *> ZIO.unit
-      case _ => ZIO.unit
-    }
-
-  // TODO: Need unit tests on hash reconciliation scheme to show algebra works
-
-  // TODO: Need window size from config
-
-  // Window size parameters here; Require Log
-  def startReconciliation(state: ReconciliationState): URIO[Clock, Unit] =
+  def startReconciliation(config: EdgeReconciliationConfig): URIO[Clock & EdgeReconciliationDataService, Unit] =
     ZStream
-      .fromQueue(queue, 1000 /* TODO: maxChunkSize from config */ )
-      // TODO: Ensure fires at regular intervals - zip with something
+      .fromQueue(queue, maxChunkSize = config.maxChunkSize)
+      // TODO: Ensure fires at regular intervals - zip with something using config.maximumIntervalBetweenChunks
       .chunks
-      .scanZIO(state)((s, c) => s.addChunk(c))
+      .scanZIO(ReconciliationState(config))((s, c) => s.addChunk(c))
       .runDrain
       .fork *> ZIO.unit // TODO: Error handling if fiber dies
 }
 
 object EdgeSynchronization {
 
-  val layer: URLayer[Graph & Clock, EdgeSynchronization] =
+  val layer: URLayer[Graph & Clock & EdgeReconciliationConfig & EdgeReconciliationDataService, EdgeSynchronization] =
     ZLayer {
       for {
         graph <- ZIO.service[Graph]
         queue <- Queue.unbounded[EdgeReconciliationEvent]
         live = EdgeSynchronizationLive(graph, queue)
-        windowSize: Duration = ??? // TODO: from config
-        windowExpiry: Duration = ??? // TODO: from config
-        _ <- live.startReconciliation(
-          ReconciliationState(
-            windowSize = windowSize.get(MILLIS),
-            windowExpiry = windowExpiry.get(MILLIS)
-          )
-        )
+        config <- ZIO.service[EdgeReconciliationConfig]
+        _ <- live.startReconciliation(config)
       } yield live
     }
 }

@@ -1,9 +1,10 @@
 package andy42.graph.cache
 
-import zio._
-import java.time.temporal.ChronoUnit.MILLIS
-import zio.stm._
 import andy42.graph.model._
+import zio._
+import zio.stm._
+
+import java.time.temporal.ChronoUnit.MILLIS
 
 trait LRUCache {
   def get(id: NodeId): UIO[Option[Node]]
@@ -92,17 +93,17 @@ final case class LRUCacheLive(
 
 object LRUCache { // Note that this does not follow ZIO convention due to private ctor
 
-  val layer: URLayer[Config & Clock, LRUCache] =
+  val layer: URLayer[LRUCacheConfig & Clock, LRUCache] =
     ZLayer {
       for {
-        config <- ZIO.service[Config]
+        config <- ZIO.service[LRUCacheConfig]
         clock <- ZIO.service[Clock]
         now <- clock.currentTime(MILLIS)
         layer <- make(config, clock, now)
       } yield layer
     }
 
-  def make(config: Config, clock: Clock, now: Long): UIO[LRUCache] = {
+  def make(config: LRUCacheConfig, clock: Clock, now: Long): UIO[LRUCache] = {
     for {
       items <- TMap.empty[NodeId, CacheItem]
       oldest <- TRef.make(now - 1)
