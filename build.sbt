@@ -16,8 +16,7 @@ val postgresqlV = "42.2.8"
 libraryDependencies ++= Seq(
     "dev.zio" %% "zio" % zioV,
     "dev.zio" %% "zio-config-magnolia" % zioConfigV,
-    // "dev.zio" %% "zio-logging" % "2.1.0",
-    // "dev.zio" %% "zio-json" % "0.3.0-RC11",
+    "dev.zio" %% "zio-logging" % "2.1.0",
 
     "org.msgpack" % "msgpack-core" % msgPackV,
 

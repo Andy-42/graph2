@@ -11,7 +11,7 @@ trait Persistor {
   /** Get the full history of the node. The result will be in ascending order of
     * (eventTime, sequence).
     */
-  def get(id: NodeId): IO[ReadFailure | UnpackFailure, Vector[EventsAtTime]]
+  def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, Vector[EventsAtTime]]
 
   /** Append an EventsAtTime to a node's persisted history. Within the
     * historyfor a Node, the (eventTime, sequence) must be unique. Within an
@@ -28,7 +28,7 @@ case class PersistorLive(dataService: NodeDataService) extends Persistor {
 
   override def get(
       id: NodeId
-  ): IO[ReadFailure | UnpackFailure, Vector[EventsAtTime]] =
+  ): IO[PersistenceFailure | UnpackFailure, Vector[EventsAtTime]] =
     dataService
       .runNodeHistory(id)
       .flatMap { (history: List[GraphHistory]) =>
@@ -38,7 +38,7 @@ case class PersistorLive(dataService: NodeDataService) extends Persistor {
   override def append(
       id: NodeId,
       eventsAtTime: EventsAtTime
-  ): IO[WriteFailure, Unit] =
+  ): IO[PersistenceFailure, Unit] =
     dataService.runAppend(PersistenceConversions.toGraphHistory(id, eventsAtTime))
 }
 
