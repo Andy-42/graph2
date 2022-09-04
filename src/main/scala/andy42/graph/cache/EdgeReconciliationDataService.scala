@@ -14,24 +14,22 @@ import andy42.graph.model.Edge
 //   case Broken extends EdgeReconciliationState(2.toByte)
 
 case class EdgeReconciliation(
-    windowStart: Long, // sort key
-    windowSize: Long,
-    state: Byte
+    windowStart: Long, // clustering key
+    windowSize: Long, // payload
+    state: Byte // payload
 )
 
 object EdgeReconciliation {
-  val Unknown: Byte = 0.toByte
   val Reconciled: Byte = 1.toByte
-  val Broken: Byte = 2.toByte
+  val Inconsistent: Byte = 2.toByte
 
-  def unknown(windowStart: Long, windowSize: Long): EdgeReconciliation =
-    new EdgeReconciliation(windowStart, windowSize, Unknown)
-
+  // All pairs of half-edges were determined to be reconciled for this window  
   def reconciled(windowStart: Long, windowSize: Long): EdgeReconciliation =
     new EdgeReconciliation(windowStart, windowSize, Reconciled)
 
-  def broken(windowStart: Long, windowSize: Long): EdgeReconciliation =
-    new EdgeReconciliation(windowStart, windowSize, Broken)
+  // The window is known or suspected of being inconsistent  
+  def inconsistent(windowStart: Long, windowSize: Long): EdgeReconciliation =
+    new EdgeReconciliation(windowStart, windowSize, Inconsistent)
 }
 
 trait EdgeReconciliationDataService {
@@ -58,7 +56,10 @@ case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconci
 
   def runMarkWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit] =
     run(markWindow(edgeReconciliation)).implicitly
-      .foldZIO(_ => ZIO.unit, _ => ZIO.unit) // TODO: Retry and error handling
+      // TODO: Check that exactly one row is changed
+    //   .retry(Schedule.exponential(10.millis) // .recurs(10)) // Do a bit of retrying, but give up eventually
+      // TODO: Log retries, if the write eventually fails
+     .foldZIO(_ => ZIO.unit, _ => ZIO.unit) // TODO: Is this the best way to consume errors
 }
 
 object EdgeReconciliationDataService {

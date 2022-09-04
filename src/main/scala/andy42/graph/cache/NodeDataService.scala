@@ -8,8 +8,8 @@ import zio._
 import javax.sql.DataSource
 
 trait NodeDataService {
-  def runNodeHistory(id: NodeId): IO[ReadFailure, List[GraphHistory]]
-  def runAppend(graphHistory: GraphHistory): IO[WriteFailure, Unit]
+  def runNodeHistory(id: NodeId): IO[PersistenceFailure, List[GraphHistory]]
+  def runAppend(graphHistory: GraphHistory): IO[PersistenceFailure, Unit]
 }
 
 case class GraphHistory(
@@ -42,11 +42,11 @@ case class NodeDataServiceLive(ds: DataSource) extends NodeDataService {
 
   implicit val env: Implicit[DataSource] = Implicit(ds)
 
-  override def runNodeHistory(id: NodeId): IO[ReadFailure, List[GraphHistory]] =
+  override def runNodeHistory(id: NodeId): IO[PersistenceFailure, List[GraphHistory]] =
     run(nodeHistory(id))
       .mapError(SQLReadFailure(id, _))
       .implicitly
-  override def runAppend(graphHistory: GraphHistory): IO[WriteFailure, Unit] =
+  override def runAppend(graphHistory: GraphHistory): IO[PersistenceFailure, Unit] =
     run(append(graphHistory))
       .mapError(SQLWriteFailure(graphHistory.id, _))
       .flatMap { rowsInsertedOrUpdated =>

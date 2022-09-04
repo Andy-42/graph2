@@ -32,7 +32,6 @@ final case class ReconciliationState(
   ): URIO[Clock & EdgeReconciliationDataService, ReconciliationState] =
     for {
       clock <- ZIO.service[Clock]
-      // edgeReconciliation <- ZIO.service[EdgeReconciliationDataService]
       now <- clock.currentTime(MILLIS)
       expiryThreshold = toWindowTime(now - windowExpiry)
       currentEvents <- handleAndRemoveExpiredEvents(edgeReconciliationEvents, expiryThreshold)
@@ -53,9 +52,10 @@ final case class ReconciliationState(
       eventsWithExpiredRemoved <-
         if (edgeReconciliationEvents.exists(e => toWindowTime(e.atTime) < expiryThreshold))
           ZIO.foreach(edgeReconciliationEvents.filter(e => toWindowTime(e.atTime) < expiryThreshold).toVector)(e =>
+            // If an event message was received late, that window is likely inconsistent
             ZIO.logWarning(s"TODO: Some JSON message about this expired event")
               *> edgeReconciliationDataService.runMarkWindow(
-                EdgeReconciliation.broken(toWindowTime(e.atTime), windowSize)
+                EdgeReconciliation.inconsistent(toWindowTime(e.atTime), windowSize)
               )
           ) *> ZIO.succeed(edgeReconciliationEvents.filter(e => toWindowTime(e.atTime) >= expiryThreshold))
         else ZIO.succeed(edgeReconciliationEvents)
@@ -77,7 +77,7 @@ final case class ReconciliationState(
                   *> edgeReconciliationDataService.runMarkWindow(EdgeReconciliation.reconciled(windowTime, windowSize))
               else
                 ZIO.logWarning(s"TODO: EdgeHash for window $windowTime did not reconcile in time.")
-                  *> edgeReconciliationDataService.runMarkWindow(EdgeReconciliation.broken(windowTime, windowSize))
+                  *> edgeReconciliationDataService.runMarkWindow(EdgeReconciliation.inconsistent(windowTime, windowSize))
           } *> ZIO.succeed(
             copy(
               first = expiredWindows.dropWhile(_._2 < windowExpiry).headOption.fold(StartOfTime)(_._2),

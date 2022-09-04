@@ -16,7 +16,7 @@ import zio.stm.*
  */
 trait Graph { self => // TODO: Check use of self here
 
-  def get(id: NodeId): IO[UnpackFailure | ReadFailure, Node]
+  def get(id: NodeId): ZIO[Clock, UnpackFailure | PersistenceFailure, Node]
 
   /** Append events to a Node's history. This is the fundamental API that all mutation events are based on.
     */
@@ -24,7 +24,7 @@ trait Graph { self => // TODO: Check use of self here
       id: NodeId,
       atTime: EventTime,
       events: Vector[Event]
-  ): IO[UnpackFailure | PersistenceFailure, Node]
+  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node]
 
   /** Append events
     */
@@ -33,7 +33,7 @@ trait Graph { self => // TODO: Check use of self here
       atTime: EventTime,
       properties: PropertiesAtTime,
       edges: EdgesAtTime
-  ): IO[UnpackFailure | PersistenceFailure, Node] = {
+  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] = {
     val propertyEvents = properties.map { case (k, v) => PropertyAdded(k, v) }
     val edgeEvents = edges.map(EdgeAdded(_))
     val allEvents = (propertyEvents ++ edgeEvents).toVector
@@ -51,7 +51,7 @@ case class GraphLive(
 
   override def get(
       id: NodeId
-  ): IO[UnpackFailure | ReadFailure, Node] =
+  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     ZIO.scoped {
       for {
         _ <- withNodeMutationPermit(id)
@@ -77,7 +77,7 @@ case class GraphLive(
       id: NodeId,
       atTime: EventTime,
       events: Vector[Event]
-  ): IO[UnpackFailure | PersistenceFailure, Node] =
+  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     ZIO.scoped {
       for {
         _ <- withNodeMutationPermit(id)
@@ -101,7 +101,7 @@ case class GraphLive(
       atTime: EventTime,
       newEvents: Vector[Event],
       node: Node
-  ): IO[UnpackFailure | PersistenceFailure, Node] =
+  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     for {
       // The accumulated node state for all event up to and including atTime
       nodeStateAtTime <- node.atTime(atTime)
@@ -122,7 +122,7 @@ case class GraphLive(
       node: Node,
       newEvents: Vector[Event],
       atTime: EventTime
-  ): IO[UnpackFailure | PersistenceFailure, Node] =
+  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     for {
       eventsAtTime <- EventHistory.unpack(node.packed)
       state <- node.atTime(atTime)
@@ -147,7 +147,7 @@ case class GraphLive(
       eventsAtTime: Vector[EventsAtTime],
       atTime: EventTime,
       newEvents: Vector[Event]
-  ): IO[UnpackFailure | PersistenceFailure, Node] = {
+  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] = {
     val (before, after) = eventsAtTime.partition(_.eventTime <= atTime)
 
     val sequence = before.lastOption match {
@@ -189,11 +189,12 @@ object Graph {
   val layer: URLayer[LRUCache & Persistor & EdgeSynchronization & StandingQueryEvaluation, Graph] =
     ZLayer {
       for {
-        inFlight <- TSet.empty[NodeId].commit
         lruCache <- ZIO.service[LRUCache]
         persistor <- ZIO.service[Persistor]
         edgeSynchronization <- ZIO.service[EdgeSynchronization]
         standingQueryEvaluation <- ZIO.service[StandingQueryEvaluation]
+
+        inFlight <- TSet.empty[NodeId].commit
       } yield GraphLive(inFlight, lruCache, persistor, edgeSynchronization, standingQueryEvaluation)
     }
 }

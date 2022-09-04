@@ -7,9 +7,9 @@ import zio.stm._
 import java.time.temporal.ChronoUnit.MILLIS
 
 trait LRUCache {
-  def get(id: NodeId): UIO[Option[Node]]
+  def get(id: NodeId): URIO[Clock, Option[Node]]
 
-  def put(node: Node): UIO[Unit]
+  def put(node: Node): URIO[Clock, Unit]
 }
 
 type AccessTime = Long // epoch millis
@@ -22,15 +22,14 @@ case class CacheItem(
 )
 
 final case class LRUCacheLive(
-    capacity: Int,
-    fractionToRetainOnTrim: Float, // fraction of time range (from oldest .. now) to retain on a trim
-    clock: Clock,
+    config: LRUCacheConfig,
     oldest: TRef[AccessTime], // All items in the cache will have a lastAccess > oldest
     items: TMap[NodeId, CacheItem]
 ) extends LRUCache {
 
-  override def get(id: NodeId): UIO[Option[Node]] =
+  override def get(id: NodeId): URIO[Clock, Option[Node]] =
     for {
+      clock <- ZIO.service[Clock]
       now <- clock.currentTime(MILLIS)
       optionNode <- getSTM(id, now).commit
     } yield optionNode
@@ -50,8 +49,9 @@ final case class LRUCacheLive(
       )
     }
 
-  override def put(node: Node): UIO[Unit] =
+  override def put(node: Node): URIO[Clock, Unit] =
     for {
+      clock <- ZIO.service[Clock]
       now <- clock.currentTime(MILLIS)
       _ <- trimIfOverCapacity(now).commit
       _ <- putSTM(node, now).commit
@@ -74,7 +74,7 @@ final case class LRUCacheLive(
     } yield ()
 
   private def trimIfOverCapacity(now: AccessTime): USTM[Unit] =
-    ZSTM.ifSTM(items.size.map(_ > capacity))(
+    ZSTM.ifSTM(items.size.map(_ > config.lruCacheCapacity))(
       onTrue = trim(now),
       onFalse = ZSTM.unit
     )
@@ -88,10 +88,10 @@ final case class LRUCacheLive(
     } yield ()
 
   private def lastTimeToPurge(oldest: AccessTime, now: AccessTime): AccessTime =
-    now - Math.ceil((now - oldest) * fractionToRetainOnTrim).toLong
+    now - Math.ceil((now - oldest) * config.fractionOfCacheToRetainOnTrim).toLong
 }
 
-object LRUCache { // Note that this does not follow ZIO convention due to private ctor
+object LRUCache {
 
   val layer: URLayer[LRUCacheConfig & Clock, LRUCache] =
     ZLayer {
@@ -99,20 +99,12 @@ object LRUCache { // Note that this does not follow ZIO convention due to privat
         config <- ZIO.service[LRUCacheConfig]
         clock <- ZIO.service[Clock]
         now <- clock.currentTime(MILLIS)
-        layer <- make(config, clock, now)
-      } yield layer
+        items <- TMap.empty[NodeId, CacheItem].commit
+        oldest <- TRef.make(now - 1).commit
+      } yield LRUCacheLive(
+        config = config,
+        oldest = oldest,
+        items = items
+      )
     }
-
-  def make(config: LRUCacheConfig, clock: Clock, now: Long): UIO[LRUCache] = {
-    for {
-      items <- TMap.empty[NodeId, CacheItem]
-      oldest <- TRef.make(now - 1)
-    } yield LRUCacheLive(
-      capacity = config.lruCacheCapacity,
-      fractionToRetainOnTrim = config.fractionOfCacheToRetainOnTrim,
-      clock = clock,
-      oldest = oldest,
-      items = items
-    )
-  }.commit
 }

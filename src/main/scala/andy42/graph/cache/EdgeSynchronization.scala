@@ -22,7 +22,7 @@ trait EdgeSynchronization {
   def eventsAppended(
       id: NodeId,
       eventsAtTime: EventsAtTime
-  ): UIO[Unit]
+  ): URIO[Clock, Unit]
 
   def startReconciliation(config: EdgeReconciliationConfig): URIO[Clock & EdgeReconciliationDataService, Unit]
 }
@@ -43,7 +43,7 @@ case class EdgeSynchronizationLive(
   def eventsAppended(
       id: NodeId,
       eventsAtTime: EventsAtTime
-  ): UIO[Unit] =
+  ): URIO[Clock, Unit] =
     for {
       _ <- ZIO.foreach(eventsAtTime.events) {
 
@@ -84,10 +84,10 @@ object EdgeSynchronization {
   val layer: URLayer[Graph & Clock & EdgeReconciliationConfig & EdgeReconciliationDataService, EdgeSynchronization] =
     ZLayer {
       for {
+        config <- ZIO.service[EdgeReconciliationConfig]
         graph <- ZIO.service[Graph]
         queue <- Queue.unbounded[EdgeReconciliationEvent]
         live = EdgeSynchronizationLive(graph, queue)
-        config <- ZIO.service[EdgeReconciliationConfig]
         _ <- live.startReconciliation(config)
       } yield live
     }
