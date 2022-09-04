@@ -65,8 +65,7 @@ final case class ReconciliationState(
                 EdgeReconciliation.inconsistent(e.atTime.toWindowTime, windowSize)
               )
           } @@ expiryThresholdAnnotation(expiryThreshold) @@ windowSizeAnnotation(windowSize)
-          // Keep the events that are not expired
-            *> ZIO.succeed(edgeReconciliationEvents.filter(!_.atTime.isExpired))
+            *> ZIO.succeed(edgeReconciliationEvents.filter(!_.atTime.isExpired)) // Keep the events that are not expired
         } else ZIO.succeed(edgeReconciliationEvents)
     } yield eventsWithExpiredRemoved
   }
@@ -80,7 +79,7 @@ final case class ReconciliationState(
         if (firstWindowStart >= windowExpiry) ZIO.succeed(this)
         else {
 
-          def windowStarts: Seq[WindowTime] = (0 to edgeHashes.length).map(_ * windowSize + firstWindowStart)
+          def windowStarts: Seq[WindowTime] = (0 until edgeHashes.length).map(_ * windowSize + firstWindowStart)
           val edgeHashAndWindowStart = edgeHashes.zip(windowStarts)
 
           ZIO.foreach(edgeHashAndWindowStart.takeWhile { case (_, windowStart) => windowStart < windowExpiry }) {
@@ -97,13 +96,19 @@ final case class ReconciliationState(
                   *> edgeReconciliationDataService.runMarkWindow(
                     EdgeReconciliation.inconsistent(windowStart, windowSize)
                   )
-          } *> ZIO.succeed(
-            copy(
-              firstWindowStart = edgeHashAndWindowStart.dropWhile(_._2 < windowExpiry).headOption.fold(StartOfTime)(_._2),
-              edgeHashes = edgeHashAndWindowStart.dropWhile(_._2 >= windowExpiry).map(_._1)
+          } @@ windowSizeAnnotation(windowSize) @@ expiryThresholdAnnotation(expiryThreshold)
+            *> ZIO.succeed(
+              copy(
+                firstWindowStart = edgeHashAndWindowStart
+                  .dropWhile { case (_, windowStart) => windowStart < windowExpiry }
+                  .headOption
+                  .fold(StartOfTime) { case (_, windowStart) => windowStart },
+                edgeHashes = edgeHashAndWindowStart
+                  .dropWhile { case (_, windowStart) => windowStart < windowExpiry }
+                  .map { case (edgeHash, _) => edgeHash }
+              )
             )
-          )
-        } @@ windowSizeAnnotation(windowSize) @@ expiryThresholdAnnotation(expiryThreshold)
+        }
 
     } yield reconciliationStateWithExpiredWindowsRemoved
 
