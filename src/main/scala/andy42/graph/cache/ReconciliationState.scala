@@ -129,26 +129,38 @@ final case class ReconciliationState(
       ((second - first) / state.windowSize).toInt
     }
 
-    // First and last window starts so that there is a slot for every event
-    val firstNewWindowStart = state.firstWindowStart min minEventWindowStart
-    val lastNewWindowStart = (state.firstWindowStart + windowSize * state.edgeHashes.length) max maxEventWindowStart
+    if (state.edgeHashes.isEmpty) {
+      assert(state.firstWindowStart == StartOfTime)
 
-    val newWindows = Array.ofDim[EdgeHash](slotsBetweenWindows(firstNewWindowStart, lastNewWindowStart))
+      state.copy(
+        firstWindowStart = minEventWindowStart,
+        edgeHashes =
+          Array.ofDim[EdgeHash](slotsBetweenWindows(first = minEventWindowStart, second = maxEventWindowStart))
+      )
+    } else {
+      // Create a new edgeHashes that can accomodate the existing state and all the incoming events
+      val firstWindowStart = state.firstWindowStart min minEventWindowStart
+      val lastWindowStart = (state.firstWindowStart + windowSize * state.edgeHashes.length) max maxEventWindowStart
+      val edgeHashes = Array.ofDim[EdgeHash](slotsBetweenWindows(firstWindowStart, lastWindowStart))
+      Array.copy(
+        src = state.edgeHashes,
+        srcPos = 0,
+        dest = edgeHashes,
+        destPos = slotsBetweenWindows(first = firstWindowStart, second = state.firstWindowStart),
+        length = state.edgeHashes.length
+      )
 
-    Array.copy(
-      src = state.edgeHashes,
-      srcPos = 0,
-      dest = newWindows,
-      destPos = slotsBetweenWindows(first = firstNewWindowStart, second = state.firstWindowStart),
-      length = state.edgeHashes.length
-    )
+      // Merge in the edge hashes from incoming events
+      events.foreach { edgeReconciliationEvent =>
+        val i = slotsBetweenWindows(first = firstWindowStart, second = edgeReconciliationEvent.atTime.toWindowStart)
+        edgeHashes(i) ^= edgeReconciliationEvent.edgeHash
+      }
 
-    events.foreach { edgeReconciliationEvent =>
-      val i = slotsBetweenWindows(first = firstNewWindowStart, second = edgeReconciliationEvent.atTime.toWindowStart)
-      newWindows(i) ^= edgeReconciliationEvent.edgeHash
+      state.copy(
+        firstWindowStart = firstWindowStart,
+        edgeHashes = edgeHashes
+      )
     }
-
-    state.copy(firstWindowStart = firstNewWindowStart, edgeHashes = newWindows)
   }
 
   private val expiryThresholdAnnotation = LogAnnotation[WindowStart]("expiryThreshold", (_, x) => x, _.toString)
