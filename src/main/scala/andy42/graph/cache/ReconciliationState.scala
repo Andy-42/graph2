@@ -7,8 +7,8 @@ import zio.stream.ZStream
 
 import java.time.temporal.ChronoUnit.MILLIS
 
-type WindowStart = Long // EpochMillis but adjusted to start of window
-type WindowEnd = Long
+type WindowStart = Long // Epoch millis adjusted to start of window
+type WindowEnd = Long // Epoch millis adjusted to last period in window
 type MillisecondDuration = Long
 
 type EdgeHash = Long // Edge hashes - correctly balanced edges will reconcile to zero
@@ -46,7 +46,7 @@ final case class ReconciliationState(
     for {
       clock <- ZIO.service[Clock]
       now <- clock.currentTime(MILLIS)
-      expiryThreshold = ReconciliationState.toWindowStart(now - windowExpiry, windowSize)
+      expiryThreshold = toWindowEnd(now - windowExpiry)
       currentEvents <- handleAndRemoveExpiredEvents(edgeReconciliationEvents, expiryThreshold)
       stateWithExpiredWindowsRemoved <- expireReconciliationWindows(expiryThreshold)
       stateWithNewEvents = mergeInNewEvents(stateWithExpiredWindowsRemoved, currentEvents)
@@ -57,6 +57,7 @@ final case class ReconciliationState(
       expiryThreshold: WindowStart
   ): URIO[EdgeReconciliationDataService, Chunk[EdgeReconciliationEvent]] = {
 
+    // An event is expired if the last period in the window is expired
     extension (eventTime: EventTime) def isExpired: Boolean = eventTime.toWindowEnd < expiryThreshold
 
     for {
@@ -120,27 +121,34 @@ final case class ReconciliationState(
       state: ReconciliationState,
       events: Chunk[EdgeReconciliationEvent]
   ): ReconciliationState = {
-    val minEventTime = events.minBy(_.atTime).atTime.toWindowStart
-    val maxEventTime = events.minBy(_.atTime).atTime.toWindowStart
+    val minEventWindowStart = events.minBy(_.atTime).atTime.toWindowStart
+    val maxEventWindowStart = events.minBy(_.atTime).atTime.toWindowStart
 
-    val firstSlot = state.firstWindowStart min minEventTime
-    val lastSlot = (state.firstWindowStart + windowSize * state.edgeHashes.length) max maxEventTime
+    def slotsBetweenWindows(first: WindowStart, second: WindowStart): Int = {
+      require(second >= first)
+      ((second - first) / state.windowSize).toInt
+    }
 
-    val newWindows = Array.ofDim[EdgeHash](((lastSlot - firstSlot) / windowSize).toInt)
+    // First and last window starts so that there is a slot for every event
+    val firstNewWindowStart = state.firstWindowStart min minEventWindowStart
+    val lastNewWindowStart = (state.firstWindowStart + windowSize * state.edgeHashes.length) max maxEventWindowStart
+
+    val newWindows = Array.ofDim[EdgeHash](slotsBetweenWindows(firstNewWindowStart, lastNewWindowStart))
+
     Array.copy(
       src = state.edgeHashes,
       srcPos = 0,
       dest = newWindows,
-      destPos = ((state.firstWindowStart - minEventTime) / state.windowSize).toInt,
+      destPos = slotsBetweenWindows(first = firstNewWindowStart, second = state.firstWindowStart),
       length = state.edgeHashes.length
     )
 
     events.foreach { edgeReconciliationEvent =>
-      val index: Int = (edgeReconciliationEvent.atTime.toWindowStart / windowSize).toInt
-      newWindows(index) ^= edgeReconciliationEvent.edgeHash
+      val i = slotsBetweenWindows(first = firstNewWindowStart, second = edgeReconciliationEvent.atTime.toWindowStart)
+      newWindows(i) ^= edgeReconciliationEvent.edgeHash
     }
 
-    state.copy(firstWindowStart = firstSlot, edgeHashes = newWindows)
+    state.copy(firstWindowStart = firstNewWindowStart, edgeHashes = newWindows)
   }
 
   private val expiryThresholdAnnotation = LogAnnotation[WindowStart]("expiryThreshold", (_, x) => x, _.toString)
