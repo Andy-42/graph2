@@ -57,8 +57,9 @@ object CollapseNodeHistory {
 
     NodeStateAtTime(
       eventTime = history.lastOption.fold(StartOfTime)(_.eventTime),
+      sequence = history.lastOption.fold(0)(_.sequence),
       properties = properties,
-      edges = edges
+      edges = edges,
     )
   }
 }

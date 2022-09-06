@@ -41,41 +41,4 @@ package object model {
   }
 
   type EdgesAtTime = Set[Edge] // Collapsed properties at some point in time
-
-  case class NodeStateAtTime(
-    eventTime: EventTime,
-    properties: PropertiesAtTime,
-    edges: EdgesAtTime)
-
-  type PackedNodeContents = Array[Byte]
-  
-  trait Node {
-    def id: NodeId
-
-    def version: Int
-    def latest: EventTime
-
-    def eventsAtTime: IO[UnpackFailure, Vector[EventsAtTime]]
-    def packed: Array[Byte]
-    
-    lazy val current: IO[UnpackFailure, NodeStateAtTime] =
-      for {
-        eventsAtTime <- eventsAtTime
-      } yield CollapseNodeHistory(eventsAtTime, latest)
-
-    def atTime(atTime: EventTime): IO[UnpackFailure, NodeStateAtTime] =
-      if (atTime >= latest)
-        current
-      else
-        for {
-          eventsAtTime <- eventsAtTime
-        } yield CollapseNodeHistory(eventsAtTime, atTime)
-
-    def isCurrentlyEmpty: IO[UnpackFailure, Boolean] =
-      for {
-        x <- current
-      } yield x.properties.isEmpty && x.edges.isEmpty
-
-    def wasAlwaysEmpty: IO[UnpackFailure, Boolean]
-  }
 }

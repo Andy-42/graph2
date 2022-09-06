@@ -58,7 +58,7 @@ case class GraphLive(
         optionNode <- cache.get(id)
         newOrExistingNode <- optionNode.fold {
           // Node does not exist in cache
-          persistor.get(id).flatMap { (eventsAtTime: Vector[EventsAtTime]) =>
+          persistor.get(id).flatMap { eventsAtTime =>
             if (eventsAtTime.isEmpty)
               // Node doesn't have any history in the persisted store, so synthesize an empty node.
               // Since a node with an empty history is always considered to exist, there is no point adding it to the cache.
@@ -97,91 +97,119 @@ case class GraphLive(
   private def withNodeMutationPermit(id: NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
+  case class NodeWithNewEvents(node: Node, optionEventsAtTime: Option[EventsAtTime], mustPersist: Boolean)
+
   private def applyEvents(
       atTime: EventTime,
       newEvents: Vector[Event],
       node: Node
-  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
+  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] = {
+
+    // Eliminate any duplication within events
+    val deduplicatedEvents = EventDeduplicationOps.deduplicateWithinEvents(newEvents)
+
     for {
-      // The accumulated node state for all event up to and including atTime
-      nodeStateAtTime <- node.atTime(atTime)
+      nodeWithNewEvents <-
+        if (node.wasAlwaysEmpty)
+          ZIO.succeed {
+            // Creating a new node can be done in an optimized way since we don't need to merge in events.
+            val newEventsAtTime = EventsAtTime(eventTime = atTime, sequence = 0, events = deduplicatedEvents)
+            NodeWithNewEvents(
+              node = Node(node.id, Vector(newEventsAtTime)),
+              optionEventsAtTime = Some(newEventsAtTime),
+              mustPersist = true
+            )
+          }
+        else
+          node.atTime(atTime).flatMap { nodeStateAtTime =>
 
-      // Eliminate any duplication within events
-      deduplicated = EventDeduplicationOps.deduplicateWithinEvents(newEvents)
+            // Discard any events that would have no effect on the state at that point in time
+            val eventsWithEffect =
+              EventHasEffectOps.filterHasEffect(events = deduplicatedEvents, nodeState = nodeStateAtTime)
 
-      // Discard any events that would have no effect on the current state
-      eventsWithEffect = EventHasEffectOps.filterHasEffect(events = deduplicated, nodeState = nodeStateAtTime)
+            if (eventsWithEffect.isEmpty)
+              ZIO.succeed(NodeWithNewEvents(node = node, optionEventsAtTime = None, mustPersist = false))
+            else if (atTime >= nodeStateAtTime.eventTime)
+              ZIO.succeed(appendEventsToEndOfHistory(node, eventsWithEffect, atTime))
+            else
+              mergeInNewEvents(node = node, newEvents = eventsWithEffect, atTime = atTime)
+          }
 
-      // TODO: Should still do standing query eval and edge sync even if no change
-      newNode <-
-        if eventsWithEffect.isEmpty then ZIO.succeed(node)
-        else mergeInNewEvents(node, eventsWithEffect, atTime)
-    } yield newNode
+      // Persist and cache only if there were some changes
+      _ <- nodeWithNewEvents.optionEventsAtTime.fold(ZIO.unit) {
+        persistor.append(nodeWithNewEvents.node.id, _) *> cache.put(nodeWithNewEvents.node)
+      }
 
+      // Handle any events that are a result of this node being appended to.
+      // Note that we pass in the events appended, and not the ones that were changed in this operation
+      // since we may be re-processing a change and we have to guarantee that the events were processed.
+      _ <- standingQueryEvaluation.nodeChanged(nodeWithNewEvents.node, deduplicatedEvents)
+      _ <- edgeSynchronization.eventsAppended(nodeWithNewEvents.node.id, atTime, deduplicatedEvents)
+
+    } yield nodeWithNewEvents.node
+  }
+
+  /** General merge of new events at any point in time into the node's history. This requires unpacking the node's
+    * history to a Vector[EventsAtTime] which may require more resources for large nodes.
+    *
+    * @param node
+    * @param newEvents
+    * @param atTime
+    * @return
+    */
   private def mergeInNewEvents(
       node: Node,
       newEvents: Vector[Event],
       atTime: EventTime
-  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
+  ): IO[UnpackFailure, NodeWithNewEvents] =
     for {
-      eventsAtTime <- EventHistory.unpack(node.packed)
-      state <- node.atTime(atTime)
+      originalHistory <- node.eventsAtTime
 
-      // Remove any duplication within the new events
-      eventsWithEffect = EventHasEffectOps.filterHasEffect(newEvents, state)
+      (before, after) = originalHistory.partition(_.eventTime <= atTime)
 
-      newNode <-
-        if (eventsWithEffect.isEmpty)
-          ZIO.succeed(node)
-        else
-          appendEventsAtTime(
-            id = node.id,
-            eventsAtTime,
-            atTime,
-            newEvents = eventsWithEffect
-          ) // TODO: Re-order parameters
-    } yield newNode
+      sequence = before.lastOption match {
+        case None                                              => 0
+        case Some(lastEvents) if lastEvents.eventTime < atTime => 0
+        case Some(lastEvents)                                  => lastEvents.sequence + 1
+      }
 
-  private def appendEventsAtTime(
-      id: NodeId,
-      eventsAtTime: Vector[EventsAtTime],
-      atTime: EventTime,
-      newEvents: Vector[Event]
-  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] = {
-    val (before, after) = eventsAtTime.partition(_.eventTime <= atTime)
+      newEventsAtTime = EventsAtTime(eventTime = atTime, sequence = sequence, events = newEvents)
 
-    val sequence = before.lastOption match {
-      case None                                                  => 0
-      case Some(eventsAtTime) if eventsAtTime.eventTime < atTime => 0
-      case Some(eventsAtTime)                                    => eventsAtTime.sequence + 1
-    }
+      newHistory = (before :+ newEventsAtTime) ++ after
+    } yield NodeWithNewEvents(
+      node = Node(node.id, newHistory),
+      optionEventsAtTime = Some(newEventsAtTime),
+      mustPersist = true
+    )
 
-    val newEventsWithEffect =
-      EventsAtTime(eventTime = atTime, sequence = sequence, events = newEvents)
+  /** Append events to the end of history. Appending events can be done more efficiently by avoiding the need to unpack
+    * all of history to a Vector[EventsAtTime], but instead we can just append the packed history to the end of the
+    * packed history. This could be significant for nodes with a large history (esp. may edges).
+    *
+    * @param node
+    * @param newEvents
+    * @param atTime
+    * @return
+    */
+  private def appendEventsToEndOfHistory(
+      node: Node,
+      newEvents: Vector[Event],
+      atTime: EventTime
+  ): NodeWithNewEvents = {
+    require(newEvents.nonEmpty)
+    require(atTime >= node.latestEventTime)
 
-    val newEventHistory = (before :+ newEventsWithEffect) ++ after
-    val newNode = Node(id, newEventHistory)
+    val eventsAtTime = EventsAtTime(
+      eventTime = atTime,
+      sequence = if node.latestEventTime == atTime then node.latestSequence + 1 else 0,
+      events = newEvents
+    )
 
-    // FIXME: Needs some re-structuring since want to SQE+edge sync even if the node doesn't change (or is this configurable?)
-
-    for {
-      // Evaluate any standing queries that would affect this node.
-      // This is done before it is committed to ensure at-least-once semantics for queries.
-      _ <- standingQueryEvaluation.nodeChanged(newNode, newEventsWithEffect)
-
-      // TODO: Commentary on ordering of persistor.append/cache.put
-      // The cache can only contain contents that are persisted.
-      // Persistor has to do upsert
-      // Potential to revise history, but that can be done safely
-
-      _ <- persistor.append(id, newEventsWithEffect)
-
-      _ <- cache.put(newNode)
-
-      // Synchronize any far edges with any edge events
-      _ <- edgeSynchronization.eventsAppended(id, newEventsWithEffect)
-
-    } yield newNode
+    NodeWithNewEvents(
+      node = node.append(newEvents, atTime),
+      optionEventsAtTime = Some(eventsAtTime),
+      mustPersist = true
+    )
   }
 }
 

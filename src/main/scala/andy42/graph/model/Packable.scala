@@ -6,6 +6,7 @@ import java.io.IOException
 
 import scala.reflect.ClassTag
 import org.msgpack.value.ValueType
+import scala.collection.mutable.ArrayBuffer
 
 trait Packable {
   /**
@@ -50,6 +51,21 @@ object UnpackOperations {
           a(i) = t
           accumulate(i + 1)
         }
+
+    accumulate()
+  }
+
+  def unpackToVector[T: ClassTag](unpackElement: => IO[UnpackFailure, T], hasNext: => Boolean): IO[UnpackFailure, Vector[T]] = {
+    val buf = ArrayBuffer.empty[T]
+
+    def accumulate(): IO[UnpackFailure, Vector[T]] =
+      if (hasNext)
+        unpackElement.flatMap { t =>
+          buf.addOne(t)
+          accumulate()
+        }
+      else 
+        ZIO.succeed(buf.toVector)
 
     accumulate()
   }

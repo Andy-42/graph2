@@ -17,6 +17,7 @@ type AccessTime = Long // epoch millis
 case class CacheItem(
     version: Int,
     latest: EventTime,
+    sequence: Int,
     packed: PackedNodeContents,
     lastAccess: AccessTime
 )
@@ -45,6 +46,7 @@ final case class LRUCacheLive(
         id = id,
         version = item.version,
         latest = item.latest,
+        sequence = item.sequence,
         packed = item.packed
       )
     }
@@ -66,7 +68,8 @@ final case class LRUCacheLive(
         node.id,
         CacheItem(
           version = node.version,
-          latest = node.latest,
+          latest = node.latestEventTime,
+          sequence = node.latestSequence,
           packed = node.packed,
           lastAccess = now
         )

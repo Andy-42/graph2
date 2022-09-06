@@ -4,7 +4,7 @@ import zio._
 import zio.stm.STM
 import zio.stm.TQueue
 import andy42.graph.model.Node
-import andy42.graph.model.EventsAtTime
+import andy42.graph.model.Event
 
 /** Observe a node that is changed.
   */
@@ -19,13 +19,13 @@ trait StandingQueryEvaluation {
     * Since far edged might not be synced yet, when we pull in node for matching,
     * we can patch the far edges up to that they are consistent.
     */
-  def nodeChanged(node: Node, newEvents: EventsAtTime): UIO[Unit]
+  def nodeChanged(node: Node, newEvents: Vector[Event]): UIO[Unit]
 
   // TODO: How to get the output stream?
 }
 
 case class StandingQueryEvaluationLive(graph: Graph) extends StandingQueryEvaluation {
-    override def nodeChanged(node: Node, newEvents: EventsAtTime): UIO[Unit] = ???
+    override def nodeChanged(node: Node, newEvents: Vector[Event]): UIO[Unit] = ???
 }
 
 object StandingQueryEvaluation {

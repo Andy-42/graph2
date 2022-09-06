@@ -16,8 +16,7 @@ object EventHistory extends Unpackable[Vector[EventsAtTime]] {
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, Vector[EventsAtTime]] = {
     for {
-      length <- ZIO.attempt { unpacker.unpackInt() }
-      a <- unpackToVector(EventsAtTime.unpack, length)
+      a <- unpackToVector(EventsAtTime.unpack, unpacker.hasNext)
     } yield a
   }.refineOrDie(UnpackFailure.refine)
 
@@ -27,7 +26,6 @@ object EventHistory extends Unpackable[Vector[EventsAtTime]] {
   def pack(
       eventHistory: Vector[EventsAtTime]
   )(implicit packer: MessagePacker): MessagePacker = {
-    packer.packInt(eventHistory.length)
     eventHistory.foreach(_.pack)
     packer
   }
@@ -36,5 +34,21 @@ object EventHistory extends Unpackable[Vector[EventsAtTime]] {
     val packer = MessagePack.newDefaultBufferPacker()
     pack(eventHistory)(packer)
     packer.toByteArray()
+  }
+
+  /**
+    * Append an EventsAtTime at the end of history.
+    * This can be more efficient since it doesn't require unpacking all of history.
+    * The caller must ensure that eventsAtTime occurs after the last event (wrt. atTime, sequence)
+    * as though the eventsAtTime were unpacked.
+    *
+    * @param packed The packed history for a node.
+    * @param eventsAtTime Events to be appended to the end of the node's history.
+    * @return The packed history, with the new EventsAtTime packed and appended to the history.
+    */
+  def append(packed: Array[Byte], eventsAtTime: EventsAtTime): Array[Byte] = {
+    implicit val packer = MessagePack.newDefaultBufferPacker()
+    eventsAtTime.pack
+    packed ++ packer.toByteArray()
   }
 }
