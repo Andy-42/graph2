@@ -49,9 +49,9 @@ final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeR
 
   override def markWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit] =
     run(quotedMarkWindow(edgeReconciliation)).implicitly
-      // TODO: Check that exactly one row is changed
-      //   .retry(Schedule.exponential(10.millis) // .recurs(10)) // Do a bit of retrying, but give up eventually
-      // TODO: Log retries, if the write eventually fails
+      .retry(Schedule.recurs(5)) // TODO: Configure retry policy
+      // TODO: Check that exactly one row is changed, otherwise log error
+      // TODO: Log if retries fails
       .foldZIO(_ => ZIO.unit, _ => ZIO.unit) // TODO: Is this the best way to consume errors
 
 object EdgeReconciliationDataService:
