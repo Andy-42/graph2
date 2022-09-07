@@ -27,7 +27,7 @@ object EdgeReconciliation:
     new EdgeReconciliation(windowStart, windowSize, Inconsistent)
 
 trait EdgeReconciliationDataService:
-  def runMarkWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit]
+  def markWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit]
 
 final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconciliationDataService:
 
@@ -36,7 +36,7 @@ final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeR
 
   inline def edgeReconciliationTable = quote { query[EdgeReconciliation] }
 
-  inline def markWindow(edgeReconciliation: EdgeReconciliation) = quote {
+  inline def quotedMarkWindow(edgeReconciliation: EdgeReconciliation) = quote {
     edgeReconciliationTable
       .insertValue(lift(edgeReconciliation))
       .onConflictUpdate(_.windowStart)(
@@ -47,8 +47,8 @@ final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeR
 
   given Implicit[DataSource] = Implicit(ds)
 
-  override def runMarkWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit] =
-    run(markWindow(edgeReconciliation)).implicitly
+  override def markWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit] =
+    run(quotedMarkWindow(edgeReconciliation)).implicitly
       // TODO: Check that exactly one row is changed
       //   .retry(Schedule.exponential(10.millis) // .recurs(10)) // Do a bit of retrying, but give up eventually
       // TODO: Log retries, if the write eventually fails

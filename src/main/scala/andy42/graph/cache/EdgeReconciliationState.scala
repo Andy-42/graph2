@@ -65,7 +65,7 @@ final case class EdgeReconciliationState(
           ZIO.foreach(edgeReconciliationEvents.filter(_.time.isExpired).toVector) { e =>
             ZIO.logWarning("Edge reconciliation processed for an expired event; window is likely to be inconsistent")
             @@ eventTimeAnnotation (e.time) @@ eventWindowTimeAnnotation(e.time.toWindowStart)
-              *> edgeReconciliationDataService.runMarkWindow(
+              *> edgeReconciliationDataService.markWindow(
                 EdgeReconciliation.inconsistent(e.time.toWindowStart, windowSize)
               )
           } @@ expiryThresholdAnnotation(expiryThreshold) @@ windowSizeAnnotation(windowSize)
@@ -93,13 +93,13 @@ final case class EdgeReconciliationState(
             if edgeHash == 0L then
               ZIO.logInfo("Edge hash reconciled.")
               @@ windowStartAnnotation (i.indexToWindowStart)
-                *> edgeReconciliationDataService.runMarkWindow(
+                *> edgeReconciliationDataService.markWindow(
                   EdgeReconciliation.reconciled(i.indexToWindowStart, windowSize)
                 )
             else
               ZIO.logWarning("Edge hash failed to reconcile before window expiry; window is not consistent")
               @@ windowStartAnnotation (i.indexToWindowStart) @@ edgeHashAnnotation(edgeHash)
-                *> edgeReconciliationDataService.runMarkWindow(
+                *> edgeReconciliationDataService.markWindow(
                   EdgeReconciliation.inconsistent(i.indexToWindowStart, windowSize)
                 )
           } @@ windowSizeAnnotation(windowSize) @@ expiryThresholdAnnotation(expiryThreshold)
