@@ -59,11 +59,11 @@ object EventsAtTime extends Unpackable[EventsAtTime] {
   override def unpack(implicit
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, EventsAtTime] = {
-    for {
+    for
       eventTime <- ZIO.attempt { unpacker.unpackLong() }
       sequence <- ZIO.attempt { unpacker.unpackInt() }
       length <- ZIO.attempt { unpacker.unpackInt() }
       events <- unpackToVector(Event.unpack, length)
-    } yield EventsAtTime(eventTime, sequence, events)
+    yield EventsAtTime(eventTime, sequence, events)
   }.refineOrDie(UnpackFailure.refine)
 }

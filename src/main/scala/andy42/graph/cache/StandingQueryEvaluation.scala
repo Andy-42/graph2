@@ -31,9 +31,8 @@ case class StandingQueryEvaluationLive(graph: Graph) extends StandingQueryEvalua
 object StandingQueryEvaluation {
   val layer: URLayer[Graph, StandingQueryEvaluation] =
     ZLayer {
-      for {
-        graph <- ZIO.service[Graph]
+      for graph <- ZIO.service[Graph]
         // TODO: Service that sinks the standing query output stream
-      } yield StandingQueryEvaluationLive(graph)
+      yield StandingQueryEvaluationLive(graph)
     }
 }

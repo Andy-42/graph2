@@ -30,9 +30,8 @@ case class GraphHistory(
 ) {
 
   def toEventsAtTime: IO[UnpackFailure, EventsAtTime] =
-    for {
-      events <- Events.unpack(events)
-    } yield EventsAtTime(eventTime, sequence, events)
+    for events <- Events.unpack(events)
+    yield EventsAtTime(eventTime, sequence, events)
 }
 
 object GraphHistory {
@@ -88,8 +87,8 @@ case class NodeDataServiceLive(ds: DataSource) extends NodeDataService {
 object NodeDataService {
   val layer: URLayer[DataSource, NodeDataService] =
     ZLayer {
-      for {
+      for
         ds <- ZIO.service[DataSource]
-      } yield NodeDataServiceLive(ds)
+      yield NodeDataServiceLive(ds)
     }
 }

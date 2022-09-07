@@ -27,11 +27,11 @@ object CollapseNodeHistory {
     var properties: PropertiesAtTime = initialProperties
     var edges: EdgesAtTime = initialEdges
 
-    for {
+    for
       eventsAtTime <- history
       if eventsAtTime.eventTime <= atTime
       event <- eventsAtTime.events
-    } event match {
+    do event match {
       case NodeRemoved =>
         properties = Map.empty
         edges = Set.empty

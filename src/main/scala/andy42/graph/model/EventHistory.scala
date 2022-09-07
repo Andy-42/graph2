@@ -15,9 +15,8 @@ object EventHistory extends Unpackable[Vector[EventsAtTime]] {
   override def unpack(implicit
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, Vector[EventsAtTime]] = {
-    for {
-      a <- unpackToVector(EventsAtTime.unpack, unpacker.hasNext)
-    } yield a
+    for a <- unpackToVector(EventsAtTime.unpack, unpacker.hasNext)
+    yield a
   }.refineOrDie(UnpackFailure.refine)
 
   def unpack(packed: Array[Byte]): IO[UnpackFailure, Vector[EventsAtTime]] =

@@ -20,16 +20,14 @@ sealed trait Node {
   def append(events: Vector[Event], atTime: EventTime): IO[UnpackFailure, Node]
 
   lazy val current: IO[UnpackFailure, NodeStateAtTime] =
-    for {
-      eventsAtTime <- eventsAtTime
-    } yield CollapseNodeHistory(eventsAtTime, latestEventTime)
+    for eventsAtTime <- eventsAtTime
+    yield CollapseNodeHistory(eventsAtTime, latestEventTime)
 
   def atTime(atTime: EventTime): IO[UnpackFailure, NodeStateAtTime] =
-    if atTime >= latestEventTime then      current
+    if atTime >= latestEventTime then current
     else
-      for {
-        eventsAtTime <- eventsAtTime
-      } yield CollapseNodeHistory(eventsAtTime, atTime)
+      for eventsAtTime <- eventsAtTime
+      yield CollapseNodeHistory(eventsAtTime, atTime)
 
   def wasAlwaysEmpty: Boolean
 }
@@ -80,9 +78,8 @@ case class NodeFromPackedHistory(
 
     val sequence = if atTime > latestEventTime then 0 else latestSequence + 1
 
-    for {
-      eventsAtTime <- eventsAtTime
-    } yield copy(
+    for eventsAtTime <- eventsAtTime
+    yield copy(
       version = version + 1,
       latestEventTime = atTime,
       latestSequence = sequence,

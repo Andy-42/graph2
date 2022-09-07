@@ -47,42 +47,40 @@ object Event extends Unpackable[Event] {
   def unpackPropertyAdded(implicit
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, PropertyAdded] = {
-    for {
+    for
       k <- ZIO.attempt { unpacker.unpackString() }
       value <- PropertyValue.unpack
-    } yield PropertyAdded(k, value)
+    yield PropertyAdded(k, value)
   }.refineOrDie(UnpackFailure.refine)
 
   def unpackPropertyRemoved(implicit
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, PropertyRemoved] = {
-    for {
+    for
       k <- ZIO.attempt { unpacker.unpackString() }
-    } yield PropertyRemoved(k)
+    yield PropertyRemoved(k)
   }.refineOrDie(UnpackFailure.refine)
 
   def unpackEdgeAdded(isFar: Boolean)(implicit
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, EdgeAdded | FarEdgeAdded] =
-    for {
-      edge <- unpackEdge
-    } yield if isFar then FarEdgeAdded(edge) else EdgeAdded(edge)
+    for edge <- unpackEdge
+    yield if isFar then FarEdgeAdded(edge) else EdgeAdded(edge)
 
   def unpackEdgeRemoved(isFar: Boolean)(implicit
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, EdgeRemoved | FarEdgeRemoved] =
-    for {
-      edge <- unpackEdge
-    } yield if isFar then FarEdgeRemoved(edge) else EdgeRemoved(edge)
+    for edge <- unpackEdge
+    yield if isFar then FarEdgeRemoved(edge) else EdgeRemoved(edge)
 
   private def unpackEdge(implicit
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, Edge] = {
-    for {
+    for
       k <- ZIO.attempt { unpacker.unpackString() }
       length <- ZIO.attempt { unpacker.unpackBinaryHeader() }
       other <- ZIO.attempt { unpacker.readPayload(length).toVector }
-    } yield Edge(k, other)
+    yield Edge(k, other)
   }.refineOrDie(UnpackFailure.refine)
 }
 
@@ -171,9 +169,9 @@ object Events {
 
     implicit val unpacker: MessageUnpacker = MessagePack.newDefaultUnpacker(packed)
 
-    for {
+    for
        length <- ZIO.attempt { unpacker.unpackInt() }
        events <- unpackToVector(Event.unpack, length)
-    } yield events
+    yield events
   }.refineOrDie(UnpackFailure.refine)
 }

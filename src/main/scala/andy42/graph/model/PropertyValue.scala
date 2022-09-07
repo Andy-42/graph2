@@ -48,16 +48,16 @@ object PropertyValue {
         }
 
       case ValueType.ARRAY =>
-        for {
+        for
           length <- ZIO.attempt { unpacker.unpackArrayHeader() }
           v <- unpackToVector(length)
-        } yield PropertyArrayValue(v)
+        yield PropertyArrayValue(v)
 
       case ValueType.MAP =>
-        for {
+        for
           length <- ZIO.attempt { unpacker.unpackMapHeader() }
           m <- unpackToMap(length)
-        } yield PropertyMapValue(m)
+        yield PropertyMapValue(m)
     }
   }.refineOrDie(UnpackFailure.refine)
 
@@ -114,10 +114,10 @@ object PropertyValue {
     def nextKV(implicit
         unpacker: MessageUnpacker
     ): IO[UnpackFailure, (String, ScalarType)] = {
-      for {
+      for
         k <- ZIO.attempt { unpacker.unpackString() }
         v <- unpackScalar
-      } yield k -> v
+      yield k -> v
     }.refineOrDie(UnpackFailure.refine)
 
     def accumulate(i: Int = 0): IO[UnpackFailure, Map[String, ScalarType]] =

@@ -43,14 +43,14 @@ final case class EdgeReconciliationState(
   def addChunk(
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent]
   ): URIO[Clock & EdgeReconciliationDataService, EdgeReconciliationState] =
-    for {
+    for
       clock <- ZIO.service[Clock]
       now <- clock.currentTime(MILLIS)
       expiryThreshold = toWindowEnd(now - windowExpiry)
       currentEvents <- handleAndRemoveExpiredEvents(edgeReconciliationEvents, expiryThreshold)
       stateWithExpiredWindowsRemoved <- expireReconciliationWindows(expiryThreshold)
       stateWithNewEvents = mergeInNewEvents(stateWithExpiredWindowsRemoved, currentEvents)
-    } yield stateWithNewEvents
+    yield stateWithNewEvents
 
   def handleAndRemoveExpiredEvents(
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent],
@@ -60,7 +60,7 @@ final case class EdgeReconciliationState(
     // An event is expired if the last period in the window is expired
     extension (eventTime: EventTime) def isExpired: Boolean = eventTime.toWindowEnd < expiryThreshold
 
-    for {
+    for
       edgeReconciliationDataService <- ZIO.service[EdgeReconciliationDataService]
       eventsWithExpiredRemoved <-
         if edgeReconciliationEvents.exists(_.atTime.isExpired) then
@@ -74,7 +74,7 @@ final case class EdgeReconciliationState(
             *> ZIO.succeed(edgeReconciliationEvents.filter(!_.atTime.isExpired)) // Keep the events that are not expired
         else
           ZIO.succeed(edgeReconciliationEvents)
-    } yield eventsWithExpiredRemoved
+    yield eventsWithExpiredRemoved
   }
 
   def expireReconciliationWindows(
@@ -90,7 +90,7 @@ final case class EdgeReconciliationState(
 
     if expiredWindowCount == 0 then ZIO.succeed(this)
     else
-      for {
+      for
         edgeReconciliationDataService <- ZIO.service[EdgeReconciliationDataService]
         reconciliationStateWithExpiredWindowsRemoved <-
           ZIO.foreach(edgeHashes.take(expiredWindowCount).zipWithIndex) { case (edgeHash, i) =>
@@ -115,7 +115,7 @@ final case class EdgeReconciliationState(
                 edgeHashes = edgeHashes.drop(expiredWindowCount)
               )
             )
-      } yield reconciliationStateWithExpiredWindowsRemoved
+      yield reconciliationStateWithExpiredWindowsRemoved
   }
 
   def mergeInNewEvents(

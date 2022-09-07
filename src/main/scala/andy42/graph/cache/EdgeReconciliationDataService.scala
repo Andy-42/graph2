@@ -65,8 +65,7 @@ case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconci
 object EdgeReconciliationDataService {
   val layer: URLayer[DataSource, EdgeReconciliationDataService] =
     ZLayer {
-      for {
-        ds <- ZIO.service[DataSource]
-      } yield EdgeReconciliationDataServiceLive(ds)
+      for ds <- ZIO.service[DataSource]
+      yield EdgeReconciliationDataServiceLive(ds)
     }
 }

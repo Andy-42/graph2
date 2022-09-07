@@ -46,7 +46,7 @@ case class EdgeSynchronizationLive(
       atTime: EventTime,
       events: Vector[Event]
   ): URIO[Clock, Unit] =
-    for {
+    for
       _ <- ZIO.foreach(events) {
 
         case EdgeAdded(edge) =>
@@ -67,7 +67,7 @@ case class EdgeSynchronizationLive(
 
         case _ => ZIO.unit
       }
-    } yield ()
+    yield ()
 
   // TODO: Need unit tests on hash reconciliation scheme to show algebra works 
 
@@ -85,12 +85,12 @@ object EdgeSynchronization {
 
   val layer: URLayer[Graph & Clock & EdgeReconciliationConfig & EdgeReconciliationDataService, EdgeSynchronization] =
     ZLayer {
-      for {
+      for
         config <- ZIO.service[EdgeReconciliationConfig]
         graph <- ZIO.service[Graph]
         queue <- Queue.unbounded[EdgeReconciliationEvent]
         live = EdgeSynchronizationLive(graph, queue)
         _ <- live.startReconciliation(config)
-      } yield live
+      yield live
     }
 }

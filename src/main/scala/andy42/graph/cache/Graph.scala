@@ -54,7 +54,7 @@ case class GraphLive(
       id: NodeId
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     ZIO.scoped {
-      for {
+      for
         _ <- withNodeMutationPermit(id)
         optionNode <- cache.get(id)
         newOrExistingNode <- optionNode.fold {
@@ -70,7 +70,7 @@ case class GraphLive(
               cache.put(node) *> ZIO.succeed(node)
           }
         } { ZIO.succeed(_) } // Node was fetched from the cache
-      } yield newOrExistingNode
+      yield newOrExistingNode
     }
 
   override def append(
@@ -79,11 +79,11 @@ case class GraphLive(
       events: Vector[Event]
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     ZIO.scoped {
-      for {
+      for
         _ <- withNodeMutationPermit(id)
         existingNode <- get(id)
         newNode <- applyEvents(atTime, events, existingNode)
-      } yield newNode
+      yield newNode
     }
 
   private def acquirePermit(id: => NodeId): UIO[NodeId] =
@@ -108,7 +108,7 @@ case class GraphLive(
     // Eliminate any duplication within events
     val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(newEvents)
 
-    for {
+    for
       nodeWithNewEvents <-
         if node.wasAlwaysEmpty then
           ZIO.succeed {
@@ -146,7 +146,7 @@ case class GraphLive(
       _ <- standingQueryEvaluation.nodeChanged(nodeWithNewEvents.node, deduplicatedEvents)
       _ <- edgeSynchronization.eventsAppended(nodeWithNewEvents.node.id, atTime, deduplicatedEvents)
 
-    } yield nodeWithNewEvents.node
+    yield nodeWithNewEvents.node
   }
 
   /** General merge of new events at any point in time into the node's history. This requires unpacking the node's
@@ -162,7 +162,7 @@ case class GraphLive(
       newEvents: Vector[Event],
       atTime: EventTime
   ): IO[UnpackFailure, NodeWithNewEvents] =
-    for {
+    for
       originalHistory <- node.eventsAtTime
 
       (before, after) = originalHistory.partition(_.eventTime <= atTime)
@@ -176,7 +176,7 @@ case class GraphLive(
       newEventsAtTime = EventsAtTime(eventTime = atTime, sequence = sequence, events = newEvents)
 
       newHistory = (before :+ newEventsAtTime) ++ after
-    } yield NodeWithNewEvents(
+    yield NodeWithNewEvents(
       node = Node(node.id, newHistory),
       optionEventsAtTime = Some(newEventsAtTime),
       mustPersist = true
@@ -205,9 +205,8 @@ case class GraphLive(
       events = newEvents
     )
 
-    for {
-      newNode <- node.append(newEvents, atTime)
-    } yield NodeWithNewEvents(
+    for newNode <- node.append(newEvents, atTime)
+    yield NodeWithNewEvents(
       node = newNode,
       optionEventsAtTime = Some(eventsAtTime),
       mustPersist = true
@@ -218,13 +217,13 @@ case class GraphLive(
 object Graph {
   val layer: URLayer[NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
     ZLayer {
-      for {
+      for
         lruCache <- ZIO.service[NodeCache]
         nodeDataService <- ZIO.service[NodeDataService]
         edgeSynchronization <- ZIO.service[EdgeSynchronization]
         standingQueryEvaluation <- ZIO.service[StandingQueryEvaluation]
 
         inFlight <- TSet.empty[NodeId].commit
-      } yield GraphLive(inFlight, lruCache, nodeDataService, edgeSynchronization, standingQueryEvaluation)
+      yield GraphLive(inFlight, lruCache, nodeDataService, edgeSynchronization, standingQueryEvaluation)
     }
 }

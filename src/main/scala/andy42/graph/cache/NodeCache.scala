@@ -29,19 +29,18 @@ final case class NodeCacheLive(
 ) extends NodeCache {
 
   override def get(id: NodeId): URIO[Clock, Option[Node]] =
-    for {
+    for
       clock <- ZIO.service[Clock]
       now <- clock.currentTime(MILLIS)
       optionNode <- getSTM(id, now).commit
-    } yield optionNode
+    yield optionNode
 
   private def getSTM(
       id: NodeId,
       now: AccessTime
   ): USTM[Option[Node]] =
-    for {
-      optionItem <- items.updateWith(id)(_.map(_.copy(lastAccess = now)))
-    } yield optionItem.map { item =>
+    for optionItem <- items.updateWith(id)(_.map(_.copy(lastAccess = now)))
+    yield optionItem.map { item =>
       Node(
         id = id,
         version = item.version,
@@ -52,18 +51,18 @@ final case class NodeCacheLive(
     }
 
   override def put(node: Node): URIO[Clock, Unit] =
-    for {
+    for
       clock <- ZIO.service[Clock]
       now <- clock.currentTime(MILLIS)
       _ <- trimIfOverCapacity(now).commit
       _ <- putSTM(node, now).commit
-    } yield ()
+    yield ()
 
   private def putSTM(
       node: Node,
       now: AccessTime
   ): USTM[Unit] =
-    for {
+    for
       _ <- items.put(
         node.id,
         CacheItem(
@@ -74,7 +73,7 @@ final case class NodeCacheLive(
           lastAccess = now
         )
       )
-    } yield ()
+    yield ()
 
   private def trimIfOverCapacity(now: AccessTime): USTM[Unit] =
     ZSTM.ifSTM(items.size.map(_ > config.lruCacheCapacity))(
@@ -83,12 +82,12 @@ final case class NodeCacheLive(
     )
 
   private def trim(now: AccessTime): USTM[Unit] =
-    for {
+    for
       currentOldest <- oldest.get
       newOldest = lastTimeToPurge(currentOldest, now)
       _ <- items.removeIfDiscard { case (_, v) => v.lastAccess < newOldest }
       _ <- oldest.set(newOldest)
-    } yield ()
+    yield ()
 
   private def lastTimeToPurge(oldest: AccessTime, now: AccessTime): AccessTime =
     now - Math.ceil((now - oldest) * config.fractionOfCacheToRetainOnTrim).toLong
@@ -98,13 +97,13 @@ object NodeCache {
 
   val layer: URLayer[LRUCacheConfig & Clock, NodeCache] =
     ZLayer {
-      for {
+      for
         config <- ZIO.service[LRUCacheConfig]
         clock <- ZIO.service[Clock]
         now <- clock.currentTime(MILLIS)
         items <- TMap.empty[NodeId, CacheItem].commit
         oldest <- TRef.make(now - 1).commit
-      } yield NodeCacheLive(
+      yield NodeCacheLive(
         config = config,
         oldest = oldest,
         items = items
