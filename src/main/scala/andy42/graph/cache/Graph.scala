@@ -12,7 +12,7 @@ import zio.stm.*
  * This is the entry point to applying any change to a node.
  * While changes can be applied as though they happened at any point in time (and in any order),
  * all changes to a node must be serialized. Rather than using an actor system and serializing the
- * changes by that mechanism, this API forces changes to be serialize by tracking the node ids that
+ * changes by that mechanism, this API forces changes to be serialized by tracking the node ids that
  * have changes currently in flight in a transactional set.
  */
 trait Graph:
@@ -108,18 +108,18 @@ final case class GraphLive(
     val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(newEvents)
 
     for
-      nodeWithNewEvents <- determineNextNodeStateAndChangesToPersist(node, time, deduplicatedEvents)
+      x <- determineNextNodeStateAndChangesToPersist(node, time, deduplicatedEvents)
 
-      _ <- nodeWithNewEvents.changesToPersist.fold(ZIO.unit) {
-        nodeDataService.append(nodeWithNewEvents.nextNodeState.id, _) *> cache.put(nodeWithNewEvents.nextNodeState)
+      _ <- x.changesToPersist.fold(ZIO.unit) {
+        nodeDataService.append(x.nextNodeState.id, _) *> cache.put(x.nextNodeState)
       }
 
       // Handle any events that are a result of this node being appended to.
       // Note that we notify on deduplicated events and not on the events being persisted.
       // since we may be re-processing a change and we have to guarantee that all post-persist notifications were generated.
-      _ <- standingQueryEvaluation.nodeChanged(nodeWithNewEvents.nextNodeState, deduplicatedEvents)
-      _ <- edgeSynchronization.eventsAppended(nodeWithNewEvents.nextNodeState.id, time, deduplicatedEvents)
-    yield nodeWithNewEvents.nextNodeState
+      _ <- standingQueryEvaluation.nodeChanged(x.nextNodeState, deduplicatedEvents)
+      _ <- edgeSynchronization.eventsAppended(x.nextNodeState.id, time, deduplicatedEvents)
+    yield x.nextNodeState
 
   final case class NextNodeStateAndChangesToPersist(nextNodeState: Node, changesToPersist: Option[EventsAtTime])
 
