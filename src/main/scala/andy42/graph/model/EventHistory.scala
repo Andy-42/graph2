@@ -10,13 +10,11 @@ import zio.ZIO
 
 import java.io.IOException
 
-object EventHistory extends Unpackable[Vector[EventsAtTime]] {
+object EventHistory extends Unpackable[Vector[EventsAtTime]]:
 
   val empty: Vector[EventsAtTime] = Vector.empty
 
-  override def unpack(using
-      unpacker: MessageUnpacker
-  ): IO[UnpackFailure, Vector[EventsAtTime]] = {
+  override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, Vector[EventsAtTime]] = {
     for a <- unpackToVector(EventsAtTime.unpack, unpacker.hasNext)
     yield a
   }.refineOrDie(UnpackFailure.refine)
@@ -24,18 +22,14 @@ object EventHistory extends Unpackable[Vector[EventsAtTime]] {
   def unpack(packed: Array[Byte]): IO[UnpackFailure, Vector[EventsAtTime]] =
     EventHistory.unpack(using MessagePack.newDefaultUnpacker(packed))
 
-  def pack(
-      eventHistory: Vector[EventsAtTime]
-  )(using packer: MessagePacker): MessagePacker = {
+  def pack(eventHistory: Vector[EventsAtTime])(using packer: MessagePacker): MessagePacker =
     eventHistory.foreach(_.pack)
     packer
-  }
 
-  def packToArray(eventHistory: Vector[EventsAtTime]): PackedNodeContents = {
+  def packToArray(eventHistory: Vector[EventsAtTime]): PackedNodeContents =
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     pack(eventHistory)
     packer.toByteArray()
-  }
 
   /** Append an EventsAtTime at the end of history. This can be more efficient since it doesn't require unpacking all of
     * history. The caller must ensure that eventsAtTime occurs after the last event (wrt. atTime, sequence) as though
@@ -48,9 +42,7 @@ object EventHistory extends Unpackable[Vector[EventsAtTime]] {
     * @return
     *   The packed history, with the new EventsAtTime packed and appended to the history.
     */
-  def append(packed: Array[Byte], eventsAtTime: EventsAtTime): Array[Byte] = {
+  def append(packed: Array[Byte], eventsAtTime: EventsAtTime): Array[Byte] =
     implicit val packer = MessagePack.newDefaultBufferPacker()
     eventsAtTime.pack
     packed ++ packer.toByteArray()
-  }
-}

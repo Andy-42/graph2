@@ -3,7 +3,7 @@ package andy42.graph.model
 import scala.annotation.tailrec
 import scala.collection.mutable
 
-object EventDeduplication {
+object EventDeduplication:
 
   // Mutation events are always ordered from newest to oldest
 
@@ -26,7 +26,7 @@ object EventDeduplication {
 
       accumulate()
 
-  def isDuplicatedLaterAt(events: Vector[Event], i: Int): Boolean = {
+  def isDuplicatedLaterAt(events: Vector[Event], i: Int): Boolean =
 
     val event = events(i)
 
@@ -37,7 +37,6 @@ object EventDeduplication {
       else accumulate(j = j + 1)
 
     accumulate()
-  }
 
   def isDuplicatePropertyEvent(k1: String, laterEvent: Event): Boolean =
     laterEvent match
@@ -62,4 +61,3 @@ object EventDeduplication {
       case EdgeRemoved(edge)    => isDuplicateEdgeEvent(edge, laterEvent)
       case FarEdgeAdded(edge)   => isDuplicateEdgeEvent(edge, laterEvent)
       case FarEdgeRemoved(edge) => isDuplicateEdgeEvent(edge, laterEvent)
-}

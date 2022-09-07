@@ -3,7 +3,7 @@ package andy42.graph.model
 import scala.annotation.tailrec
 import scala.collection.mutable
 
-object CollapseNodeHistory {
+object CollapseNodeHistory:
 
   /** Collapse a sequence of events to a current state. The events are ordered
     * in ascending order of event time.
@@ -22,14 +22,13 @@ object CollapseNodeHistory {
       atTime: EventTime = EndOfTime,
       initialProperties: PropertiesAtTime = Map.empty,
       initialEdges: EdgesAtTime = Set.empty
-  ): NodeStateAtTime = {
+  ): NodeStateAtTime =
 
     var properties: PropertiesAtTime = initialProperties
     var edges: EdgesAtTime = initialEdges
 
     for
-      eventsAtTime <- history
-      if eventsAtTime.eventTime <= atTime
+      eventsAtTime <- history if eventsAtTime.eventTime <= atTime
       event <- eventsAtTime.events
     do event match
       case NodeRemoved =>
@@ -60,5 +59,3 @@ object CollapseNodeHistory {
       properties = properties,
       edges = edges,
     )
-  }
-}

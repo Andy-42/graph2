@@ -6,11 +6,9 @@ import zio.stm._
 
 import java.time.temporal.ChronoUnit.MILLIS
 
-trait NodeCache {
+trait NodeCache:
   def get(id: NodeId): URIO[Clock, Option[Node]]
-
   def put(node: Node): URIO[Clock, Unit]
-}
 
 type AccessTime = Long // epoch millis
 
@@ -26,7 +24,7 @@ final case class NodeCacheLive(
     config: LRUCacheConfig,
     oldest: TRef[AccessTime], // All items in the cache will have a lastAccess > oldest
     items: TMap[NodeId, CacheItem]
-) extends NodeCache {
+) extends NodeCache:
 
   override def get(id: NodeId): URIO[Clock, Option[Node]] =
     for
@@ -91,9 +89,8 @@ final case class NodeCacheLive(
 
   private def lastTimeToPurge(oldest: AccessTime, now: AccessTime): AccessTime =
     now - Math.ceil((now - oldest) * config.fractionOfCacheToRetainOnTrim).toLong
-}
 
-object NodeCache {
+object NodeCache:
 
   val layer: URLayer[LRUCacheConfig & Clock, NodeCache] =
     ZLayer {
@@ -109,4 +106,3 @@ object NodeCache {
         items = items
       )
     }
-}

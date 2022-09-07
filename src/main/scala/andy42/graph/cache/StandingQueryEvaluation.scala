@@ -8,7 +8,7 @@ import zio.stm.TQueue
 
 /** Observe a node that is changed.
   */
-trait StandingQueryEvaluation {
+trait StandingQueryEvaluation:
 
   /** A node has changed. The implementation will attempt to match all standing
     * queries using this node as a starting point.
@@ -20,19 +20,15 @@ trait StandingQueryEvaluation {
     * we can patch the far edges up to that they are consistent.
     */
   def nodeChanged(node: Node, newEvents: Vector[Event]): UIO[Unit]
-
   // TODO: How to get the output stream?
-}
 
-final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQueryEvaluation {
+final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQueryEvaluation:
     override def nodeChanged(node: Node, newEvents: Vector[Event]): UIO[Unit] = ???
-}
 
-object StandingQueryEvaluation {
+object StandingQueryEvaluation:
   val layer: URLayer[Graph, StandingQueryEvaluation] =
     ZLayer {
       for graph <- ZIO.service[Graph]
         // TODO: Service that sinks the standing query output stream
       yield StandingQueryEvaluationLive(graph)
     }
-}

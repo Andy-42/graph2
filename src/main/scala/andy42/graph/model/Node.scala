@@ -8,7 +8,7 @@ final case class NodeStateAtTime(eventTime: EventTime, sequence: Int, properties
 
 type PackedNodeContents = Array[Byte]
 
-sealed trait Node {
+sealed trait Node:
   def id: NodeId
 
   def version: Int
@@ -30,7 +30,6 @@ sealed trait Node {
       yield CollapseNodeHistory(eventsAtTime, atTime)
 
   def wasAlwaysEmpty: Boolean
-}
 
 final case class NodeFromEventsAtTime(
     id: NodeId,
@@ -38,13 +37,13 @@ final case class NodeFromEventsAtTime(
     latestEventTime: EventTime,
     latestSequence: Int,
     reifiedEventsAtTime: Vector[EventsAtTime]
-) extends Node {
+) extends Node:
 
   override lazy val packed: Array[Byte] = EventHistory.packToArray(reifiedEventsAtTime)
 
   override def eventsAtTime: UIO[Vector[EventsAtTime]] = ZIO.succeed(reifiedEventsAtTime)
 
-  override def append(events: Vector[Event], atTime: EventTime): IO[UnpackFailure, Node] = {
+  override def append(events: Vector[Event], atTime: EventTime): IO[UnpackFailure, Node] =
     require(atTime >= latestEventTime)
 
     val sequence = if atTime > latestEventTime then 0 else latestSequence + 1
@@ -57,10 +56,8 @@ final case class NodeFromEventsAtTime(
         reifiedEventsAtTime = reifiedEventsAtTime :+ EventsAtTime(atTime, sequence, events)
       )
     )
-  }
 
   override def wasAlwaysEmpty: Boolean = reifiedEventsAtTime.isEmpty
-}
 
 final case class NodeFromPackedHistory(
     id: NodeId,
@@ -68,12 +65,12 @@ final case class NodeFromPackedHistory(
     latestEventTime: EventTime,
     latestSequence: Int,
     packed: PackedNodeContents
-) extends Node {
+) extends Node:
 
   override lazy val eventsAtTime: IO[UnpackFailure, Vector[EventsAtTime]] =
     EventHistory.unpack(using MessagePack.newDefaultUnpacker(packed))
 
-  override def append(events: Vector[Event], atTime: EventTime): IO[UnpackFailure, Node] = {
+  override def append(events: Vector[Event], atTime: EventTime): IO[UnpackFailure, Node] =
     require(atTime >= latestEventTime)
 
     val sequence = if atTime > latestEventTime then 0 else latestSequence + 1
@@ -85,12 +82,10 @@ final case class NodeFromPackedHistory(
       latestSequence = sequence,
       packed = packed ++ EventsAtTime(atTime, sequence, events).toByteArray
     )
-  }
 
   override def wasAlwaysEmpty: Boolean = packed.isEmpty
-}
 
-object Node {
+object Node:
 
   def apply(
       id: NodeId,
@@ -118,4 +113,3 @@ object Node {
       latestSequence = sequence,
       packed = packed
     )
-}

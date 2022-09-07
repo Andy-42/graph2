@@ -8,7 +8,7 @@ import zio.stream.ZStream
 
 import java.time.temporal.ChronoUnit.MILLIS
 
-trait EdgeSynchronization {
+trait EdgeSynchronization:
 
   /** Ensure any far edges are synchronized. When an edge is set, a [[NearEdgeEvent]] that represents a half-edge that
     * is appended to the (near) node. This service will eventually append a [[FarEdgeEvent]] to the other (far) node
@@ -26,20 +26,18 @@ trait EdgeSynchronization {
   ): URIO[Clock, Unit]
 
   def startReconciliation(config: EdgeReconciliationConfig): URIO[Clock & EdgeReconciliationDataService, Unit]
-}
 
 final case class EdgeReconciliationEvent(
     id: NodeId,
     atTime: EventTime,
     event: EdgeEvent
-) {
+):
   def edgeHash: Long = event.edge.edgeHash(id)
-}
 
 final case class EdgeSynchronizationLive(
     graph: Graph,
     queue: Queue[EdgeReconciliationEvent]
-) extends EdgeSynchronization {
+) extends EdgeSynchronization:
 
   def eventsAppended(
       id: NodeId,
@@ -79,9 +77,8 @@ final case class EdgeSynchronizationLive(
       .scanZIO(EdgeReconciliationState(config))((s, c) => s.addChunk(c))
       .runDrain
       .fork *> ZIO.unit // TODO: Error handling if fiber dies
-}
 
-object EdgeSynchronization {
+object EdgeSynchronization:
 
   val layer: URLayer[Graph & Clock & EdgeReconciliationConfig & EdgeReconciliationDataService, EdgeSynchronization] =
     ZLayer {
@@ -93,4 +90,3 @@ object EdgeSynchronization {
         _ <- live.startReconciliation(config)
       yield live
     }
-}

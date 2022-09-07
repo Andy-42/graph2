@@ -14,7 +14,7 @@ final case class EdgeReconciliation(
     state: Byte // payload
 )
 
-object EdgeReconciliation {
+object EdgeReconciliation:
   val Reconciled: Byte = 1.toByte
   val Inconsistent: Byte = 2.toByte
 
@@ -25,13 +25,11 @@ object EdgeReconciliation {
   // The window is known or suspected of being inconsistent
   def inconsistent(windowStart: Long, windowSize: Long): EdgeReconciliation =
     new EdgeReconciliation(windowStart, windowSize, Inconsistent)
-}
 
-trait EdgeReconciliationDataService {
+trait EdgeReconciliationDataService:
   def runMarkWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit]
-}
 
-final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconciliationDataService {
+final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconciliationDataService:
 
   val ctx = new PostgresZioJdbcContext(Literal)
   import ctx._
@@ -49,18 +47,16 @@ final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeR
 
   given Implicit[DataSource] = Implicit(ds)
 
-  def runMarkWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit] =
+  override def runMarkWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit] =
     run(markWindow(edgeReconciliation)).implicitly
       // TODO: Check that exactly one row is changed
       //   .retry(Schedule.exponential(10.millis) // .recurs(10)) // Do a bit of retrying, but give up eventually
       // TODO: Log retries, if the write eventually fails
       .foldZIO(_ => ZIO.unit, _ => ZIO.unit) // TODO: Is this the best way to consume errors
-}
 
-object EdgeReconciliationDataService {
+object EdgeReconciliationDataService:
   val layer: URLayer[DataSource, EdgeReconciliationDataService] =
     ZLayer {
       for ds <- ZIO.service[DataSource]
       yield EdgeReconciliationDataServiceLive(ds)
     }
-}

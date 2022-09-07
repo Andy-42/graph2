@@ -6,8 +6,6 @@ import zio.config._
 import zio.config.magnolia.Descriptor
 import zio.config.magnolia.descriptor
 
-// TODO: Edge Reconciliation: windowSize, windowExpiry (both durations)
-
 final case class LRUCacheConfig(
     lruCacheCapacity: Int, // TODO: must be positive
     fractionOfCacheToRetainOnTrim: Float
@@ -20,7 +18,6 @@ final case class EdgeReconciliationConfig(
     maxChunkSize: Int // TODO: Positive
 )
 
-object Config {
+object Config:
   val lruCacheDescriptor = descriptor[LRUCacheConfig]
   val edgeReconciliationDescriptor = descriptor[EdgeReconciliationConfig]
-}

@@ -7,7 +7,7 @@ import zio._
 
 import javax.sql.DataSource
 
-trait NodeDataService {
+trait NodeDataService:
 
   /** Get the full history of the node. The result will be in ascending order of (eventTime, sequence).
     */
@@ -20,21 +20,19 @@ trait NodeDataService {
       id: NodeId,
       eventsAtTime: EventsAtTime
   ): IO[PersistenceFailure, Unit]
-}
 
 final case class GraphHistory(
     id: NodeId, // clustering key
     eventTime: EventTime, // sort key
     sequence: Int, // sort key
     events: Array[Byte] // packed payload
-) {
+):
 
   def toEventsAtTime: IO[UnpackFailure, EventsAtTime] =
     for events <- Events.unpack(events)
     yield EventsAtTime(eventTime, sequence, events)
-}
 
-object GraphHistory {
+object GraphHistory:
 
   def toGraphHistory(id: NodeId, eventsAtTime: EventsAtTime): GraphHistory =
     GraphHistory(
@@ -43,9 +41,8 @@ object GraphHistory {
       sequence = eventsAtTime.sequence,
       events = Events.pack(eventsAtTime.events)
     )
-}
 
-final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService {
+final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
 
   val ctx = PostgresZioJdbcContext(Literal)
   import ctx._
@@ -82,7 +79,6 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService {
         if rowsInsertedOrUpdated != 1 then ZIO.fail(CountPersistenceFailure(id, expected = 1, was = rowsInsertedOrUpdated))
         else ZIO.unit
       }
-}
 
 object NodeDataService {
   val layer: URLayer[DataSource, NodeDataService] =

@@ -8,7 +8,6 @@ import zio.IO
 import zio.ZIO
 
 import java.io.IOException
-import scala.meta.tokens.Token.Interpolation.Start
 
 /** A group of events that changed the state of a node at a given time. This corresponds to a single row that would be
   * appended to the persistent store as a result of ingesting mutation events.
@@ -30,36 +29,28 @@ final case class EventsAtTime(
     eventTime: EventTime,
     sequence: Int,
     events: Vector[Event]
-) extends Packable {
-
+) extends Packable:
   require(events.nonEmpty)
   require(sequence >= 0)
 
-  override def pack(implicit packer: MessagePacker): MessagePacker = {
+  override def pack(implicit packer: MessagePacker): MessagePacker =
     packer
       .packLong(eventTime)
       .packInt(sequence)
       .packInt(events.length)
-
     events.foreach(_.pack)
-
     packer
-  }
 
-  def toByteArray: Array[Byte] = {
+  def toByteArray: Array[Byte] =
     val packer = MessagePack.newDefaultBufferPacker()
     pack(packer)
     packer.toByteArray()
-  }
-}
 
-object EventsAtTime extends Unpackable[EventsAtTime] {
+object EventsAtTime extends Unpackable[EventsAtTime]:
 
   val empty = EventsAtTime(StartOfTime, 0, Vector.empty)
 
-  override def unpack(using
-      unpacker: MessageUnpacker
-  ): IO[UnpackFailure, EventsAtTime] = {
+  override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, EventsAtTime] = {
     for
       eventTime <- ZIO.attempt { unpacker.unpackLong() }
       sequence <- ZIO.attempt { unpacker.unpackInt() }
@@ -67,4 +58,3 @@ object EventsAtTime extends Unpackable[EventsAtTime] {
       events <- unpackToVector(Event.unpack, length)
     yield EventsAtTime(eventTime, sequence, events)
   }.refineOrDie(UnpackFailure.refine)
-}

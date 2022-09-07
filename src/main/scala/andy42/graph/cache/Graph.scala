@@ -15,7 +15,7 @@ import zio.stm.*
  * changes by that mechanism, this API forces changes to be serialize by tracking the node ids that
  * have changes currently in flight in a transactional set.
  */
-trait Graph { self => // TODO: Check use of self here
+trait Graph { self => // TODO: Check use of self here; omit braces?
 
   def get(id: NodeId): ZIO[Clock, UnpackFailure | PersistenceFailure, Node]
 
@@ -34,12 +34,11 @@ trait Graph { self => // TODO: Check use of self here
       atTime: EventTime,
       properties: PropertiesAtTime,
       edges: EdgesAtTime
-  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] = {
+  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     val propertyEvents = properties.map { case (k, v) => PropertyAdded(k, v) }
     val edgeEvents = edges.map(EdgeAdded(_))
     val allEvents = (propertyEvents ++ edgeEvents).toVector
     self.append(id, atTime, allEvents)
-  }
 }
 
 final case class GraphLive(
@@ -48,7 +47,7 @@ final case class GraphLive(
     nodeDataService: NodeDataService,
     edgeSynchronization: EdgeSynchronization,
     standingQueryEvaluation: StandingQueryEvaluation
-) extends Graph {
+) extends Graph:
 
   override def get(
       id: NodeId
@@ -103,7 +102,7 @@ final case class GraphLive(
       atTime: EventTime,
       newEvents: Vector[Event],
       node: Node
-  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] = {
+  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
 
     // Eliminate any duplication within events
     val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(newEvents)
@@ -144,7 +143,6 @@ final case class GraphLive(
       _ <- standingQueryEvaluation.nodeChanged(nodeWithNewEvents.node, deduplicatedEvents)
       _ <- edgeSynchronization.eventsAppended(nodeWithNewEvents.node.id, atTime, deduplicatedEvents)
     yield nodeWithNewEvents.node
-  }
 
   /** General merge of new events at any point in time into the node's history. This requires unpacking the node's
     * history to a Vector[EventsAtTime] which may require more resources for large nodes.
@@ -181,7 +179,7 @@ final case class GraphLive(
       node: Node,
       newEvents: Vector[Event],
       atTime: EventTime
-  ): IO[UnpackFailure, NodeWithNewEvents] = {
+  ): IO[UnpackFailure, NodeWithNewEvents] =
     require(newEvents.nonEmpty)
     require(atTime >= node.latestEventTime)
 
@@ -197,10 +195,8 @@ final case class GraphLive(
       optionEventsAtTime = Some(eventsAtTime),
       mustPersist = true
     )
-  }
-}
 
-object Graph {
+object Graph:
   val layer: URLayer[NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
     ZLayer {
       for
@@ -212,4 +208,3 @@ object Graph {
         inFlight <- TSet.empty[NodeId].commit
       yield GraphLive(inFlight, lruCache, nodeDataService, edgeSynchronization, standingQueryEvaluation)
     }
-}

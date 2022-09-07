@@ -2,7 +2,7 @@ package andy42.graph.model
 
 import zio.Task
 
-object EventHasEffectOps {
+object EventHasEffectOps:
 
   def filterHasEffect(events: Vector[Event], nodeState: NodeStateAtTime): Vector[Event] =
     if !events.exists(hasEffect(_, nodeState)) then events
@@ -30,4 +30,3 @@ object EventHasEffectOps {
 
       case FarEdgeRemoved(edge) =>
         nodeState.edges.contains(edge)
-}

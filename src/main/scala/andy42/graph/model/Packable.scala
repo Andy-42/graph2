@@ -10,12 +10,11 @@ import java.io.IOException
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
-trait Packable {
+trait Packable:
 
   /** Write self to packer and return packer.
     */
   def pack(packer: MessagePacker): MessagePacker
-}
 
 sealed trait UnpackFailure extends Throwable
 
@@ -25,23 +24,20 @@ final case class DecodingFailure(ioe: IOException) extends UnpackFailure
 final case class UnexpectedDiscriminator(discriminator: Byte, field: String) extends UnpackFailure
 final case class UnexpectedValueType(valueType: ValueType, context: String) extends UnpackFailure
 
-object UnpackFailure {
-  val refine: PartialFunction[UnpackFailure | Throwable, UnpackFailure] = {
+object UnpackFailure:
+  val refine: PartialFunction[UnpackFailure | Throwable, UnpackFailure] =
     case unpackFailure: UnpackFailure => unpackFailure
     case ioe: IOException             => DecodingFailure(ioe)
-  }
-}
 
-trait Unpackable[T] {
+trait Unpackable[T]:
 
   /** Unpack a T. This can fail, so this is effectful.
     */
   def unpack(unpacker: MessageUnpacker): IO[UnpackFailure, T]
-}
 
-object UnpackOperations {
+object UnpackOperations:
 
-  def unpackToVector[T: ClassTag](unpackElement: => IO[UnpackFailure, T], length: Int): IO[UnpackFailure, Vector[T]] = {
+  def unpackToVector[T: ClassTag](unpackElement: => IO[UnpackFailure, T], length: Int): IO[UnpackFailure, Vector[T]] =
 
     val a: Array[T] = Array.ofDim[T](length)
 
@@ -54,12 +50,11 @@ object UnpackOperations {
         }
 
     accumulate()
-  }
 
   def unpackToVector[T: ClassTag](
       unpackElement: => IO[UnpackFailure, T],
       hasNext: => Boolean
-  ): IO[UnpackFailure, Vector[T]] = {
+  ): IO[UnpackFailure, Vector[T]] =
     val buf = ArrayBuffer.empty[T]
 
     def accumulate(): IO[UnpackFailure, Vector[T]] =
@@ -71,9 +66,8 @@ object UnpackOperations {
       else ZIO.succeed(buf.toVector)
 
     accumulate()
-  }
 
-  def unpackToMap[K, V](unpackEntry: => IO[UnpackFailure, (K, V)], length: Int): IO[UnpackFailure, Map[K, V]] = {
+  def unpackToMap[K, V](unpackEntry: => IO[UnpackFailure, (K, V)], length: Int): IO[UnpackFailure, Map[K, V]] =
 
     def accumulate(i: Int = 0, r: Map[K, V] = Map.empty): IO[UnpackFailure, Map[K, V]] =
       if i == length then ZIO.succeed(r)
@@ -83,5 +77,3 @@ object UnpackOperations {
         }
 
     accumulate()
-  }
-}

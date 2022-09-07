@@ -7,11 +7,9 @@ import zio._
 import java.time.Instant
 import java.io.IOException
 
-object PropertyValue {
+object PropertyValue:
 
-  private def unpackScalar(using
-      unpacker: MessageUnpacker
-  ): IO[UnpackFailure, ScalarType] = {
+  private def unpackScalar(using unpacker: MessageUnpacker): IO[UnpackFailure, ScalarType] = {
     unpacker.getNextFormat.getValueType match
       case ValueType.NIL     => ZIO.unit
       case ValueType.BOOLEAN => ZIO.attempt { unpacker.unpackBoolean() }
@@ -30,9 +28,7 @@ object PropertyValue {
         ZIO.fail(UnexpectedValueType(valueType, "unpackScalar"))
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpack(using
-      unpacker: MessageUnpacker
-  ): IO[UnpackFailure, PropertyValueType] = {
+  def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, PropertyValueType] = {
     unpacker.getNextFormat.getValueType match
       case ValueType.NIL       => ZIO.unit
       case ValueType.BOOLEAN   => ZIO.attempt { unpacker.unpackBoolean() }
@@ -82,16 +78,11 @@ object PropertyValue {
         packer.packMapHeader(v.size)
         v.foreach { case (k, v) => packer.packString(k); pack(v) }
 
-  private def unpackToVector(
-      length: Int
-  )(using
-      unpacker: MessageUnpacker
-  ): IO[UnpackFailure, Vector[ScalarType]] = {
+  private def unpackToVector(length: Int)(using unpacker: MessageUnpacker): IO[UnpackFailure, Vector[ScalarType]] =
     val a = Array.ofDim[ScalarType](length)
 
     def accumulate(i: Int = 0): IO[UnpackFailure, Vector[ScalarType]] =
-      if i == length then
-        ZIO.succeed(a.toVector)
+      if i == length then ZIO.succeed(a.toVector)
       else
         unpackScalar.flatMap { t =>
           a(i) = t
@@ -99,13 +90,8 @@ object PropertyValue {
         }
 
     accumulate()
-  }
 
-  private def unpackToMap(
-      length: Int
-  )(using
-      unpacker: MessageUnpacker
-  ): IO[UnpackFailure, Map[String, ScalarType]] = {
+  private def unpackToMap(length: Int)(using unpacker: MessageUnpacker): IO[UnpackFailure, Map[String, ScalarType]] =
     val a = Array.ofDim[(String, ScalarType)](length)
 
     def nextKV(using
@@ -118,8 +104,7 @@ object PropertyValue {
     }.refineOrDie(UnpackFailure.refine)
 
     def accumulate(i: Int = 0): IO[UnpackFailure, Map[String, ScalarType]] =
-      if i == length then
-        ZIO.succeed(a.toMap)
+      if i == length then ZIO.succeed(a.toMap)
       else
         nextKV.flatMap { t =>
           a(i) = t
@@ -127,5 +112,3 @@ object PropertyValue {
         }
 
     accumulate()
-  }
-}
