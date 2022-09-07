@@ -73,7 +73,7 @@ object Event extends Unpackable[Event] {
   ): IO[UnpackFailure, EdgeRemoved | FarEdgeRemoved] =
     for {
       edge <- unpackEdge
-    } yield if (isFar) FarEdgeRemoved(edge) else EdgeRemoved(edge)
+    } yield if isFar then FarEdgeRemoved(edge) else EdgeRemoved(edge)
 
   private def unpackEdge(implicit
       unpacker: MessageUnpacker
