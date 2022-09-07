@@ -10,7 +10,7 @@ object EventHasEffectOps {
 
 
   def hasEffect(event: Event, nodeState: NodeStateAtTime): Boolean =
-    event match {
+    event match
       case NodeRemoved =>
         nodeState.properties.nonEmpty || nodeState.edges.nonEmpty
 
@@ -31,5 +31,4 @@ object EventHasEffectOps {
 
       case FarEdgeRemoved(edge) =>
         nodeState.edges.contains(edge)
-    }
 }

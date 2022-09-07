@@ -167,11 +167,10 @@ case class GraphLive(
 
       (before, after) = originalHistory.partition(_.eventTime <= atTime)
 
-      sequence = before.lastOption match {
+      sequence = before.lastOption match
         case None                                              => 0
         case Some(lastEvents) if lastEvents.eventTime < atTime => 0
         case Some(lastEvents)                                  => lastEvents.sequence + 1
-      }
 
       newEventsAtTime = EventsAtTime(eventTime = atTime, sequence = sequence, events = newEvents)
 

@@ -31,7 +31,7 @@ object CollapseNodeHistory {
       eventsAtTime <- history
       if eventsAtTime.eventTime <= atTime
       event <- eventsAtTime.events
-    do event match {
+    do event match
       case NodeRemoved =>
         properties = Map.empty
         edges = Set.empty
@@ -53,7 +53,6 @@ object CollapseNodeHistory {
 
       case FarEdgeRemoved(edge) =>
         edges = edges - edge
-    }
 
     NodeStateAtTime(
       eventTime = history.lastOption.fold(StartOfTime)(_.eventTime),

@@ -30,7 +30,7 @@ object Event extends Unpackable[Event] {
   override def unpack(implicit
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, Event] = {
-    unpacker.unpackByte() match {
+    unpacker.unpackByte() match
       case EventType.NODE_REMOVED     => ZIO.succeed(NodeRemoved)
       case EventType.PROPERTY_ADDED   => unpackPropertyAdded
       case EventType.PROPERTY_REMOVED => unpackPropertyRemoved
@@ -41,7 +41,6 @@ object Event extends Unpackable[Event] {
 
       case unexpectedEventType: Byte =>
         ZIO.fail(UnexpectedDiscriminator(unexpectedEventType, "EventType"))
-    }
   }.refineOrDie(UnpackFailure.refine)
 
   def unpackPropertyAdded(implicit

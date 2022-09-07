@@ -44,21 +44,19 @@ object EventDeduplication {
   }
 
   def isDuplicatePropertyEvent(k1: String, laterEvent: Event): Boolean =
-    laterEvent match {
+    laterEvent match
       case PropertyAdded(k2, _) => k1 == k2
       case PropertyRemoved(k2) => k1 == k2
       case _ => false
-    }
 
   def isDuplicateEdgeEvent(edge1: Edge, laterEvent: Event): Boolean =
-    laterEvent match {
+    laterEvent match
       case EdgeAdded(edge2) => edge1 == edge2
       case EdgeRemoved(edge2) => edge1 == edge2
       case _ => false
-    }
 
   def eventIsDuplicatedBy(event: Event, laterEvent: Event): Boolean =
-    event match {
+    event match
       case NodeRemoved => laterEvent == NodeRemoved
 
       case PropertyAdded(k, _) => isDuplicatePropertyEvent(k, laterEvent)
@@ -68,5 +66,4 @@ object EventDeduplication {
       case EdgeRemoved(edge) => isDuplicateEdgeEvent(edge, laterEvent)
       case FarEdgeAdded(edge) => isDuplicateEdgeEvent(edge, laterEvent)
       case FarEdgeRemoved(edge) => isDuplicateEdgeEvent(edge, laterEvent)
-    }
 }

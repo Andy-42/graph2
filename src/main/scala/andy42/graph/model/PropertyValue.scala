@@ -12,7 +12,7 @@ object PropertyValue {
   private def unpackScalar(implicit
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, ScalarType] = {
-    unpacker.getNextFormat.getValueType match {
+    unpacker.getNextFormat.getValueType match
       case ValueType.NIL     => ZIO.unit
       case ValueType.BOOLEAN => ZIO.attempt { unpacker.unpackBoolean() }
       case ValueType.INTEGER => ZIO.attempt { unpacker.unpackLong() }
@@ -28,13 +28,12 @@ object PropertyValue {
 
       case valueType: ValueType =>
         ZIO.fail(UnexpectedValueType(valueType, "unpackScalar"))
-    }
   }.refineOrDie(UnpackFailure.refine)
 
   def unpack(implicit
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, PropertyValueType] = {
-    unpacker.getNextFormat.getValueType match {
+    unpacker.getNextFormat.getValueType match
       case ValueType.NIL       => ZIO.unit
       case ValueType.BOOLEAN   => ZIO.attempt { unpacker.unpackBoolean() }
       case ValueType.INTEGER   => ZIO.attempt { unpacker.unpackLong() }
@@ -58,11 +57,10 @@ object PropertyValue {
           length <- ZIO.attempt { unpacker.unpackMapHeader() }
           m <- unpackToMap(length)
         yield PropertyMapValue(m)
-    }
   }.refineOrDie(UnpackFailure.refine)
 
   def pack(value: PropertyValueType)(implicit packer: MessagePacker): Unit =
-    value match {
+    value match
       case ()         => packer.packNil()
       case v: Boolean => packer.packBoolean(v)
       case v: Int     => packer.packInt(v)
@@ -83,7 +81,6 @@ object PropertyValue {
       case PropertyMapValue(v) =>
         packer.packMapHeader(v.size)
         v.foreach { case (k, v) => packer.packString(k); pack(v) }
-    }
 
   private def unpackToVector(
       length: Int
