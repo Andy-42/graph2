@@ -25,8 +25,7 @@ sealed trait Node {
     } yield CollapseNodeHistory(eventsAtTime, latestEventTime)
 
   def atTime(atTime: EventTime): IO[UnpackFailure, NodeStateAtTime] =
-    if (atTime >= latestEventTime)
-      current
+    if atTime >= latestEventTime then      current
     else
       for {
         eventsAtTime <- eventsAtTime
@@ -50,7 +49,7 @@ case class NodeFromEventsAtTime(
   override def append(events: Vector[Event], atTime: EventTime): IO[UnpackFailure, Node] = {
     require(atTime >= latestEventTime)
 
-    val sequence = if (atTime > latestEventTime) 0 else latestSequence + 1
+    val sequence = if atTime > latestEventTime then 0 else latestSequence + 1
 
     ZIO.succeed(
       copy(
@@ -79,7 +78,7 @@ case class NodeFromPackedHistory(
   override def append(events: Vector[Event], atTime: EventTime): IO[UnpackFailure, Node] = {
     require(atTime >= latestEventTime)
 
-    val sequence = if (atTime > latestEventTime) 0 else latestSequence + 1
+    val sequence = if atTime > latestEventTime then 0 else latestSequence + 1
 
     for {
       eventsAtTime <- eventsAtTime

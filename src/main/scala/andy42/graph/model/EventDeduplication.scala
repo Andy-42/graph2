@@ -14,25 +14,21 @@ object EventDeduplication {
    * The implementation avoids copying (or any allocation) if there are no duplicates.
    */
   def deduplicateWithinEvents(events: Vector[Event]): Vector[Event] =
-    if (!events.indices.exists(i => isDuplicatedLaterAt(events, i)))
+    if !events.indices.exists(i => isDuplicatedLaterAt(events, i)) then
       events
-    else {
+    else 
       val buffer = mutable.ArrayBuffer.empty[Event]
       buffer.sizeHint(events.length - 1)
 
       @tailrec
       def accumulate(i: Int = 0): Vector[Event] =
-        if (i == events.length)
+        if i == events.length then
           buffer.toVector
-        else {
-          if (!isDuplicatedLaterAt(events, i))
-            buffer += events(i)
-
+        else 
+          if !isDuplicatedLaterAt(events, i) then buffer += events(i)
           accumulate(i = i + 1)
-        }
 
       accumulate()
-    }
 
   def isDuplicatedLaterAt(events: Vector[Event], i: Int): Boolean = {
 
@@ -40,12 +36,9 @@ object EventDeduplication {
 
     @tailrec
     def accumulate(j: Int = i + 1): Boolean =
-      if (j == events.length)
-        false
-      else if (eventIsDuplicatedBy(event = event, laterEvent = events(j)))
-        true
-      else
-        accumulate(j = j + 1)
+      if j == events.length then false
+      else if eventIsDuplicatedBy(event = event, laterEvent = events(j)) then true
+      else accumulate(j = j + 1)
 
     accumulate()
   }

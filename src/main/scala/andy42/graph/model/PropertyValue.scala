@@ -93,7 +93,7 @@ object PropertyValue {
     val a = Array.ofDim[ScalarType](length)
 
     def accumulate(i: Int = 0): IO[UnpackFailure, Vector[ScalarType]] =
-      if (i == length)
+      if i == length then
         ZIO.succeed(a.toVector)
       else
         unpackScalar.flatMap { t =>
@@ -121,7 +121,7 @@ object PropertyValue {
     }.refineOrDie(UnpackFailure.refine)
 
     def accumulate(i: Int = 0): IO[UnpackFailure, Map[String, ScalarType]] =
-      if (i == length)
+      if i == length then
         ZIO.succeed(a.toMap)
       else
         nextKV.flatMap { t =>

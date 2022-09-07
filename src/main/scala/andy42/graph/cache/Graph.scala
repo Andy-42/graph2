@@ -60,15 +60,14 @@ case class GraphLive(
         newOrExistingNode <- optionNode.fold {
           // Node does not exist in cache
           nodeDataService.get(id).flatMap { eventsAtTime =>
-            if (eventsAtTime.isEmpty)
+            if eventsAtTime.isEmpty then
               // Node doesn't have any history in the persisted store, so synthesize an empty node.
               // Since a node with an empty history is always considered to exist, there is no point adding it to the cache.
               ZIO.succeed(Node(id))
-            else {
+            else
               val node = Node(id, eventsAtTime)
               // Create a node from the non-empty history and add it to the cache.
               cache.put(node) *> ZIO.succeed(node)
-            }
           }
         } { ZIO.succeed(_) } // Node was fetched from the cache
       } yield newOrExistingNode
@@ -111,7 +110,7 @@ case class GraphLive(
 
     for {
       nodeWithNewEvents <-
-        if (node.wasAlwaysEmpty)
+        if node.wasAlwaysEmpty then
           ZIO.succeed {
             // Creating a new node can be done in an optimized way since we don't need to merge in events.
             val newEventsAtTime = EventsAtTime(eventTime = atTime, sequence = 0, events = deduplicatedEvents)
@@ -128,9 +127,9 @@ case class GraphLive(
             val eventsWithEffect =
               EventHasEffectOps.filterHasEffect(events = deduplicatedEvents, nodeState = nodeStateAtTime)
 
-            if (eventsWithEffect.isEmpty)
+            if eventsWithEffect.isEmpty then
               ZIO.succeed(NodeWithNewEvents(node = node, optionEventsAtTime = None, mustPersist = false))
-            else if (atTime >= nodeStateAtTime.eventTime)
+            else if atTime >= nodeStateAtTime.eventTime then
               appendEventsToEndOfHistory(node, eventsWithEffect, atTime)
             else
               mergeInNewEvents(node = node, newEvents = eventsWithEffect, atTime = atTime)

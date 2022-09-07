@@ -44,7 +44,7 @@ object UnpackOperations {
     val a: Array[T] = Array.ofDim[T](length)
 
     def accumulate(i: Int = 0): IO[UnpackFailure, Vector[T]] =
-      if (i == length)
+      if i == length then
         ZIO.succeed(a.toVector)
       else
         unpackElement.flatMap { t =>
@@ -59,7 +59,7 @@ object UnpackOperations {
     val buf = ArrayBuffer.empty[T]
 
     def accumulate(): IO[UnpackFailure, Vector[T]] =
-      if (hasNext)
+      if hasNext then
         unpackElement.flatMap { t =>
           buf.addOne(t)
           accumulate()
@@ -73,7 +73,7 @@ object UnpackOperations {
   def unpackToMap[K, V](unpackEntry: => IO[UnpackFailure, (K, V)], length: Int): IO[UnpackFailure, Map[K, V]] = {
 
     def accumulate(i: Int = 0, r: Map[K, V] = Map.empty): IO[UnpackFailure, Map[K, V]] =
-      if (i == length)
+      if i == length then
         ZIO.succeed(r)
       else
         unpackEntry.flatMap { entry =>

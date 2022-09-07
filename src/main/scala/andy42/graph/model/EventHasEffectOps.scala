@@ -5,10 +5,8 @@ import zio.Task
 object EventHasEffectOps {
 
   def filterHasEffect(events: Vector[Event], nodeState: NodeStateAtTime): Vector[Event] =
-    if (!events.exists(hasEffect(_, nodeState)))
-      events
-    else
-      events.filter(hasEffect(_, nodeState))
+    if !events.exists(hasEffect(_, nodeState)) then events
+    else events.filter(hasEffect(_, nodeState))
 
 
   def hasEffect(event: Event, nodeState: NodeStateAtTime): Boolean =
