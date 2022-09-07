@@ -13,9 +13,9 @@ type MillisecondDuration = Long
 
 type EdgeHash = Long // Edge hashes - correctly balanced edges will reconcile to zero
 
-object ReconciliationState {
-  def apply(config: EdgeReconciliationConfig): ReconciliationState =
-    ReconciliationState(
+object EdgeReconciliationState {
+  def apply(config: EdgeReconciliationConfig): EdgeReconciliationState =
+    EdgeReconciliationState(
       windowSize = config.windowSize.get(MILLIS),
       windowExpiry = config.windowExpiry.get(MILLIS),
       firstWindowStart = StartOfTime,
@@ -29,7 +29,7 @@ object ReconciliationState {
     toWindowStart(eventTime, windowSize) + windowSize - 1
 }
 
-final case class ReconciliationState(
+final case class EdgeReconciliationState(
     windowSize: MillisecondDuration,
     windowExpiry: MillisecondDuration,
     firstWindowStart: WindowStart,
@@ -37,12 +37,12 @@ final case class ReconciliationState(
 ) {
 
   extension (eventTime: EventTime)
-    def toWindowStart: WindowStart = ReconciliationState.toWindowStart(eventTime, windowSize)
-    def toWindowEnd: WindowEnd = ReconciliationState.toWindowEnd(eventTime, windowSize)
+    def toWindowStart: WindowStart = EdgeReconciliationState.toWindowStart(eventTime, windowSize)
+    def toWindowEnd: WindowEnd = EdgeReconciliationState.toWindowEnd(eventTime, windowSize)
 
   def addChunk(
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent]
-  ): URIO[Clock & EdgeReconciliationDataService, ReconciliationState] =
+  ): URIO[Clock & EdgeReconciliationDataService, EdgeReconciliationState] =
     for {
       clock <- ZIO.service[Clock]
       now <- clock.currentTime(MILLIS)
@@ -78,7 +78,7 @@ final case class ReconciliationState(
 
   def expireReconciliationWindows(
       expiryThreshold: WindowStart
-  ): URIO[EdgeReconciliationDataService, ReconciliationState] = {
+  ): URIO[EdgeReconciliationDataService, EdgeReconciliationState] = {
 
     extension (i: Int)
       def indexToWindowStart: WindowStart = i * windowSize + firstWindowStart
@@ -118,9 +118,9 @@ final case class ReconciliationState(
   }
 
   def mergeInNewEvents(
-      state: ReconciliationState,
+      state: EdgeReconciliationState,
       events: Chunk[EdgeReconciliationEvent]
-  ): ReconciliationState = {
+  ): EdgeReconciliationState = {
     val minEventWindowStart = events.minBy(_.atTime).atTime.toWindowStart
     val maxEventWindowStart = events.minBy(_.atTime).atTime.toWindowStart
 

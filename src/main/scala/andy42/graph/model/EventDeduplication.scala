@@ -3,7 +3,7 @@ package andy42.graph.model
 import scala.annotation.tailrec
 import scala.collection.mutable
 
-object EventDeduplicationOps {
+object EventDeduplication {
 
   // Mutation events are always ordered from newest to oldest
 

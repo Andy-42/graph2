@@ -1,11 +1,12 @@
 package andy42.graph.cache
 
-import andy42.graph.cache.LRUCache
+import andy42.graph.cache.NodeCache
 import andy42.graph.model
 import andy42.graph.model.*
 import org.msgpack.core.MessagePack
 import zio.*
 import zio.stm.*
+import andy42.graph.model.EventDeduplication
 
 /*
  * This is the entry point to applying any change to a node.
@@ -43,8 +44,8 @@ trait Graph { self => // TODO: Check use of self here
 
 case class GraphLive(
     inFlight: TSet[NodeId],
-    cache: LRUCache,
-    persistor: Persistor,
+    cache: NodeCache,
+    nodeDataService: NodeDataService,
     edgeSynchronization: EdgeSynchronization,
     standingQueryEvaluation: StandingQueryEvaluation
 ) extends Graph {
@@ -58,7 +59,7 @@ case class GraphLive(
         optionNode <- cache.get(id)
         newOrExistingNode <- optionNode.fold {
           // Node does not exist in cache
-          persistor.get(id).flatMap { eventsAtTime =>
+          nodeDataService.get(id).flatMap { eventsAtTime =>
             if (eventsAtTime.isEmpty)
               // Node doesn't have any history in the persisted store, so synthesize an empty node.
               // Since a node with an empty history is always considered to exist, there is no point adding it to the cache.
@@ -106,7 +107,7 @@ case class GraphLive(
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] = {
 
     // Eliminate any duplication within events
-    val deduplicatedEvents = EventDeduplicationOps.deduplicateWithinEvents(newEvents)
+    val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(newEvents)
 
     for {
       nodeWithNewEvents <-
@@ -130,14 +131,14 @@ case class GraphLive(
             if (eventsWithEffect.isEmpty)
               ZIO.succeed(NodeWithNewEvents(node = node, optionEventsAtTime = None, mustPersist = false))
             else if (atTime >= nodeStateAtTime.eventTime)
-              ZIO.succeed(appendEventsToEndOfHistory(node, eventsWithEffect, atTime))
+              appendEventsToEndOfHistory(node, eventsWithEffect, atTime)
             else
               mergeInNewEvents(node = node, newEvents = eventsWithEffect, atTime = atTime)
           }
 
       // Persist and cache only if there were some changes
       _ <- nodeWithNewEvents.optionEventsAtTime.fold(ZIO.unit) {
-        persistor.append(nodeWithNewEvents.node.id, _) *> cache.put(nodeWithNewEvents.node)
+        nodeDataService.append(nodeWithNewEvents.node.id, _) *> cache.put(nodeWithNewEvents.node)
       }
 
       // Handle any events that are a result of this node being appended to.
@@ -195,7 +196,7 @@ case class GraphLive(
       node: Node,
       newEvents: Vector[Event],
       atTime: EventTime
-  ): NodeWithNewEvents = {
+  ): IO[UnpackFailure, NodeWithNewEvents] = {
     require(newEvents.nonEmpty)
     require(atTime >= node.latestEventTime)
 
@@ -205,8 +206,10 @@ case class GraphLive(
       events = newEvents
     )
 
-    NodeWithNewEvents(
-      node = node.append(newEvents, atTime),
+    for {
+      newNode <- node.append(newEvents, atTime)
+    } yield NodeWithNewEvents(
+      node = newNode,
       optionEventsAtTime = Some(eventsAtTime),
       mustPersist = true
     )
@@ -214,15 +217,15 @@ case class GraphLive(
 }
 
 object Graph {
-  val layer: URLayer[LRUCache & Persistor & EdgeSynchronization & StandingQueryEvaluation, Graph] =
+  val layer: URLayer[NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
     ZLayer {
       for {
-        lruCache <- ZIO.service[LRUCache]
-        persistor <- ZIO.service[Persistor]
+        lruCache <- ZIO.service[NodeCache]
+        nodeDataService <- ZIO.service[NodeDataService]
         edgeSynchronization <- ZIO.service[EdgeSynchronization]
         standingQueryEvaluation <- ZIO.service[StandingQueryEvaluation]
 
         inFlight <- TSet.empty[NodeId].commit
-      } yield GraphLive(inFlight, lruCache, persistor, edgeSynchronization, standingQueryEvaluation)
+      } yield GraphLive(inFlight, lruCache, nodeDataService, edgeSynchronization, standingQueryEvaluation)
     }
 }

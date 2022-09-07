@@ -6,7 +6,7 @@ import zio.stm._
 
 import java.time.temporal.ChronoUnit.MILLIS
 
-trait LRUCache {
+trait NodeCache {
   def get(id: NodeId): URIO[Clock, Option[Node]]
 
   def put(node: Node): URIO[Clock, Unit]
@@ -22,11 +22,11 @@ case class CacheItem(
     lastAccess: AccessTime
 )
 
-final case class LRUCacheLive(
+final case class NodeCacheLive(
     config: LRUCacheConfig,
     oldest: TRef[AccessTime], // All items in the cache will have a lastAccess > oldest
     items: TMap[NodeId, CacheItem]
-) extends LRUCache {
+) extends NodeCache {
 
   override def get(id: NodeId): URIO[Clock, Option[Node]] =
     for {
@@ -94,9 +94,9 @@ final case class LRUCacheLive(
     now - Math.ceil((now - oldest) * config.fractionOfCacheToRetainOnTrim).toLong
 }
 
-object LRUCache {
+object NodeCache {
 
-  val layer: URLayer[LRUCacheConfig & Clock, LRUCache] =
+  val layer: URLayer[LRUCacheConfig & Clock, NodeCache] =
     ZLayer {
       for {
         config <- ZIO.service[LRUCacheConfig]
@@ -104,7 +104,7 @@ object LRUCache {
         now <- clock.currentTime(MILLIS)
         items <- TMap.empty[NodeId, CacheItem].commit
         oldest <- TRef.make(now - 1).commit
-      } yield LRUCacheLive(
+      } yield NodeCacheLive(
         config = config,
         oldest = oldest,
         items = items

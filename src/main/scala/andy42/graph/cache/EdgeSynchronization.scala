@@ -76,7 +76,7 @@ case class EdgeSynchronizationLive(
       .fromQueue(queue, maxChunkSize = config.maxChunkSize)
       // TODO: Ensure fires at regular intervals - zip with something using config.maximumIntervalBetweenChunks
       .chunks
-      .scanZIO(ReconciliationState(config))((s, c) => s.addChunk(c))
+      .scanZIO(EdgeReconciliationState(config))((s, c) => s.addChunk(c))
       .runDrain
       .fork *> ZIO.unit // TODO: Error handling if fiber dies
 }
