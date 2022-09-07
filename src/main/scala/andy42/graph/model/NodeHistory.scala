@@ -10,29 +10,31 @@ import zio.ZIO
 
 import java.io.IOException
 
-object EventHistory extends Unpackable[Vector[EventsAtTime]]:
+type NodeHistory = Vector[EventsAtTime]
 
-  val empty: Vector[EventsAtTime] = Vector.empty
+object EventHistory extends Unpackable[NodeHistory]:
 
-  override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, Vector[EventsAtTime]] = {
+  val empty: NodeHistory = Vector.empty
+
+  override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, NodeHistory] = {
     for a <- unpackToVector(EventsAtTime.unpack, unpacker.hasNext)
     yield a
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpack(packed: Array[Byte]): IO[UnpackFailure, Vector[EventsAtTime]] =
+  def unpack(packed: Array[Byte]): IO[UnpackFailure, NodeHistory] =
     EventHistory.unpack(using MessagePack.newDefaultUnpacker(packed))
 
-  def pack(eventHistory: Vector[EventsAtTime])(using packer: MessagePacker): MessagePacker =
+  def pack(eventHistory: NodeHistory)(using packer: MessagePacker): MessagePacker =
     eventHistory.foreach(_.pack)
     packer
 
-  def packToArray(eventHistory: Vector[EventsAtTime]): PackedNodeContents =
+  def packToArray(eventHistory: NodeHistory): PackedNodeContents =
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     pack(eventHistory)
     packer.toByteArray()
 
   /** Append an EventsAtTime at the end of history. This can be more efficient since it doesn't require unpacking all of
-    * history. The caller must ensure that eventsAtTime occurs after the last event (wrt. atTime, sequence) as though
+    * history. The caller must ensure that eventsAtTime occurs after the last event (wrt. time, sequence) as though
     * the eventsAtTime were unpacked.
     *
     * @param packed

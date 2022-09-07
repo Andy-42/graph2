@@ -21,7 +21,7 @@ trait EdgeSynchronization:
     */
   def eventsAppended(
       id: NodeId,
-      atTime: EventTime,
+      time: EventTime,
       events: Vector[Event]
   ): URIO[Clock, Unit]
 
@@ -29,7 +29,7 @@ trait EdgeSynchronization:
 
 final case class EdgeReconciliationEvent(
     id: NodeId,
-    atTime: EventTime,
+    time: EventTime,
     event: EdgeEvent
 ):
   def edgeHash: Long = event.edge.edgeHash(id)
@@ -41,7 +41,7 @@ final case class EdgeSynchronizationLive(
 
   def eventsAppended(
       id: NodeId,
-      atTime: EventTime,
+      time: EventTime,
       events: Vector[Event]
   ): URIO[Clock, Unit] =
     for
@@ -49,19 +49,19 @@ final case class EdgeSynchronizationLive(
 
         case EdgeAdded(edge) =>
           graph
-            .append(edge.other, atTime, Vector(FarEdgeAdded(edge.reverse(id))))
+            .append(edge.other, time, Vector(FarEdgeAdded(edge.reverse(id))))
             .fork // TODO: Handle fiber exit
 
         case EdgeRemoved(edge) =>
           graph
-            .append(edge.other, atTime, Vector(FarEdgeRemoved(edge.reverse(id))))
+            .append(edge.other, time, Vector(FarEdgeRemoved(edge.reverse(id))))
             .fork // TODO: Handle fiber exit
 
         case _ => ZIO.unit
       }
       _ <- ZIO.foreach(events) {
         case edgeEvent: EdgeEvent =>
-          queue.offer(EdgeReconciliationEvent(id, atTime, edgeEvent))
+          queue.offer(EdgeReconciliationEvent(id, time, edgeEvent))
 
         case _ => ZIO.unit
       }

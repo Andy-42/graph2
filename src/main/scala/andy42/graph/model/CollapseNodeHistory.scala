@@ -5,57 +5,54 @@ import scala.collection.mutable
 
 object CollapseNodeHistory:
 
-  /** Collapse a sequence of events to a current state. The events are ordered
-    * in ascending order of event time.
+  /** Collapse a Node's history to the state of the properties and edges at a given time.
     *
-    * The PropertyAdded events represents values as org.msgpack.value.Value,
-    * which are converted to their graph representation in properties.
+    * The events are ordered in ascending order of (time, sequence). Elements of the each EventsAtTime in the history
+    * are included (in order) if their time is <= the given time.
     *
-    * @param events
-    *   Events ordered from oldest to newest.
-    * @return
-    *   The properties and edge states representing the current state after all
-    *   event are applied.
+    * @param history
+    *   A Node's complete history.
+    * @param time
+    *   The point in time to observe the node's state.
     */
   def apply(
-      history: Vector[EventsAtTime],
-      atTime: EventTime = EndOfTime,
-      initialProperties: PropertiesAtTime = Map.empty,
-      initialEdges: EdgesAtTime = Set.empty
+      history: NodeHistory,
+      time: EventTime = EndOfTime
   ): NodeStateAtTime =
 
-    var properties: PropertiesAtTime = initialProperties
-    var edges: EdgesAtTime = initialEdges
+    var properties: PropertiesAtTime = Map.empty
+    var edges: EdgesAtTime = Set.empty
 
     for
-      eventsAtTime <- history if eventsAtTime.eventTime <= atTime
+      eventsAtTime <- history if eventsAtTime.time <= time
       event <- eventsAtTime.events
-    do event match
-      case NodeRemoved =>
-        properties = Map.empty
-        edges = Set.empty
+    do
+      event match
+        case NodeRemoved =>
+          properties = Map.empty
+          edges = Set.empty
 
-      case PropertyAdded(k, value) =>
-        properties = properties + (k -> value)
+        case PropertyAdded(k, value) =>
+          properties = properties + (k -> value)
 
-      case PropertyRemoved(k) =>
-        properties = properties - k
+        case PropertyRemoved(k) =>
+          properties = properties - k
 
-      case EdgeAdded(edge) =>
-        edges = edges + edge
+        case EdgeAdded(edge) =>
+          edges = edges + edge
 
-      case FarEdgeAdded(edge) =>
-        edges = edges + edge
+        case FarEdgeAdded(edge) =>
+          edges = edges + edge
 
-      case EdgeRemoved(edge) =>
-        edges = edges - edge
+        case EdgeRemoved(edge) =>
+          edges = edges - edge
 
-      case FarEdgeRemoved(edge) =>
-        edges = edges - edge
+        case FarEdgeRemoved(edge) =>
+          edges = edges - edge
 
     NodeStateAtTime(
-      eventTime = history.lastOption.fold(StartOfTime)(_.eventTime),
+      time = history.lastOption.fold(StartOfTime)(_.time),
       sequence = history.lastOption.fold(0)(_.sequence),
       properties = properties,
-      edges = edges,
+      edges = edges
     )

@@ -21,11 +21,11 @@ object EdgeReconciliationState:
       edgeHashes = Array.empty[EdgeHash]
     )
 
-  def toWindowStart(eventTime: EventTime, windowSize: MillisecondDuration): WindowStart =
-    eventTime - (eventTime % windowSize)
+  def toWindowStart(time: EventTime, windowSize: MillisecondDuration): WindowStart =
+    time - (time % windowSize)
 
-  def toWindowEnd(eventTime: EventTime, windowSize: MillisecondDuration): WindowEnd =
-    toWindowStart(eventTime, windowSize) + windowSize - 1
+  def toWindowEnd(time: EventTime, windowSize: MillisecondDuration): WindowEnd =
+    toWindowStart(time, windowSize) + windowSize - 1
 
 final case class EdgeReconciliationState(
     windowSize: MillisecondDuration,
@@ -34,9 +34,9 @@ final case class EdgeReconciliationState(
     edgeHashes: Array[EdgeHash]
 ):
 
-  extension (eventTime: EventTime)
-    def toWindowStart: WindowStart = EdgeReconciliationState.toWindowStart(eventTime, windowSize)
-    def toWindowEnd: WindowEnd = EdgeReconciliationState.toWindowEnd(eventTime, windowSize)
+  extension (time: EventTime)
+    def toWindowStart: WindowStart = EdgeReconciliationState.toWindowStart(time, windowSize)
+    def toWindowEnd: WindowEnd = EdgeReconciliationState.toWindowEnd(time, windowSize)
 
   def addChunk(
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent]
@@ -56,20 +56,20 @@ final case class EdgeReconciliationState(
   ): URIO[EdgeReconciliationDataService, Chunk[EdgeReconciliationEvent]] =
 
     // An event is expired if the last period in the window is expired
-    extension (eventTime: EventTime) def isExpired: Boolean = eventTime.toWindowEnd < expiryThreshold
+    extension (time: EventTime) def isExpired: Boolean = time.toWindowEnd < expiryThreshold
 
     for
       edgeReconciliationDataService <- ZIO.service[EdgeReconciliationDataService]
       eventsWithExpiredRemoved <-
-        if edgeReconciliationEvents.exists(_.atTime.isExpired) then
-          ZIO.foreach(edgeReconciliationEvents.filter(_.atTime.isExpired).toVector) { e =>
+        if edgeReconciliationEvents.exists(_.time.isExpired) then
+          ZIO.foreach(edgeReconciliationEvents.filter(_.time.isExpired).toVector) { e =>
             ZIO.logWarning("Edge reconciliation processed for an expired event; window is likely to be inconsistent")
-            @@ eventTimeAnnotation (e.atTime) @@ eventWindowTimeAnnotation(e.atTime.toWindowStart)
+            @@ eventTimeAnnotation (e.time) @@ eventWindowTimeAnnotation(e.time.toWindowStart)
               *> edgeReconciliationDataService.runMarkWindow(
-                EdgeReconciliation.inconsistent(e.atTime.toWindowStart, windowSize)
+                EdgeReconciliation.inconsistent(e.time.toWindowStart, windowSize)
               )
           } @@ expiryThresholdAnnotation(expiryThreshold) @@ windowSizeAnnotation(windowSize)
-            *> ZIO.succeed(edgeReconciliationEvents.filter(!_.atTime.isExpired)) // Keep the events that are not expired
+            *> ZIO.succeed(edgeReconciliationEvents.filter(!_.time.isExpired)) // Keep the events that are not expired
         else ZIO.succeed(edgeReconciliationEvents)
     yield eventsWithExpiredRemoved
 
@@ -117,8 +117,8 @@ final case class EdgeReconciliationState(
       state: EdgeReconciliationState,
       events: Chunk[EdgeReconciliationEvent]
   ): EdgeReconciliationState =
-    val minEventWindowStart = events.minBy(_.atTime).atTime.toWindowStart
-    val maxEventWindowStart = events.minBy(_.atTime).atTime.toWindowStart
+    val minEventWindowStart = events.minBy(_.time).time.toWindowStart
+    val maxEventWindowStart = events.minBy(_.time).time.toWindowStart
 
     def slotsBetweenWindows(first: WindowStart, second: WindowStart): Int =
       require(second >= first)
@@ -147,7 +147,7 @@ final case class EdgeReconciliationState(
 
       // Merge in the edge hashes from incoming events
       events.foreach { edgeReconciliationEvent =>
-        val i = slotsBetweenWindows(first = firstWindowStart, second = edgeReconciliationEvent.atTime.toWindowStart)
+        val i = slotsBetweenWindows(first = firstWindowStart, second = edgeReconciliationEvent.time.toWindowStart)
         edgeHashes(i) ^= edgeReconciliationEvent.edgeHash
       }
 
@@ -158,7 +158,7 @@ final case class EdgeReconciliationState(
 
   private val expiryThresholdAnnotation = LogAnnotation[WindowStart]("expiryThreshold", (_, x) => x, _.toString)
   private val windowSizeAnnotation = LogAnnotation[MillisecondDuration]("windowSize", (_, x) => x, _.toString)
-  private val eventTimeAnnotation = LogAnnotation[EventTime]("eventTime", (_, x) => x, _.toString)
+  private val eventTimeAnnotation = LogAnnotation[EventTime]("time", (_, x) => x, _.toString)
   private val eventWindowTimeAnnotation = LogAnnotation[WindowStart]("eventWindowTime", (_, x) => x, _.toString)
   private val windowStartAnnotation = LogAnnotation[WindowStart]("windowStart", (_, x) => x, _.toString)
   private val edgeHashAnnotation = LogAnnotation[EdgeHash]("edgeHash", (_, x) => x, _.toString)

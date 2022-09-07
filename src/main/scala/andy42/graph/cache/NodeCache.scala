@@ -14,8 +14,8 @@ type AccessTime = Long // epoch millis
 
 case class CacheItem(
     version: Int,
-    latest: EventTime,
-    sequence: Int,
+    lastTime: EventTime,
+    lastSequence: Int,
     packed: PackedNodeContents,
     lastAccess: AccessTime
 )
@@ -42,8 +42,8 @@ final case class NodeCacheLive(
       Node(
         id = id,
         version = item.version,
-        latest = item.latest,
-        sequence = item.sequence,
+        latest = item.lastTime,
+        sequence = item.lastSequence,
         packed = item.packed
       )
     }
@@ -65,8 +65,8 @@ final case class NodeCacheLive(
         node.id,
         CacheItem(
           version = node.version,
-          latest = node.latestEventTime,
-          sequence = node.latestSequence,
+          lastTime = node.lastTime,
+          lastSequence = node.lastSequence,
           packed = node.packed,
           lastAccess = now
         )

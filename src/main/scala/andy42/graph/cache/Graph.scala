@@ -15,7 +15,7 @@ import zio.stm.*
  * changes by that mechanism, this API forces changes to be serialize by tracking the node ids that
  * have changes currently in flight in a transactional set.
  */
-trait Graph { self => // TODO: Check use of self here; omit braces?
+trait Graph:
 
   def get(id: NodeId): ZIO[Clock, UnpackFailure | PersistenceFailure, Node]
 
@@ -23,7 +23,7 @@ trait Graph { self => // TODO: Check use of self here; omit braces?
     */
   def append(
       id: NodeId,
-      atTime: EventTime,
+      time: EventTime,
       events: Vector[Event]
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node]
 
@@ -31,15 +31,15 @@ trait Graph { self => // TODO: Check use of self here; omit braces?
     */
   def append(
       id: NodeId,
-      atTime: EventTime,
-      properties: PropertiesAtTime,
-      edges: EdgesAtTime
+      time: EventTime,
+      properties: PropertiesAtTime = Map.empty,
+      edges: EdgesAtTime = Set.empty
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     val propertyEvents = properties.map { case (k, v) => PropertyAdded(k, v) }
     val edgeEvents = edges.map(EdgeAdded(_))
     val allEvents = (propertyEvents ++ edgeEvents).toVector
-    self.append(id, atTime, allEvents)
-}
+
+    if allEvents.isEmpty then get(id) else append(id, time, allEvents)
 
 final case class GraphLive(
     inFlight: TSet[NodeId],
@@ -55,6 +55,7 @@ final case class GraphLive(
     ZIO.scoped {
       for
         _ <- withNodeMutationPermit(id)
+
         optionNode <- cache.get(id)
         newOrExistingNode <- optionNode.fold {
           // Node does not exist in cache
@@ -74,14 +75,15 @@ final case class GraphLive(
 
   override def append(
       id: NodeId,
-      atTime: EventTime,
+      time: EventTime,
       events: Vector[Event]
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     ZIO.scoped {
       for
         _ <- withNodeMutationPermit(id)
+
         existingNode <- get(id)
-        newNode <- applyEvents(atTime, events, existingNode)
+        newNode <- applyEvents(time, events, existingNode)
       yield newNode
     }
 
@@ -99,7 +101,7 @@ final case class GraphLive(
   final case class NodeWithNewEvents(node: Node, optionEventsAtTime: Option[EventsAtTime], mustPersist: Boolean)
 
   private def applyEvents(
-      atTime: EventTime,
+      time: EventTime,
       newEvents: Vector[Event],
       node: Node
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
@@ -112,7 +114,7 @@ final case class GraphLive(
         if node.wasAlwaysEmpty then
           ZIO.succeed {
             // Creating a new node can be done in an optimized way since we don't need to merge in events.
-            val newEventsAtTime = EventsAtTime(eventTime = atTime, sequence = 0, events = deduplicatedEvents)
+            val newEventsAtTime = EventsAtTime(time = time, sequence = 0, events = deduplicatedEvents)
             NodeWithNewEvents(
               node = Node(node.id, Vector(newEventsAtTime)),
               optionEventsAtTime = Some(newEventsAtTime),
@@ -120,7 +122,7 @@ final case class GraphLive(
             )
           }
         else
-          node.atTime(atTime).flatMap { nodeStateAtTime =>
+          node.atTime(time).flatMap { nodeStateAtTime =>
 
             // Discard any events that would have no effect on the state at that point in time
             val eventsWithEffect =
@@ -128,8 +130,8 @@ final case class GraphLive(
 
             if eventsWithEffect.isEmpty then
               ZIO.succeed(NodeWithNewEvents(node = node, optionEventsAtTime = None, mustPersist = false))
-            else if atTime >= nodeStateAtTime.eventTime then appendEventsToEndOfHistory(node, eventsWithEffect, atTime)
-            else mergeInNewEvents(node = node, newEvents = eventsWithEffect, atTime = atTime)
+            else if time >= nodeStateAtTime.time then appendEventsToEndOfHistory(node, eventsWithEffect, time)
+            else mergeInNewEvents(node = node, newEvents = eventsWithEffect, time = time)
           }
 
       // Persist and cache only if there were some changes
@@ -141,28 +143,28 @@ final case class GraphLive(
       // Note that we pass in the events appended, and not the ones that were changed in this operation
       // since we may be re-processing a change and we have to guarantee that the events were processed.
       _ <- standingQueryEvaluation.nodeChanged(nodeWithNewEvents.node, deduplicatedEvents)
-      _ <- edgeSynchronization.eventsAppended(nodeWithNewEvents.node.id, atTime, deduplicatedEvents)
+      _ <- edgeSynchronization.eventsAppended(nodeWithNewEvents.node.id, time, deduplicatedEvents)
     yield nodeWithNewEvents.node
 
   /** General merge of new events at any point in time into the node's history. This requires unpacking the node's
-    * history to a Vector[EventsAtTime] which may require more resources for large nodes.
+    * history to a NodeHistory which may require more resources for large nodes.
     */
   private def mergeInNewEvents(
       node: Node,
       newEvents: Vector[Event],
-      atTime: EventTime
+      time: EventTime
   ): IO[UnpackFailure, NodeWithNewEvents] =
     for
-      originalHistory <- node.eventsAtTime
+      originalHistory <- node.history
 
-      (before, after) = originalHistory.partition(_.eventTime <= atTime)
+      (before, after) = originalHistory.partition(_.time <= time)
 
       sequence = before.lastOption match
         case None                                              => 0
-        case Some(lastEvents) if lastEvents.eventTime < atTime => 0
+        case Some(lastEvents) if lastEvents.time < time => 0
         case Some(lastEvents)                                  => lastEvents.sequence + 1
 
-      newEventsAtTime = EventsAtTime(eventTime = atTime, sequence = sequence, events = newEvents)
+      newEventsAtTime = EventsAtTime(time = time, sequence = sequence, events = newEvents)
 
       newHistory = (before :+ newEventsAtTime) ++ after
     yield NodeWithNewEvents(
@@ -172,24 +174,24 @@ final case class GraphLive(
     )
 
   /** Append events to the end of history. Appending events can be done more efficiently by avoiding the need to unpack
-    * all of history to a Vector[EventsAtTime], but instead we can just append the packed history to the end of the
+    * all of history to a NodeHistory, but instead we can just append the packed history to the end of the
     * packed history. This could be significant for nodes with a large history (esp. may edges).
     */
   private def appendEventsToEndOfHistory(
       node: Node,
       newEvents: Vector[Event],
-      atTime: EventTime
+      time: EventTime
   ): IO[UnpackFailure, NodeWithNewEvents] =
     require(newEvents.nonEmpty)
-    require(atTime >= node.latestEventTime)
+    require(time >= node.lastTime)
 
     val eventsAtTime = EventsAtTime(
-      eventTime = atTime,
-      sequence = if node.latestEventTime == atTime then node.latestSequence + 1 else 0,
+      time = time,
+      sequence = if node.lastTime == time then node.lastSequence + 1 else 0,
       events = newEvents
     )
 
-    for newNode <- node.append(newEvents, atTime)
+    for newNode <- node.append(newEvents, time)
     yield NodeWithNewEvents(
       node = newNode,
       optionEventsAtTime = Some(eventsAtTime),
