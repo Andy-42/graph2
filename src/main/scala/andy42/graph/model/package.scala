@@ -14,9 +14,9 @@ package object model {
     BinaryValue | 
     Instant
 
-  case class BinaryValue(value: Vector[Byte])
-  case class PropertyArrayValue(value: Vector[ScalarType])
-  case class PropertyMapValue(value: Map[String, ScalarType])  
+  final case class BinaryValue(value: Vector[Byte])
+  final case class PropertyArrayValue(value: Vector[ScalarType])
+  final case class PropertyMapValue(value: Map[String, ScalarType])  
 
   type PropertyValueType = ScalarType | PropertyArrayValue | PropertyMapValue
 
@@ -31,7 +31,7 @@ package object model {
   type PropertiesAtTime = Map[String, PropertyValueType] // Collapsed properties at some point in time
 
   // TODO: Enrich this type: direction/direction-less
-  case class Edge(k: String, other: NodeId) {
+  final case class Edge(k: String, other: NodeId) {
     def reverse(id: NodeId): Edge = copy(other = id)
 
     def edgeHash(id: NodeId): Long =

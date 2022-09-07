@@ -4,7 +4,7 @@ import org.msgpack.core.MessagePack
 import org.msgpack.core.MessageUnpacker
 import zio._
 
-case class NodeStateAtTime(eventTime: EventTime, sequence: Int, properties: PropertiesAtTime, edges: EdgesAtTime)
+finalcase class NodeStateAtTime(eventTime: EventTime, sequence: Int, properties: PropertiesAtTime, edges: EdgesAtTime)
 
 type PackedNodeContents = Array[Byte]
 
@@ -32,7 +32,7 @@ sealed trait Node {
   def wasAlwaysEmpty: Boolean
 }
 
-case class NodeFromEventsAtTime(
+final case class NodeFromEventsAtTime(
     id: NodeId,
     version: Int,
     latestEventTime: EventTime,
@@ -62,7 +62,7 @@ case class NodeFromEventsAtTime(
   override def wasAlwaysEmpty: Boolean = reifiedEventsAtTime.isEmpty
 }
 
-case class NodeFromPackedHistory(
+final case class NodeFromPackedHistory(
     id: NodeId,
     version: Int,
     latestEventTime: EventTime,

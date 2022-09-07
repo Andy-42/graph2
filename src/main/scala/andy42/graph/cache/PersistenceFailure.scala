@@ -18,15 +18,15 @@ trait SQLFailure extends PersistenceFailure {
   def ex: SQLException
 }
 
-case class SQLReadFailure(id: NodeId, ex: SQLException) extends SQLFailure {
+final case class SQLReadFailure(id: NodeId, ex: SQLException) extends SQLFailure {
   override val op = "read"
 }
 
-case class SQLWriteFailure(id: NodeId, ex: SQLException) extends SQLFailure {
+final case class SQLWriteFailure(id: NodeId, ex: SQLException) extends SQLFailure {
   override val op = "append"
 }
 
-case class CountPersistenceFailure(id: NodeId, expected: Long, was: Long) extends PersistenceFailure {
+final case class CountPersistenceFailure(id: NodeId, expected: Long, was: Long) extends PersistenceFailure {
   override val op = "append"
 
   override val message = s"Expected $expected row(s) to be affected by $op, but was $was."

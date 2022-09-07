@@ -22,7 +22,7 @@ trait NodeDataService {
   ): IO[PersistenceFailure, Unit]
 }
 
-case class GraphHistory(
+final case class GraphHistory(
     id: NodeId, // clustering key
     eventTime: EventTime, // sort key
     sequence: Int, // sort key
@@ -45,7 +45,7 @@ object GraphHistory {
     )
 }
 
-case class NodeDataServiceLive(ds: DataSource) extends NodeDataService {
+final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService {
 
   val ctx = new PostgresZioJdbcContext(Literal)
   import ctx._

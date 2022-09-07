@@ -28,7 +28,7 @@ trait EdgeSynchronization {
   def startReconciliation(config: EdgeReconciliationConfig): URIO[Clock & EdgeReconciliationDataService, Unit]
 }
 
-case class EdgeReconciliationEvent(
+final case class EdgeReconciliationEvent(
     id: NodeId,
     atTime: EventTime,
     event: EdgeEvent
@@ -36,7 +36,7 @@ case class EdgeReconciliationEvent(
   def edgeHash: Long = event.edge.edgeHash(id)
 }
 
-case class EdgeSynchronizationLive(
+final case class EdgeSynchronizationLive(
     graph: Graph,
     queue: Queue[EdgeReconciliationEvent]
 ) extends EdgeSynchronization {

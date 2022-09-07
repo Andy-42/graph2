@@ -24,7 +24,7 @@ trait StandingQueryEvaluation {
   // TODO: How to get the output stream?
 }
 
-case class StandingQueryEvaluationLive(graph: Graph) extends StandingQueryEvaluation {
+final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQueryEvaluation {
     override def nodeChanged(node: Node, newEvents: Vector[Event]): UIO[Unit] = ???
 }
 

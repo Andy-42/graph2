@@ -8,7 +8,7 @@ import zio._
 
 import javax.sql.DataSource
 
-case class EdgeReconciliation(
+final case class EdgeReconciliation(
     windowStart: Long, // clustering key
     windowSize: Long, // payload
     state: Byte // payload
@@ -31,7 +31,7 @@ trait EdgeReconciliationDataService {
   def runMarkWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit]
 }
 
-case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconciliationDataService {
+final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconciliationDataService {
 
   val ctx = new PostgresZioJdbcContext(Literal)
   import ctx._

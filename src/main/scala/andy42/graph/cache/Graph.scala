@@ -42,7 +42,7 @@ trait Graph { self => // TODO: Check use of self here
   }
 }
 
-case class GraphLive(
+final case class GraphLive(
     inFlight: TSet[NodeId],
     cache: NodeCache,
     nodeDataService: NodeDataService,
@@ -97,7 +97,7 @@ case class GraphLive(
   private def withNodeMutationPermit(id: NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
-  case class NodeWithNewEvents(node: Node, optionEventsAtTime: Option[EventsAtTime], mustPersist: Boolean)
+  final case class NodeWithNewEvents(node: Node, optionEventsAtTime: Option[EventsAtTime], mustPersist: Boolean)
 
   private def applyEvents(
       atTime: EventTime,
@@ -148,11 +148,6 @@ case class GraphLive(
 
   /** General merge of new events at any point in time into the node's history. This requires unpacking the node's
     * history to a Vector[EventsAtTime] which may require more resources for large nodes.
-    *
-    * @param node
-    * @param newEvents
-    * @param atTime
-    * @return
     */
   private def mergeInNewEvents(
       node: Node,
@@ -181,11 +176,6 @@ case class GraphLive(
   /** Append events to the end of history. Appending events can be done more efficiently by avoiding the need to unpack
     * all of history to a Vector[EventsAtTime], but instead we can just append the packed history to the end of the
     * packed history. This could be significant for nodes with a large history (esp. may edges).
-    *
-    * @param node
-    * @param newEvents
-    * @param atTime
-    * @return
     */
   private def appendEventsToEndOfHistory(
       node: Node,

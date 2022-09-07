@@ -26,7 +26,7 @@ import scala.meta.tokens.Token.Interpolation.Start
   * @param events
   *   The mutation events at that time.
   */
-case class EventsAtTime(
+final case class EventsAtTime(
     eventTime: EventTime,
     sequence: Int,
     events: Vector[Event]

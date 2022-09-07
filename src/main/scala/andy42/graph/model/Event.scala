@@ -90,7 +90,7 @@ case object NodeRemoved extends Event {
     packer.packByte(EventType.NODE_REMOVED)
 }
 
-case class PropertyAdded(k: String, value: PropertyValueType) extends Event {
+final case class PropertyAdded(k: String, value: PropertyValueType) extends Event {
 
   override def pack(implicit packer: MessagePacker): MessagePacker = {
     packer
@@ -102,7 +102,7 @@ case class PropertyAdded(k: String, value: PropertyValueType) extends Event {
   }
 }
 
-case class PropertyRemoved(k: String) extends Event {
+final case class PropertyRemoved(k: String) extends Event {
 
   override def pack(implicit packer: MessagePacker): MessagePacker =
     packer
@@ -114,7 +114,7 @@ trait EdgeEvent {
   def edge: Edge
 }
 
-case class EdgeAdded(edge: Edge) extends Event with EdgeEvent {
+final case class EdgeAdded(edge: Edge) extends Event with EdgeEvent {
 
   override def pack(implicit packer: MessagePacker): MessagePacker =
     packer
@@ -124,7 +124,7 @@ case class EdgeAdded(edge: Edge) extends Event with EdgeEvent {
       .writePayload(edge.other.to(Array))
 }
 
-case class FarEdgeAdded(edge: Edge) extends Event with EdgeEvent {
+final case class FarEdgeAdded(edge: Edge) extends Event with EdgeEvent {
 
   override def pack(implicit packer: MessagePacker): MessagePacker =
     packer
@@ -134,7 +134,7 @@ case class FarEdgeAdded(edge: Edge) extends Event with EdgeEvent {
       .writePayload(edge.other.to(Array))
 }
 
-case class EdgeRemoved(edge: Edge) extends Event with EdgeEvent {
+final case class EdgeRemoved(edge: Edge) extends Event with EdgeEvent {
 
   override def pack(implicit packer: MessagePacker): MessagePacker =
     packer
@@ -144,7 +144,7 @@ case class EdgeRemoved(edge: Edge) extends Event with EdgeEvent {
       .writePayload(edge.other.to(Array))
 }
 
-case class FarEdgeRemoved(edge: Edge) extends Event with EdgeEvent {
+final case class FarEdgeRemoved(edge: Edge) extends Event with EdgeEvent {
 
   override def pack(implicit packer: MessagePacker): MessagePacker =
     packer
