@@ -11,8 +11,6 @@ type WindowStart = Long // Epoch millis adjusted to start of window
 type WindowEnd = Long // Epoch millis adjusted to last period in window
 type MillisecondDuration = Long
 
-type EdgeHash = Long // Edge hashes - correctly balanced edges will reconcile to zero
-
 object EdgeReconciliationState {
   def apply(config: EdgeReconciliationConfig): EdgeReconciliationState =
     EdgeReconciliationState(

@@ -4,7 +4,7 @@ import org.msgpack.core.MessagePack
 import org.msgpack.core.MessageUnpacker
 import zio._
 
-finalcase class NodeStateAtTime(eventTime: EventTime, sequence: Int, properties: PropertiesAtTime, edges: EdgesAtTime)
+final case class NodeStateAtTime(eventTime: EventTime, sequence: Int, properties: PropertiesAtTime, edges: EdgesAtTime)
 
 type PackedNodeContents = Array[Byte]
 

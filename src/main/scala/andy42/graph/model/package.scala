@@ -30,11 +30,13 @@ package object model {
 
   type PropertiesAtTime = Map[String, PropertyValueType] // Collapsed properties at some point in time
 
+  type EdgeHash = Long // Edge hashes - correctly balanced edges will reconcile to zero
+
   // TODO: Enrich this type: direction/direction-less
   final case class Edge(k: String, other: NodeId) {
     def reverse(id: NodeId): Edge = copy(other = id)
 
-    def edgeHash(id: NodeId): Long =
+    def edgeHash(id: NodeId): EdgeHash =
       MurmurHash3.stringHash(k) ^
        MurmurHash3.arrayHash(id.toArray) ^
        MurmurHash3.arrayHash(other.toArray)
