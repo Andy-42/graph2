@@ -7,24 +7,18 @@ object EventDeduplication:
 
   // Mutation events are always ordered from newest to oldest
 
-  /** Remove any duplicate mutation events. An event is a duplicate if a later element of `events` would cancel out this
-    * event. This is not expected to be a common occurrence, but this is done to minimize the node's journal. The
-    * implementation avoids copying (or any allocation) if there are no duplicates.
+  /** Remove any duplicate mutation events.
+    *
+    * An event is a duplicate if a later element of `events` would cancel out this event. This is not expected to be a
+    * common occurrence, but this is done to minimize the node's history. The implementation avoids copying (or any
+    * allocation) if there are no duplicates.
     */
   def deduplicateWithinEvents(events: Vector[Event]): Vector[Event] =
     if !events.indices.exists(i => isDuplicatedLaterAt(events, i)) then events
     else
-      val buffer = mutable.ArrayBuffer.empty[Event]
-      buffer.sizeHint(events.length - 1)
-
-      @tailrec
-      def accumulate(i: Int = 0): Vector[Event] =
-        if i == events.length then buffer.toVector
-        else
-          if !isDuplicatedLaterAt(events, i) then buffer += events(i)
-          accumulate(i = i + 1)
-
-      accumulate()
+      events.zipWithIndex.collect {
+        case (event, i) if !isDuplicatedLaterAt(events, i) => event
+      }
 
   def isDuplicatedLaterAt(events: Vector[Event], i: Int): Boolean =
 

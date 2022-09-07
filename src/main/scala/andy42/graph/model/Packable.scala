@@ -11,7 +11,6 @@ import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
 trait Packable:
-
   /** Write self to packer and return packer.
     */
   def pack(packer: MessagePacker): MessagePacker

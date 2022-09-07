@@ -60,8 +60,7 @@ final case class NodeCacheLive(
       node: Node,
       now: AccessTime
   ): USTM[Unit] =
-    for
-      _ <- items.put(
+    for _ <- items.put(
         node.id,
         CacheItem(
           version = node.version,
@@ -87,8 +86,20 @@ final case class NodeCacheLive(
       _ <- oldest.set(newOldest)
     yield ()
 
+  /** The time would retain the configured fraction of the cache if we removed all cache items with an access time less
+    * than that time.
+    *
+    * This algorithm assumes that the distribution of access times in the cache is uniform, but the reality is that it
+    * will skew to the more recent (gamma?).
+    *
+    * @param oldest
+    *   The current oldest access time (all cache items have a more recent access time)
+    * @param now
+    * @return
+    *   A new value for oldest that can be used to remove some fraction of the oldest cache items.
+    */
   private def lastTimeToPurge(oldest: AccessTime, now: AccessTime): AccessTime =
-    now - Math.ceil((now - oldest) * config.fractionOfCacheToRetainOnTrim).toLong
+    now - Math.ceil((now - oldest + 1) * config.fractionOfCacheToRetainOnTrim).toLong
 
 object NodeCache:
 
