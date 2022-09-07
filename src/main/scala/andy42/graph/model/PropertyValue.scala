@@ -12,17 +12,17 @@ object PropertyValue:
   private def unpackScalar(using unpacker: MessageUnpacker): IO[UnpackFailure, ScalarType] = {
     unpacker.getNextFormat.getValueType match
       case ValueType.NIL     => ZIO.unit
-      case ValueType.BOOLEAN => ZIO.attempt { unpacker.unpackBoolean() }
-      case ValueType.INTEGER => ZIO.attempt { unpacker.unpackLong() }
-      case ValueType.FLOAT   => ZIO.attempt { unpacker.unpackDouble() }
-      case ValueType.STRING  => ZIO.attempt { unpacker.unpackString() }
+      case ValueType.BOOLEAN => ZIO.attempt(unpacker.unpackBoolean())
+      case ValueType.INTEGER => ZIO.attempt(unpacker.unpackLong())
+      case ValueType.FLOAT   => ZIO.attempt(unpacker.unpackDouble())
+      case ValueType.STRING  => ZIO.attempt(unpacker.unpackString())
       case ValueType.BINARY =>
         ZIO.attempt {
           val length = unpacker.unpackBinaryHeader()
           BinaryValue(unpacker.readPayload(length).toVector)
         }
 
-      case ValueType.EXTENSION => ZIO.attempt { unpacker.unpackTimestamp() }
+      case ValueType.EXTENSION => ZIO.attempt(unpacker.unpackTimestamp())
 
       case valueType: ValueType =>
         ZIO.fail(UnexpectedValueType(valueType, "unpackScalar"))
@@ -31,11 +31,11 @@ object PropertyValue:
   def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, PropertyValueType] = {
     unpacker.getNextFormat.getValueType match
       case ValueType.NIL       => ZIO.unit
-      case ValueType.BOOLEAN   => ZIO.attempt { unpacker.unpackBoolean() }
-      case ValueType.INTEGER   => ZIO.attempt { unpacker.unpackLong() }
-      case ValueType.FLOAT     => ZIO.attempt { unpacker.unpackDouble() }
-      case ValueType.STRING    => ZIO.attempt { unpacker.unpackString() }
-      case ValueType.EXTENSION => ZIO.attempt { unpacker.unpackTimestamp() }
+      case ValueType.BOOLEAN   => ZIO.attempt(unpacker.unpackBoolean())
+      case ValueType.INTEGER   => ZIO.attempt(unpacker.unpackLong())
+      case ValueType.FLOAT     => ZIO.attempt(unpacker.unpackDouble())
+      case ValueType.STRING    => ZIO.attempt(unpacker.unpackString())
+      case ValueType.EXTENSION => ZIO.attempt(unpacker.unpackTimestamp())
       case ValueType.BINARY =>
         ZIO.attempt {
           val length = unpacker.unpackBinaryHeader()
@@ -44,13 +44,13 @@ object PropertyValue:
 
       case ValueType.ARRAY =>
         for
-          length <- ZIO.attempt { unpacker.unpackArrayHeader() }
+          length <- ZIO.attempt(unpacker.unpackArrayHeader())
           v <- unpackToVector(length)
         yield PropertyArrayValue(v)
 
       case ValueType.MAP =>
         for
-          length <- ZIO.attempt { unpacker.unpackMapHeader() }
+          length <- ZIO.attempt(unpacker.unpackMapHeader())
           m <- unpackToMap(length)
         yield PropertyMapValue(m)
   }.refineOrDie(UnpackFailure.refine)
@@ -98,7 +98,7 @@ object PropertyValue:
         unpacker: MessageUnpacker
     ): IO[UnpackFailure, (String, ScalarType)] = {
       for
-        k <- ZIO.attempt { unpacker.unpackString() }
+        k <- ZIO.attempt(unpacker.unpackString())
         v <- unpackScalar
       yield k -> v
     }.refineOrDie(UnpackFailure.refine)

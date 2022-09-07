@@ -13,8 +13,8 @@ trait NodeDataService:
     */
   def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, NodeHistory]
 
-  /** Append an EventsAtTime to a node's persisted history. Within the historyfor a Node, the (time, sequence) must
-    * be unique. Within a time, the sequence numbers should be a dense sequence starting at zero.
+  /** Append an EventsAtTime to a node's persisted history. Within the historyfor a Node, the (time, sequence) must be
+    * unique. Within a time, the sequence numbers should be a dense sequence starting at zero.
     */
   def append(
       id: NodeId,
@@ -67,23 +67,21 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
   override def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, NodeHistory] =
     run(quotedGet(id)).implicitly
       .mapError(SQLReadFailure(id, _))
-      .flatMap { (history: List[GraphHistory]) =>
-        ZIO.foreach(history.toVector)(_.toEventsAtTime)
-      }
+      .flatMap(history => ZIO.foreach(history.toVector)(_.toEventsAtTime))
 
   override def append(id: NodeId, eventsAtTime: EventsAtTime): IO[PersistenceFailure, Unit] =
     run(quotedAppend(GraphHistory.toGraphHistory(id, eventsAtTime))).implicitly
       .mapError(SQLWriteFailure(id, _))
       .flatMap { rowsInsertedOrUpdated =>
-        if rowsInsertedOrUpdated != 1 then ZIO.fail(CountPersistenceFailure(id, expected = 1, was = rowsInsertedOrUpdated))
+        if rowsInsertedOrUpdated != 1 then
+          ZIO.fail(CountPersistenceFailure(id, expected = 1, was = rowsInsertedOrUpdated))
         else ZIO.unit
       }
 
 object NodeDataService {
   val layer: URLayer[DataSource, NodeDataService] =
     ZLayer {
-      for
-        ds <- ZIO.service[DataSource]
+      for ds <- ZIO.service[DataSource]
       yield NodeDataServiceLive(ds)
     }
 }

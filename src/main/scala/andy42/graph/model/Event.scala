@@ -43,13 +43,13 @@ object Event extends Unpackable[Event]:
 
   def unpackPropertyAdded(using unpacker: MessageUnpacker): IO[UnpackFailure, PropertyAdded] = {
     for
-      k <- ZIO.attempt { unpacker.unpackString() }
+      k <- ZIO.attempt(unpacker.unpackString())
       value <- PropertyValue.unpack
     yield PropertyAdded(k, value)
   }.refineOrDie(UnpackFailure.refine)
 
   def unpackPropertyRemoved(using unpacker: MessageUnpacker): IO[UnpackFailure, PropertyRemoved] = {
-    for k <- ZIO.attempt { unpacker.unpackString() } yield PropertyRemoved(k)
+    for k <- ZIO.attempt ( unpacker.unpackString() ) yield PropertyRemoved(k)
   }.refineOrDie(UnpackFailure.refine)
 
   def unpackEdgeAdded(isFar: Boolean)(using unpacker: MessageUnpacker): IO[UnpackFailure, EdgeAdded | FarEdgeAdded] =
@@ -64,9 +64,9 @@ object Event extends Unpackable[Event]:
 
   private def unpackEdge(using unpacker: MessageUnpacker): IO[UnpackFailure, Edge] = {
     for
-      k <- ZIO.attempt { unpacker.unpackString() }
-      length <- ZIO.attempt { unpacker.unpackBinaryHeader() }
-      other <- ZIO.attempt { unpacker.readPayload(length).toVector }
+      k <- ZIO.attempt (unpacker.unpackString() )
+      length <- ZIO.attempt (unpacker.unpackBinaryHeader() )
+      other <- ZIO.attempt (unpacker.readPayload(length).toVector )
     yield Edge(k, other)
   }.refineOrDie(UnpackFailure.refine)
 
@@ -145,7 +145,7 @@ object Events:
     given unpacker: MessageUnpacker = MessagePack.newDefaultUnpacker(packed)
 
     for
-      length <- ZIO.attempt { unpacker.unpackInt() }
+      length <- ZIO.attempt (unpacker.unpackInt() )
       events <- unpackToVector(Event.unpack, length)
     yield events
   }.refineOrDie(UnpackFailure.refine)

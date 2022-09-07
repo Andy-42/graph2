@@ -35,7 +35,7 @@ trait Graph:
       properties: PropertiesAtTime = Map.empty,
       edges: EdgesAtTime = Set.empty
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
-    val propertyEvents = properties.map { case (k, v) => PropertyAdded(k, v) }
+    val propertyEvents = properties.map((k, v) => PropertyAdded(k, v))
     val edgeEvents = edges.map(EdgeAdded(_))
     val allEvents = (propertyEvents ++ edgeEvents).toVector
 

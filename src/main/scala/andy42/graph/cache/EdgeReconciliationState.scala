@@ -89,7 +89,7 @@ final case class EdgeReconciliationState(
       for
         edgeReconciliationDataService <- ZIO.service[EdgeReconciliationDataService]
         reconciliationStateWithExpiredWindowsRemoved <-
-          ZIO.foreach(edgeHashes.take(expiredWindowCount).zipWithIndex) { case (edgeHash, i) =>
+          ZIO.foreach(edgeHashes.take(expiredWindowCount).zipWithIndex) { (edgeHash, i) =>
             if edgeHash == 0L then
               ZIO.logInfo("Edge hash reconciled.")
               @@ windowStartAnnotation (i.indexToWindowStart)

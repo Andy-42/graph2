@@ -82,7 +82,7 @@ final case class NodeCacheLive(
     for
       currentOldest <- oldest.get
       newOldest = lastTimeToPurge(currentOldest, now)
-      _ <- items.removeIfDiscard { case (_, v) => v.lastAccess < newOldest }
+      _ <- items.removeIfDiscard((_, cacheItem) => cacheItem.lastAccess < newOldest)
       _ <- oldest.set(newOldest)
     yield ()
 
