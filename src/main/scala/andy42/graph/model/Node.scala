@@ -71,7 +71,7 @@ final case class NodeFromPackedHistory(
 ) extends Node {
 
   override lazy val eventsAtTime: IO[UnpackFailure, Vector[EventsAtTime]] =
-    EventHistory.unpack(MessagePack.newDefaultUnpacker(packed))
+    EventHistory.unpack(using MessagePack.newDefaultUnpacker(packed))
 
   override def append(events: Vector[Event], atTime: EventTime): IO[UnpackFailure, Node] = {
     require(atTime >= latestEventTime)

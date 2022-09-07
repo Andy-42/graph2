@@ -2,6 +2,7 @@ package andy42.graph.model
 
 import andy42.graph.model.PropertyValue
 import andy42.graph.model.UnpackOperations.unpackToVector
+import org.msgpack.core.MessageBufferPacker
 import org.msgpack.core.MessagePack
 import org.msgpack.core.MessagePacker
 import org.msgpack.core.MessageUnpacker
@@ -20,7 +21,7 @@ object EventType {
 }
 
 sealed trait Event extends Packable {
-  override def pack(implicit packer: MessagePacker): MessagePacker
+  override def pack(using packer: MessagePacker): MessagePacker
 }
 
 type NearEdgeEvent = EdgeAdded | EdgeRemoved
@@ -28,7 +29,7 @@ type FarEdgeEvent = FarEdgeAdded | FarEdgeRemoved
 
 object Event extends Unpackable[Event] {
 
-  override def unpack(implicit
+  override def unpack(using
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, Event] = {
     unpacker.unpackByte() match
@@ -44,7 +45,7 @@ object Event extends Unpackable[Event] {
         ZIO.fail(UnexpectedDiscriminator(unexpectedEventType, "EventType"))
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpackPropertyAdded(implicit
+  def unpackPropertyAdded(using
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, PropertyAdded] = {
     for
@@ -53,7 +54,7 @@ object Event extends Unpackable[Event] {
     yield PropertyAdded(k, value)
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpackPropertyRemoved(implicit
+  def unpackPropertyRemoved(using
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, PropertyRemoved] = {
     for
@@ -61,19 +62,19 @@ object Event extends Unpackable[Event] {
     yield PropertyRemoved(k)
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpackEdgeAdded(isFar: Boolean)(implicit
+  def unpackEdgeAdded(isFar: Boolean)(using
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, EdgeAdded | FarEdgeAdded] =
     for edge <- unpackEdge
     yield if isFar then FarEdgeAdded(edge) else EdgeAdded(edge)
 
-  def unpackEdgeRemoved(isFar: Boolean)(implicit
+  def unpackEdgeRemoved(isFar: Boolean)(using
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, EdgeRemoved | FarEdgeRemoved] =
     for edge <- unpackEdge
     yield if isFar then FarEdgeRemoved(edge) else EdgeRemoved(edge)
 
-  private def unpackEdge(implicit
+  private def unpackEdge(using
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, Edge] = {
     for
@@ -86,13 +87,13 @@ object Event extends Unpackable[Event] {
 
 case object NodeRemoved extends Event {
 
-  override def pack(implicit packer: MessagePacker): MessagePacker =
+  override def pack(using packer: MessagePacker): MessagePacker =
     packer.packByte(EventType.NODE_REMOVED)
 }
 
 final case class PropertyAdded(k: String, value: PropertyValueType) extends Event {
 
-  override def pack(implicit packer: MessagePacker): MessagePacker = {
+  override def pack(using packer: MessagePacker): MessagePacker = {
     packer
       .packByte(EventType.PROPERTY_ADDED)
       .packString(k)
@@ -104,7 +105,7 @@ final case class PropertyAdded(k: String, value: PropertyValueType) extends Even
 
 final case class PropertyRemoved(k: String) extends Event {
 
-  override def pack(implicit packer: MessagePacker): MessagePacker =
+  override def pack(using packer: MessagePacker): MessagePacker =
     packer
       .packByte(EventType.PROPERTY_REMOVED)
       .packString(k)
@@ -116,7 +117,7 @@ trait EdgeEvent {
 
 final case class EdgeAdded(edge: Edge) extends Event with EdgeEvent {
 
-  override def pack(implicit packer: MessagePacker): MessagePacker =
+  override def pack(using packer: MessagePacker): MessagePacker =
     packer
       .packByte(EventType.EDGE_ADDED)
       .packString(edge.k)
@@ -126,7 +127,7 @@ final case class EdgeAdded(edge: Edge) extends Event with EdgeEvent {
 
 final case class FarEdgeAdded(edge: Edge) extends Event with EdgeEvent {
 
-  override def pack(implicit packer: MessagePacker): MessagePacker =
+  override def pack(using packer: MessagePacker): MessagePacker =
     packer
       .packByte(EventType.FAR_EDGE_ADDED)
       .packString(edge.k)
@@ -136,7 +137,7 @@ final case class FarEdgeAdded(edge: Edge) extends Event with EdgeEvent {
 
 final case class EdgeRemoved(edge: Edge) extends Event with EdgeEvent {
 
-  override def pack(implicit packer: MessagePacker): MessagePacker =
+  override def pack(using packer: MessagePacker): MessagePacker =
     packer
       .packByte(EventType.EDGE_REMOVED)
       .packString(edge.k)
@@ -146,7 +147,7 @@ final case class EdgeRemoved(edge: Edge) extends Event with EdgeEvent {
 
 final case class FarEdgeRemoved(edge: Edge) extends Event with EdgeEvent {
 
-  override def pack(implicit packer: MessagePacker): MessagePacker =
+  override def pack(using packer: MessagePacker): MessagePacker =
     packer
       .packByte(EventType.FAR_EDGE_REMOVED)
       .packString(edge.k)
@@ -158,7 +159,7 @@ object Events {
 
   def pack(events: Vector[Event]): Array[Byte] = {
 
-    implicit val packer = MessagePack.newDefaultBufferPacker()
+    given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
 
     packer.packInt(events.length)
     events.foreach(_.pack)
@@ -167,7 +168,7 @@ object Events {
 
   def unpack(packed: Array[Byte]): IO[UnpackFailure, Vector[Event]] = {
 
-    implicit val unpacker: MessageUnpacker = MessagePack.newDefaultUnpacker(packed)
+    given unpacker: MessageUnpacker = MessagePack.newDefaultUnpacker(packed)
 
     for
        length <- ZIO.attempt { unpacker.unpackInt() }

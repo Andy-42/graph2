@@ -9,7 +9,7 @@ import java.io.IOException
 
 object PropertyValue {
 
-  private def unpackScalar(implicit
+  private def unpackScalar(using
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, ScalarType] = {
     unpacker.getNextFormat.getValueType match
@@ -30,7 +30,7 @@ object PropertyValue {
         ZIO.fail(UnexpectedValueType(valueType, "unpackScalar"))
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpack(implicit
+  def unpack(using
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, PropertyValueType] = {
     unpacker.getNextFormat.getValueType match
@@ -59,7 +59,7 @@ object PropertyValue {
         yield PropertyMapValue(m)
   }.refineOrDie(UnpackFailure.refine)
 
-  def pack(value: PropertyValueType)(implicit packer: MessagePacker): Unit =
+  def pack(value: PropertyValueType)(using packer: MessagePacker): Unit =
     value match
       case ()         => packer.packNil()
       case v: Boolean => packer.packBoolean(v)
@@ -84,7 +84,7 @@ object PropertyValue {
 
   private def unpackToVector(
       length: Int
-  )(implicit
+  )(using
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, Vector[ScalarType]] = {
     val a = Array.ofDim[ScalarType](length)
@@ -103,12 +103,12 @@ object PropertyValue {
 
   private def unpackToMap(
       length: Int
-  )(implicit
+  )(using
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, Map[String, ScalarType]] = {
     val a = Array.ofDim[(String, ScalarType)](length)
 
-    def nextKV(implicit
+    def nextKV(using
         unpacker: MessageUnpacker
     ): IO[UnpackFailure, (String, ScalarType)] = {
       for

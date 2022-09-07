@@ -47,7 +47,7 @@ final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeR
       )
   }
 
-  implicit val env: Implicit[DataSource] = Implicit(ds)
+  given Implicit[DataSource] = Implicit(ds)
 
   def runMarkWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit] =
     run(markWindow(edgeReconciliation)).implicitly

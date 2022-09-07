@@ -47,8 +47,8 @@ final case class EventsAtTime(
   }
 
   def toByteArray: Array[Byte] = {
-    implicit val packer = MessagePack.newDefaultBufferPacker()
-    pack
+    val packer = MessagePack.newDefaultBufferPacker()
+    pack(packer)
     packer.toByteArray()
   }
 }
@@ -57,7 +57,7 @@ object EventsAtTime extends Unpackable[EventsAtTime] {
 
   val empty = EventsAtTime(StartOfTime, 0, Vector.empty)
 
-  override def unpack(implicit
+  override def unpack(using
       unpacker: MessageUnpacker
   ): IO[UnpackFailure, EventsAtTime] = {
     for

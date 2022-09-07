@@ -47,7 +47,7 @@ object GraphHistory {
 
 final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService {
 
-  val ctx = new PostgresZioJdbcContext(Literal)
+  val ctx = PostgresZioJdbcContext(Literal)
   import ctx._
 
   inline def graph = quote { query[GraphHistory] }
@@ -66,7 +66,7 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService {
       .onConflictUpdate(_.id, _.eventTime, _.sequence)((table, excluded) => table.events -> excluded.events)
   }
 
-  implicit val env: Implicit[DataSource] = Implicit(ds)
+  given Implicit[DataSource] = Implicit(ds)
 
   override def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, Vector[EventsAtTime]] =
     run(quotedGet(id)).implicitly
