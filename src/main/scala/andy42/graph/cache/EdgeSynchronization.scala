@@ -69,7 +69,7 @@ case class EdgeSynchronizationLive(
       }
     yield ()
 
-  // TODO: Need unit tests on hash reconciliation scheme to show algebra works 
+  // TODO: Need unit tests on hash reconciliation scheme to show algebra works
 
   def startReconciliation(config: EdgeReconciliationConfig): URIO[Clock & EdgeReconciliationDataService, Unit] =
     ZStream

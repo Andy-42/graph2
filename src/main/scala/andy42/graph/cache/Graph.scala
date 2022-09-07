@@ -2,11 +2,11 @@ package andy42.graph.cache
 
 import andy42.graph.cache.NodeCache
 import andy42.graph.model
+import andy42.graph.model.EventDeduplication
 import andy42.graph.model.*
 import org.msgpack.core.MessagePack
 import zio.*
 import zio.stm.*
-import andy42.graph.model.EventDeduplication
 
 /*
  * This is the entry point to applying any change to a node.
@@ -129,10 +129,8 @@ case class GraphLive(
 
             if eventsWithEffect.isEmpty then
               ZIO.succeed(NodeWithNewEvents(node = node, optionEventsAtTime = None, mustPersist = false))
-            else if atTime >= nodeStateAtTime.eventTime then
-              appendEventsToEndOfHistory(node, eventsWithEffect, atTime)
-            else
-              mergeInNewEvents(node = node, newEvents = eventsWithEffect, atTime = atTime)
+            else if atTime >= nodeStateAtTime.eventTime then appendEventsToEndOfHistory(node, eventsWithEffect, atTime)
+            else mergeInNewEvents(node = node, newEvents = eventsWithEffect, atTime = atTime)
           }
 
       // Persist and cache only if there were some changes
@@ -145,7 +143,6 @@ case class GraphLive(
       // since we may be re-processing a change and we have to guarantee that the events were processed.
       _ <- standingQueryEvaluation.nodeChanged(nodeWithNewEvents.node, deduplicatedEvents)
       _ <- edgeSynchronization.eventsAppended(nodeWithNewEvents.node.id, atTime, deduplicatedEvents)
-
     yield nodeWithNewEvents.node
   }
 

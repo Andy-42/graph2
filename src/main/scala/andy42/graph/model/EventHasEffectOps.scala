@@ -8,7 +8,6 @@ object EventHasEffectOps {
     if !events.exists(hasEffect(_, nodeState)) then events
     else events.filter(hasEffect(_, nodeState))
 
-
   def hasEffect(event: Event, nodeState: NodeStateAtTime): Boolean =
     event match
       case NodeRemoved =>

@@ -1,12 +1,13 @@
 package andy42.graph.model
 
-import org.msgpack.core.{MessagePacker, MessageUnpacker, MessagePack}
 import andy42.graph.model.PropertyValue
 import andy42.graph.model.UnpackOperations.unpackToVector
+import org.msgpack.core.MessagePack
+import org.msgpack.core.MessagePacker
+import org.msgpack.core.MessageUnpacker
+import zio._
 
 import java.io.IOException
-
-import zio._
 
 object EventType {
   val NODE_REMOVED: Byte = 0.toByte

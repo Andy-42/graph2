@@ -72,8 +72,7 @@ final case class EdgeReconciliationState(
               )
           } @@ expiryThresholdAnnotation(expiryThreshold) @@ windowSizeAnnotation(windowSize)
             *> ZIO.succeed(edgeReconciliationEvents.filter(!_.atTime.isExpired)) // Keep the events that are not expired
-        else
-          ZIO.succeed(edgeReconciliationEvents)
+        else ZIO.succeed(edgeReconciliationEvents)
     yield eventsWithExpiredRemoved
   }
 

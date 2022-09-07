@@ -1,11 +1,12 @@
 package andy42.graph.model
 
 import andy42.graph.model.UnpackOperations.unpackToVector
+import org.msgpack.core.MessagePack
 import org.msgpack.core.MessagePacker
 import org.msgpack.core.MessageUnpacker
-import org.msgpack.core.MessagePack
 import zio.IO
 import zio.ZIO
+
 import java.io.IOException
 import scala.meta.tokens.Token.Interpolation.Start
 

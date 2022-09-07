@@ -7,24 +7,20 @@ object EventDeduplication {
 
   // Mutation events are always ordered from newest to oldest
 
-  /**
-   * Remove any duplicate mutation events.
-   * An event is a duplicate if a later element of `events` would cancel out this event.
-   * This is not expected to be a common occurrence, but this is done to minimize the node's journal.
-   * The implementation avoids copying (or any allocation) if there are no duplicates.
-   */
+  /** Remove any duplicate mutation events. An event is a duplicate if a later element of `events` would cancel out this
+    * event. This is not expected to be a common occurrence, but this is done to minimize the node's journal. The
+    * implementation avoids copying (or any allocation) if there are no duplicates.
+    */
   def deduplicateWithinEvents(events: Vector[Event]): Vector[Event] =
-    if !events.indices.exists(i => isDuplicatedLaterAt(events, i)) then
-      events
-    else 
+    if !events.indices.exists(i => isDuplicatedLaterAt(events, i)) then events
+    else
       val buffer = mutable.ArrayBuffer.empty[Event]
       buffer.sizeHint(events.length - 1)
 
       @tailrec
       def accumulate(i: Int = 0): Vector[Event] =
-        if i == events.length then
-          buffer.toVector
-        else 
+        if i == events.length then buffer.toVector
+        else
           if !isDuplicatedLaterAt(events, i) then buffer += events(i)
           accumulate(i = i + 1)
 
@@ -46,24 +42,24 @@ object EventDeduplication {
   def isDuplicatePropertyEvent(k1: String, laterEvent: Event): Boolean =
     laterEvent match
       case PropertyAdded(k2, _) => k1 == k2
-      case PropertyRemoved(k2) => k1 == k2
-      case _ => false
+      case PropertyRemoved(k2)  => k1 == k2
+      case _                    => false
 
   def isDuplicateEdgeEvent(edge1: Edge, laterEvent: Event): Boolean =
     laterEvent match
-      case EdgeAdded(edge2) => edge1 == edge2
+      case EdgeAdded(edge2)   => edge1 == edge2
       case EdgeRemoved(edge2) => edge1 == edge2
-      case _ => false
+      case _                  => false
 
   def eventIsDuplicatedBy(event: Event, laterEvent: Event): Boolean =
     event match
       case NodeRemoved => laterEvent == NodeRemoved
 
       case PropertyAdded(k, _) => isDuplicatePropertyEvent(k, laterEvent)
-      case PropertyRemoved(k) => isDuplicatePropertyEvent(k, laterEvent)
+      case PropertyRemoved(k)  => isDuplicatePropertyEvent(k, laterEvent)
 
-      case EdgeAdded(edge) => isDuplicateEdgeEvent(edge, laterEvent)
-      case EdgeRemoved(edge) => isDuplicateEdgeEvent(edge, laterEvent)
-      case FarEdgeAdded(edge) => isDuplicateEdgeEvent(edge, laterEvent)
+      case EdgeAdded(edge)      => isDuplicateEdgeEvent(edge, laterEvent)
+      case EdgeRemoved(edge)    => isDuplicateEdgeEvent(edge, laterEvent)
+      case FarEdgeAdded(edge)   => isDuplicateEdgeEvent(edge, laterEvent)
       case FarEdgeRemoved(edge) => isDuplicateEdgeEvent(edge, laterEvent)
 }

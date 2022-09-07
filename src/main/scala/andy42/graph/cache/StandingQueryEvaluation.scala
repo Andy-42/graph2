@@ -1,10 +1,10 @@
 package andy42.graph.cache
 
+import andy42.graph.model.Event
+import andy42.graph.model.Node
 import zio._
 import zio.stm.STM
 import zio.stm.TQueue
-import andy42.graph.model.Node
-import andy42.graph.model.Event
 
 /** Observe a node that is changed.
   */

@@ -6,6 +6,7 @@ import org.msgpack.core.MessagePacker
 import org.msgpack.core.MessageUnpacker
 import zio.IO
 import zio.ZIO
+
 import java.io.IOException
 
 object EventHistory extends Unpackable[Vector[EventsAtTime]] {
@@ -35,15 +36,16 @@ object EventHistory extends Unpackable[Vector[EventsAtTime]] {
     packer.toByteArray()
   }
 
-  /**
-    * Append an EventsAtTime at the end of history.
-    * This can be more efficient since it doesn't require unpacking all of history.
-    * The caller must ensure that eventsAtTime occurs after the last event (wrt. atTime, sequence)
-    * as though the eventsAtTime were unpacked.
+  /** Append an EventsAtTime at the end of history. This can be more efficient since it doesn't require unpacking all of
+    * history. The caller must ensure that eventsAtTime occurs after the last event (wrt. atTime, sequence) as though
+    * the eventsAtTime were unpacked.
     *
-    * @param packed The packed history for a node.
-    * @param eventsAtTime Events to be appended to the end of the node's history.
-    * @return The packed history, with the new EventsAtTime packed and appended to the history.
+    * @param packed
+    *   The packed history for a node.
+    * @param eventsAtTime
+    *   Events to be appended to the end of the node's history.
+    * @return
+    *   The packed history, with the new EventsAtTime packed and appended to the history.
     */
   def append(packed: Array[Byte], eventsAtTime: EventsAtTime): Array[Byte] = {
     implicit val packer = MessagePack.newDefaultBufferPacker()

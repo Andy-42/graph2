@@ -1,8 +1,8 @@
 package andy42.graph.model
 
-import zio._
-import org.msgpack.core.MessageUnpacker
 import org.msgpack.core.MessagePack
+import org.msgpack.core.MessageUnpacker
+import zio._
 
 case class NodeStateAtTime(eventTime: EventTime, sequence: Int, properties: PropertiesAtTime, edges: EdgesAtTime)
 
