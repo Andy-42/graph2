@@ -24,8 +24,7 @@ object PropertyValue:
 
       case ValueType.EXTENSION => ZIO.attempt(unpacker.unpackTimestamp())
 
-      case valueType: ValueType =>
-        ZIO.fail(UnexpectedValueType(valueType, "unpackScalar"))
+      case valueType: ValueType => ZIO.fail(UnexpectedScalarValueType(valueType))
   }.refineOrDie(UnpackFailure.refine)
 
   def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, PropertyValueType] = {
@@ -55,7 +54,7 @@ object PropertyValue:
         yield PropertyMapValue(m)
   }.refineOrDie(UnpackFailure.refine)
 
-  def pack(value: PropertyValueType)(using packer: MessagePacker): Unit =
+  def pack(value: PropertyValueType)(using packer: MessagePacker): MessagePacker =
     value match
       case ()         => packer.packNil()
       case v: Boolean => packer.packBoolean(v)
@@ -73,10 +72,12 @@ object PropertyValue:
       case PropertyArrayValue(v) =>
         packer.packArrayHeader(v.size)
         v.foreach(pack)
+        packer
 
       case PropertyMapValue(v) =>
         packer.packMapHeader(v.size)
         v.foreach { case (k, v) => packer.packString(k); pack(v) }
+        packer
 
   private def unpackToVector(length: Int)(using unpacker: MessageUnpacker): IO[UnpackFailure, Vector[ScalarType]] =
     val a = Array.ofDim[ScalarType](length)

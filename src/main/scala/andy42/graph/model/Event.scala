@@ -27,8 +27,7 @@ enum Event extends Packable:
       packer
         .packInt(ordinal)
         .packString(k)
-      PropertyValue.pack(value) // TODO: Should return MessagePacker
-      packer
+      PropertyValue.pack(value)
 
     case PropertyRemoved(k) =>
       packer
@@ -63,17 +62,12 @@ enum Event extends Packable:
         .packBinaryHeader(edge.other.length)
         .writePayload(edge.other.to(Array))
 
-  def isNearEdgeEvent: Boolean = this match
-    case _: EdgeAdded | _: EdgeRemoved => true
-    case _                             => false
-
-  def isFarEdgeEvent: Boolean = this match
-    case _: FarEdgeAdded | _: FarEdgeRemoved => true
-    case _                                   => false
-
-  def isEdgeEvent: Boolean = this match
-    case _: EdgeAdded | _: EdgeRemoved | _: FarEdgeAdded | _: FarEdgeRemoved => true
-    case _                                                                   => false
+  def edgeAffected: Option[Edge] = this match
+    case EdgeAdded(edge)      => Some(edge)
+    case EdgeRemoved(edge)    => Some(edge)
+    case FarEdgeAdded(edge)   => Some(edge)
+    case FarEdgeRemoved(edge) => Some(edge)
+    case _                    => None
 
 object Event extends Unpackable[Event]:
 

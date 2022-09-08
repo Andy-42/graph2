@@ -10,9 +10,9 @@ import java.time.temporal.ChronoUnit.MILLIS
 
 trait EdgeSynchronization:
 
-  /** Ensure any far edges are synchronized. When an edge is set, a [[NearEdgeEvent]] that represents a half-edge that
-    * is appended to the (near) node. This service will eventually append a [[FarEdgeEvent]] to the other (far) node
-    * that corresponds to the other half-edge.
+  /** Ensure any far edges are synchronized. When an edge is set, a near edge event that represents a half-edge that is
+    * appended to the (near) node. This service will eventually append a far edge event to the other (far) node that
+    * corresponds to the other half-edge.
     *
     * Propagating the edges to the far nodes is necessarily asynchronous and eventually consistent due to the lock-free
     * graph implementation. If a synchronized graph was used, it would be easy to construct a scenario where deadlock is
@@ -60,17 +60,8 @@ final case class EdgeSynchronizationLive(
         case _ => ZIO.unit
       }
 
-      _ <- ZIO.foreach(events) { // Track that both half-edges are appended for every edge
-        case Event.EdgeAdded(edge) =>
-          queue.offer(EdgeReconciliationEvent(id, time, edge))
-        case Event.EdgeRemoved(edge) =>
-          queue.offer(EdgeReconciliationEvent(id, time, edge))
-        case Event.FarEdgeAdded(edge) =>
-          queue.offer(EdgeReconciliationEvent(id, time, edge))
-        case Event.FarEdgeRemoved(edge) =>
-          queue.offer(EdgeReconciliationEvent(id, time, edge))
-
-        case _ => ZIO.unit
+      _ <- ZIO.foreach(events) { event => // Track that both half-edges are appended for every edge
+        event.edgeAffected.fold(ZIO.unit)(edge => queue.offer(EdgeReconciliationEvent(id, time, edge)))
       }
     yield ()
 
