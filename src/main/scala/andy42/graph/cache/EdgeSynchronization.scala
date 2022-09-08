@@ -45,7 +45,7 @@ final case class EdgeSynchronizationLive(
       events: Vector[Event]
   ): URIO[Clock, Unit] =
     for
-      _ <- ZIO.foreach(events) {
+      _ <- ZIO.foreach(events) { // Propagate the corresponding half-edge to the other node
 
         case EdgeAdded(edge) =>
           graph
@@ -59,7 +59,8 @@ final case class EdgeSynchronizationLive(
 
         case _ => ZIO.unit
       }
-      _ <- ZIO.foreach(events) {
+
+      _ <- ZIO.foreach(events) { // Track that both half-edges are appended for every edge
         case edgeEvent: EdgeEvent =>
           queue.offer(EdgeReconciliationEvent(id, time, edgeEvent))
 

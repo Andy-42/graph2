@@ -54,23 +54,23 @@ final case class GraphLive(
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     ZIO.scoped {
       for
-        _ <- withNodeMutationPermit(id)
+        _ <- withNodePermit(id)
 
         optionNode <- cache.get(id)
-        newOrExistingNode <- optionNode.fold {
+        node <- optionNode.fold {
           // Node does not exist in cache
-          nodeDataService.get(id).flatMap { eventsAtTime =>
-            if eventsAtTime.isEmpty then
+          nodeDataService.get(id).flatMap { nodeHistory =>
+            if nodeHistory.isEmpty then
               // Node doesn't have any history in the persisted store, so synthesize an empty node.
               // Since a node with an empty history is always considered to exist, there is no point adding it to the cache.
               ZIO.succeed(Node(id))
             else
-              val node = Node(id, eventsAtTime)
+              val node = Node(id, nodeHistory)
               // Create a node from the non-empty history and add it to the cache.
               cache.put(node) *> ZIO.succeed(node)
           }
         } { ZIO.succeed(_) } // Node was fetched from the cache
-      yield newOrExistingNode
+      yield node
     }
 
   override def append(
@@ -80,10 +80,10 @@ final case class GraphLive(
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     ZIO.scoped {
       for
-        _ <- withNodeMutationPermit(id)
+        _ <- withNodePermit(id)
 
-        existingNode <- get(id)
-        newNode <- applyEvents(time, events, existingNode)
+        node <- get(id)
+        newNode <- applyEvents(time, events, node)
       yield newNode
     }
 
@@ -95,7 +95,7 @@ final case class GraphLive(
   private def releasePermit(id: => NodeId): UIO[Unit] =
     inFlight.delete(id).commit
 
-  private def withNodeMutationPermit(id: NodeId): ZIO[Scope, Nothing, NodeId] =
+  private def withNodePermit(id: NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
   private def applyEvents(
@@ -182,19 +182,19 @@ final case class GraphLive(
     */
   private def appendEventsToEndOfHistory(
       node: Node,
-      newEvents: Vector[Event],
+      events: Vector[Event],
       time: EventTime
   ): IO[UnpackFailure, NextNodeStateAndChangesToPersist] =
-    require(newEvents.nonEmpty)
+    require(events.nonEmpty)
     require(time >= node.lastTime)
 
     val eventsAtTime = EventsAtTime(
       time = time,
       sequence = if node.lastTime == time then node.lastSequence + 1 else 0,
-      events = newEvents
+      events = events
     )
 
-    for nextNodeState <- node.append(newEvents, time)
+    for nextNodeState <- node.append(events, time)
     yield NextNodeStateAndChangesToPersist(
       nextNodeState = nextNodeState,
       changesToPersist = Some(eventsAtTime)
