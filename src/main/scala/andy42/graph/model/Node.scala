@@ -16,9 +16,12 @@ sealed trait Node:
   def lastSequence: Int
 
   def history: IO[UnpackFailure, NodeHistory]
-  def packed: Array[Byte]
+  def packed: PackedNodeContents
   def append(events: Vector[Event], time: EventTime): IO[UnpackFailure, Node]
 
+  // TODO: always reify the current state
+  // - it is either retrieved from the cache or recreated before an instance of Node is created.
+  // ALSO: Manage the cache so it purges property/edge cache for less-recently-used nodes
   lazy val current: IO[UnpackFailure, NodeStateAtTime] =
     for history <- history
     yield CollapseNodeHistory(history, lastTime)
@@ -36,12 +39,12 @@ final case class NodeFromEventsAtTime(
     version: Int,
     lastTime: EventTime,
     lastSequence: Int,
-    reifiedEventsAtTime: NodeHistory
+    reifiedNodeHistory: NodeHistory
 ) extends Node:
 
-  override lazy val packed: Array[Byte] = EventHistory.packToArray(reifiedEventsAtTime)
+  override lazy val packed: Array[Byte] = EventHistory.packToArray(reifiedNodeHistory)
 
-  override def history: UIO[NodeHistory] = ZIO.succeed(reifiedEventsAtTime)
+  override def history: UIO[NodeHistory] = ZIO.succeed(reifiedNodeHistory)
 
   override def append(events: Vector[Event], time: EventTime): IO[UnpackFailure, Node] =
     require(time >= lastTime)
@@ -53,11 +56,11 @@ final case class NodeFromEventsAtTime(
         version = version + 1,
         lastTime = time,
         lastSequence = sequence,
-        reifiedEventsAtTime = reifiedEventsAtTime :+ EventsAtTime(time, sequence, events)
+        reifiedNodeHistory = reifiedNodeHistory :+ EventsAtTime(time, sequence, events)
       )
     )
 
-  override def wasAlwaysEmpty: Boolean = reifiedEventsAtTime.isEmpty
+  override def wasAlwaysEmpty: Boolean = reifiedNodeHistory.isEmpty
 
 final case class NodeFromPackedHistory(
     id: NodeId,
@@ -96,7 +99,7 @@ object Node:
       version = history.length,
       lastTime = history.lastOption.fold(StartOfTime)(_.time),
       lastSequence = history.lastOption.fold(0)(_.sequence),
-      reifiedEventsAtTime = history
+      reifiedNodeHistory = history
     )
 
   def apply(
