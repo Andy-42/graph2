@@ -44,7 +44,7 @@ object EventHistory extends Unpackable[NodeHistory]:
     * @return
     *   The packed history, with the new EventsAtTime packed and appended to the history.
     */
-  def append(packed: Array[Byte], eventsAtTime: EventsAtTime): Array[Byte] =
+  def append(packed: PackedNodeContents, eventsAtTime: EventsAtTime): Array[Byte] =
     implicit val packer = MessagePack.newDefaultBufferPacker()
     eventsAtTime.pack
     packed ++ packer.toByteArray()
