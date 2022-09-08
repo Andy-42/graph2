@@ -30,9 +30,9 @@ trait EdgeSynchronization:
 final case class EdgeReconciliationEvent(
     id: NodeId,
     time: EventTime,
-    event: EdgeEvent
+    edge: Edge
 ):
-  def edgeHash: Long = event.edge.edgeHash(id)
+  def edgeHash: Long = edge.edgeHash(id)
 
 final case class EdgeSynchronizationLive(
     graph: Graph,
@@ -47,22 +47,28 @@ final case class EdgeSynchronizationLive(
     for
       _ <- ZIO.foreach(events) { // Propagate the corresponding half-edge to the other node
 
-        case EdgeAdded(edge) =>
+        case Event.EdgeAdded(edge) =>
           graph
-            .append(edge.other, time, Vector(FarEdgeAdded(edge.reverse(id))))
+            .append(edge.other, time, Vector(Event.FarEdgeAdded(edge.reverse(id))))
             .fork // TODO: Handle fiber exit
 
-        case EdgeRemoved(edge) =>
+        case Event.EdgeRemoved(edge) =>
           graph
-            .append(edge.other, time, Vector(FarEdgeRemoved(edge.reverse(id))))
+            .append(edge.other, time, Vector(Event.FarEdgeRemoved(edge.reverse(id))))
             .fork // TODO: Handle fiber exit
 
         case _ => ZIO.unit
       }
 
       _ <- ZIO.foreach(events) { // Track that both half-edges are appended for every edge
-        case edgeEvent: EdgeEvent =>
-          queue.offer(EdgeReconciliationEvent(id, time, edgeEvent))
+        case Event.EdgeAdded(edge) =>
+          queue.offer(EdgeReconciliationEvent(id, time, edge))
+        case Event.EdgeRemoved(edge) =>
+          queue.offer(EdgeReconciliationEvent(id, time, edge))
+        case Event.FarEdgeAdded(edge) =>
+          queue.offer(EdgeReconciliationEvent(id, time, edge))
+        case Event.FarEdgeRemoved(edge) =>
+          queue.offer(EdgeReconciliationEvent(id, time, edge))
 
         case _ => ZIO.unit
       }

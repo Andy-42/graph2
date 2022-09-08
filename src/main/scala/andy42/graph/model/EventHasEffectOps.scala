@@ -10,23 +10,23 @@ object EventHasEffectOps:
 
   def hasEffect(event: Event, nodeState: NodeStateAtTime): Boolean =
     event match
-      case NodeRemoved =>
+      case Event.NodeRemoved =>
         nodeState.properties.nonEmpty || nodeState.edges.nonEmpty
 
-      case PropertyAdded(k, value) =>
+      case Event.PropertyAdded(k, value) =>
         nodeState.properties.get(k).fold(true)(_ == value)
 
-      case PropertyRemoved(k) =>
+      case Event.PropertyRemoved(k) =>
         nodeState.properties.contains(k)
 
-      case EdgeAdded(edge) =>
+      case Event.EdgeAdded(edge) =>
         !nodeState.edges.contains(edge)
 
-      case FarEdgeAdded(edge) =>
+      case Event.FarEdgeAdded(edge) =>
         !nodeState.edges.contains(edge)
 
-      case EdgeRemoved(edge) =>
+      case Event.EdgeRemoved(edge) =>
         nodeState.edges.contains(edge)
 
-      case FarEdgeRemoved(edge) =>
+      case Event.FarEdgeRemoved(edge) =>
         nodeState.edges.contains(edge)

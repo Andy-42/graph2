@@ -35,8 +35,8 @@ trait Graph:
       properties: PropertiesAtTime = Map.empty,
       edges: EdgesAtTime = Set.empty
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
-    val propertyEvents = properties.map((k, v) => PropertyAdded(k, v))
-    val edgeEvents = edges.map(EdgeAdded(_))
+    val propertyEvents = properties.map((k, v) => Event.PropertyAdded(k, v))
+    val edgeEvents = edges.map(Event.EdgeAdded(_))
     val allEvents = (propertyEvents ++ edgeEvents).toVector
 
     if allEvents.isEmpty then get(id) else append(id, time, allEvents)

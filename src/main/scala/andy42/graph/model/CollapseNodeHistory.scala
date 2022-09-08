@@ -28,26 +28,26 @@ object CollapseNodeHistory:
       event <- eventsAtTime.events
     do
       event match
-        case NodeRemoved =>
+        case Event.NodeRemoved =>
           properties = Map.empty
           edges = Set.empty
 
-        case PropertyAdded(k, value) =>
+        case Event.PropertyAdded(k, value) =>
           properties = properties + (k -> value)
 
-        case PropertyRemoved(k) =>
+        case Event.PropertyRemoved(k) =>
           properties = properties - k
 
-        case EdgeAdded(edge) =>
+        case Event.EdgeAdded(edge) =>
           edges = edges + edge
 
-        case FarEdgeAdded(edge) =>
+        case Event.FarEdgeAdded(edge) =>
           edges = edges + edge
 
-        case EdgeRemoved(edge) =>
+        case Event.EdgeRemoved(edge) =>
           edges = edges - edge
 
-        case FarEdgeRemoved(edge) =>
+        case Event.FarEdgeRemoved(edge) =>
           edges = edges - edge
 
     NodeStateAtTime(

@@ -34,24 +34,24 @@ object EventDeduplication:
 
   def isDuplicatePropertyEvent(k1: String, laterEvent: Event): Boolean =
     laterEvent match
-      case PropertyAdded(k2, _) => k1 == k2
-      case PropertyRemoved(k2)  => k1 == k2
+      case Event.PropertyAdded(k2, _) => k1 == k2
+      case Event.PropertyRemoved(k2)  => k1 == k2
       case _                    => false
 
   def isDuplicateEdgeEvent(edge1: Edge, laterEvent: Event): Boolean =
     laterEvent match
-      case EdgeAdded(edge2)   => edge1 == edge2
-      case EdgeRemoved(edge2) => edge1 == edge2
+      case Event.EdgeAdded(edge2)   => edge1 == edge2
+      case Event.EdgeRemoved(edge2) => edge1 == edge2
       case _                  => false
 
   def eventIsDuplicatedBy(event: Event, laterEvent: Event): Boolean =
     event match
-      case NodeRemoved => laterEvent == NodeRemoved
+      case Event.NodeRemoved => laterEvent == Event.NodeRemoved
 
-      case PropertyAdded(k, _) => isDuplicatePropertyEvent(k, laterEvent)
-      case PropertyRemoved(k)  => isDuplicatePropertyEvent(k, laterEvent)
+      case Event.PropertyAdded(k, _) => isDuplicatePropertyEvent(k, laterEvent)
+      case Event.PropertyRemoved(k)  => isDuplicatePropertyEvent(k, laterEvent)
 
-      case EdgeAdded(edge)      => isDuplicateEdgeEvent(edge, laterEvent)
-      case EdgeRemoved(edge)    => isDuplicateEdgeEvent(edge, laterEvent)
-      case FarEdgeAdded(edge)   => isDuplicateEdgeEvent(edge, laterEvent)
-      case FarEdgeRemoved(edge) => isDuplicateEdgeEvent(edge, laterEvent)
+      case Event.EdgeAdded(edge)      => isDuplicateEdgeEvent(edge, laterEvent)
+      case Event.EdgeRemoved(edge)    => isDuplicateEdgeEvent(edge, laterEvent)
+      case Event.FarEdgeAdded(edge)   => isDuplicateEdgeEvent(edge, laterEvent)
+      case Event.FarEdgeRemoved(edge) => isDuplicateEdgeEvent(edge, laterEvent)
