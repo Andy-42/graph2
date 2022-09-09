@@ -18,10 +18,10 @@ object CollapseNodeHistory:
   def apply(
       history: NodeHistory,
       time: EventTime = EndOfTime
-  ): NodeStateAtTime =
+  ): NodeSnapshot =
 
-    var properties: PropertiesAtTime = Map.empty
-    var edges: EdgesAtTime = Set.empty
+    var properties: PropertySnapshot = PropertySnapshot.empty
+    var edges: EdgeSnapshot = EdgeSnapshot.empty
 
     for
       eventsAtTime <- history if eventsAtTime.time <= time
@@ -50,7 +50,7 @@ object CollapseNodeHistory:
         case Event.FarEdgeRemoved(edge) =>
           edges = edges - edge
 
-    NodeStateAtTime(
+    NodeSnapshot(
       time = history.lastOption.fold(StartOfTime)(_.time),
       sequence = history.lastOption.fold(0)(_.sequence),
       properties = properties,

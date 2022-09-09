@@ -32,8 +32,8 @@ trait Graph:
   def append(
       id: NodeId,
       time: EventTime,
-      properties: PropertiesAtTime = Map.empty,
-      edges: EdgesAtTime = Set.empty
+      properties: PropertySnapshot = Map.empty,
+      edges: EdgeSnapshot = Set.empty
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
     val propertyEvents = properties.map((k, v) => Event.PropertyAdded(k, v))
     val edgeEvents = edges.map(Event.EdgeAdded(_))
@@ -63,7 +63,7 @@ final case class GraphLive(
             if nodeHistory.isEmpty then
               // Node doesn't have any history in the persisted store, so synthesize an empty node.
               // Since a node with an empty history is always considered to exist, there is no point adding it to the cache.
-              ZIO.succeed(Node(id))
+              ZIO.succeed(Node.empty(id))
             else
               val node = Node(id, nodeHistory)
               // Create a node from the non-empty history and add it to the cache.
@@ -104,15 +104,14 @@ final case class GraphLive(
       node: Node
   ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
 
-    // Eliminate any duplication within events
     val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(newEvents)
 
     for
       x <- determineNextNodeStateAndChangesToPersist(node, time, deduplicatedEvents)
 
-      _ <- x.changesToPersist.fold(ZIO.unit) {
-        nodeDataService.append(x.nextNodeState.id, _) *> cache.put(x.nextNodeState)
-      }
+      // Persist to the data store and cache, if necessary
+      _ <- x.changesToPersist.fold(ZIO.unit)(nodeDataService.append(x.nextNodeState.id, _))
+      _ <- x.changesToPersist.fold(ZIO.unit)(_ => cache.put(x.nextNodeState))
 
       // Handle any events that are a result of this node being appended to.
       // Note that we notify on deduplicated events and not on the events being persisted.
@@ -138,15 +137,15 @@ final case class GraphLive(
         )
       }
     else
-      node.atTime(time).flatMap { nodeStateAtTime =>
+      node.atTime(time).flatMap { nodeSnapshot =>
 
         // Discard any events that would have no effect on the state at that point in time
         val eventsWithEffect =
-          EventHasEffectOps.filterHasEffect(events = events, nodeState = nodeStateAtTime)
+          EventHasEffectOps.filterHasEffect(events = events, nodeSnapshot = nodeSnapshot)
 
         if eventsWithEffect.isEmpty then
           ZIO.succeed(NextNodeStateAndChangesToPersist(nextNodeState = node, changesToPersist = None))
-        else if time >= nodeStateAtTime.time then appendEventsToEndOfHistory(node, eventsWithEffect, time)
+        else if time >= nodeSnapshot.time then appendEventsToEndOfHistory(node, eventsWithEffect, time)
         else mergeInNewEvents(node = node, newEvents = eventsWithEffect, time = time)
       }
 

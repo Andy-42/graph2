@@ -32,7 +32,7 @@ final case class EdgeReconciliationEvent(
     time: EventTime,
     edge: Edge
 ):
-  def edgeHash: Long = edge.edgeHash(id)
+  def edgeHash: Long = edge.hash(id)
 
 final case class EdgeSynchronizationLive(
     graph: Graph,

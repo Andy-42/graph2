@@ -2,9 +2,15 @@ package andy42.graph.model
 
 import org.msgpack.core.MessagePack
 import org.msgpack.core.MessageUnpacker
+import org.msgpack.core.MessageBufferPacker
+import andy42.graph.model.NodeHistory
 import zio._
 
-final case class NodeStateAtTime(time: EventTime, sequence: Int, properties: PropertiesAtTime, edges: EdgesAtTime)
+final case class NodeSnapshot(time: EventTime, sequence: Int, properties: PropertySnapshot, edges: EdgeSnapshot)
+
+object NodeSnapshot:
+  val empty =
+    NodeSnapshot(time = StartOfTime, sequence = 0, properties = PropertySnapshot.empty, edges = EdgeSnapshot.empty)
 
 type PackedNodeContents = Array[Byte]
 
@@ -15,22 +21,23 @@ sealed trait Node:
   def lastTime: EventTime
   def lastSequence: Int
 
+  def properties: IO[UnpackFailure, PropertySnapshot]
+  def edges: IO[UnpackFailure, EdgeSnapshot]
+
   def history: IO[UnpackFailure, NodeHistory]
   def packed: PackedNodeContents
+
   def append(events: Vector[Event], time: EventTime): IO[UnpackFailure, Node]
 
-  // TODO: always reify the current state
-  // - it is either retrieved from the cache or recreated before an instance of Node is created.
-  // ALSO: Manage the cache so it purges property/edge cache for less-recently-used nodes
-  lazy val current: IO[UnpackFailure, NodeStateAtTime] =
-    for history <- history
-    yield CollapseNodeHistory(history, lastTime)
-
-  def atTime(time: EventTime): IO[UnpackFailure, NodeStateAtTime] =
-    if time >= lastTime then current
+  def atTime(time: EventTime): IO[UnpackFailure, NodeSnapshot] =
+    if time >= lastTime then
+      for
+        properties <- properties
+        edges <- edges
+      yield NodeSnapshot(time = lastTime, sequence = lastSequence, properties = properties, edges = edges)
     else
-      for history <- history
-      yield CollapseNodeHistory(history, time)
+      for nodeHistory <- history
+      yield CollapseNodeHistory(nodeHistory, time)
 
   def wasAlwaysEmpty: Boolean
 
@@ -42,7 +49,16 @@ final case class NodeFromEventsAtTime(
     reifiedNodeHistory: NodeHistory
 ) extends Node:
 
-  override lazy val packed: Array[Byte] = EventHistory.packToArray(reifiedNodeHistory)
+  override lazy val packed: PackedNodeContents = EventHistory.packToArray(reifiedNodeHistory)
+
+  val nodeSnapshot: IO[UnpackFailure, NodeSnapshot] =
+    ZIO.succeed(CollapseNodeHistory(reifiedNodeHistory)) // TODO: .memoize
+
+  override def properties: IO[UnpackFailure, PropertySnapshot] =
+    nodeSnapshot.map(_.properties)
+
+  override def edges: IO[UnpackFailure, EdgeSnapshot] =
+    nodeSnapshot.map(_.edges)
 
   override def history: UIO[NodeHistory] = ZIO.succeed(reifiedNodeHistory)
 
@@ -50,6 +66,8 @@ final case class NodeFromEventsAtTime(
     require(time >= lastTime)
 
     val sequence = if time > lastTime then 0 else lastSequence + 1
+
+    // TODO: Could move properties forward by one notch rather than forcing the copy to reload from scratch
 
     ZIO.succeed(
       copy(
@@ -67,11 +85,40 @@ final case class NodeFromPackedHistory(
     version: Int,
     lastTime: EventTime,
     lastSequence: Int,
+    reifiedProperties: PropertySnapshot | Null,
+    reifiedEdges: EdgeSnapshot | Null,
     packed: PackedNodeContents
 ) extends Node:
 
-  override lazy val history: IO[UnpackFailure, NodeHistory] =
-    EventHistory.unpack(using MessagePack.newDefaultUnpacker(packed))
+  val current: IO[UnpackFailure, NodeSnapshot] =
+    if (reifiedProperties != null && reifiedEdges != null)
+      ZIO.succeed(
+        NodeSnapshot(time = lastTime, sequence = lastSequence, properties = reifiedProperties, edges = reifiedEdges)
+      )
+    else
+      for nodeHistory <- history
+      yield CollapseNodeHistory(nodeHistory)
+
+  override val edges: IO[UnpackFailure, EdgeSnapshot] =
+    if reifiedEdges != null then ZIO.succeed(reifiedEdges)
+    else
+      for nodeSnapshot <- current
+      yield nodeSnapshot.edges
+
+  override val properties: IO[UnpackFailure, PropertySnapshot] =
+    if reifiedProperties != null then ZIO.succeed(reifiedProperties)
+    else
+      for nodeSnapshot <- current
+      yield nodeSnapshot.properties
+
+  val memoizedHistory: UIO[IO[UnpackFailure, NodeHistory]] =
+    EventHistory.unpack(using MessagePack.newDefaultUnpacker(packed)).memoize
+
+  override val history: IO[UnpackFailure, NodeHistory] =
+    for 
+      m <- memoizedHistory
+      x <- m
+    yield x
 
   override def append(events: Vector[Event], time: EventTime): IO[UnpackFailure, Node] =
     require(time >= lastTime)
@@ -90,29 +137,50 @@ final case class NodeFromPackedHistory(
 
 object Node:
 
+  // A node with an empty history
+  def empty(id: NodeId): Node =
+    NodeFromPackedHistory(
+      id = id,
+      version = 0,
+      lastTime = StartOfTime,
+      lastSequence = 0,
+      packed = Array.empty[Byte],
+      reifiedProperties = PropertySnapshot.empty,
+      reifiedEdges = EdgeSnapshot.empty
+    )
+
+  // A node being created from the persistent store
   def apply(
       id: NodeId,
-      history: NodeHistory = Vector.empty
+      history: NodeHistory
   ): Node =
+    require(history.nonEmpty) // TODO: Is this necessary?
+
     NodeFromEventsAtTime(
       id = id,
       version = history.length,
-      lastTime = history.lastOption.fold(StartOfTime)(_.time),
-      lastSequence = history.lastOption.fold(0)(_.sequence),
+      lastTime = history.last.time,
+      lastSequence = history.last.sequence,
       reifiedNodeHistory = history
     )
 
+  // A node being created from the cache
+  // The properties and/or edges may have been purged from the cache and need to be re-created.
   def apply(
       id: NodeId,
       version: Int,
-      latest: EventTime,
-      sequence: Int,
+      lastTime: EventTime,
+      lastSequence: Int,
+      properties: PropertySnapshot | Null,
+      edges: EdgeSnapshot | Null,
       packed: PackedNodeContents
   ): Node =
     NodeFromPackedHistory(
       id = id,
       version = version,
-      lastTime = latest,
-      lastSequence = sequence,
+      lastTime = lastTime,
+      lastSequence = lastSequence,
+      reifiedProperties = properties,
+      reifiedEdges = edges,
       packed = packed
     )

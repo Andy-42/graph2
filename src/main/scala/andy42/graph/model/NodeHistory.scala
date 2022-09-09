@@ -12,6 +12,14 @@ import java.io.IOException
 
 type NodeHistory = Vector[EventsAtTime]
 
+extension (nodeHistory: NodeHistory)
+  def toByteArray: Array[Byte] =
+    given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
+    EventHistory.pack(nodeHistory)
+    packer.toByteArray
+
+// TODO: /EventHistory/NodeHistory
+
 object EventHistory extends Unpackable[NodeHistory]:
 
   val empty: NodeHistory = Vector.empty
@@ -21,7 +29,7 @@ object EventHistory extends Unpackable[NodeHistory]:
     yield a
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpack(packed: Array[Byte]): IO[UnpackFailure, NodeHistory] =
+  def unpack(packed: PackedNodeContents): IO[UnpackFailure, NodeHistory] =
     EventHistory.unpack(using MessagePack.newDefaultUnpacker(packed))
 
   def pack(eventHistory: NodeHistory)(using packer: MessagePacker): MessagePacker =

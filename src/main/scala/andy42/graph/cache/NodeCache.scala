@@ -8,7 +8,7 @@ import java.time.temporal.ChronoUnit.MILLIS
 
 trait NodeCache:
   def get(id: NodeId): URIO[Clock, Option[Node]]
-  def put(node: Node): URIO[Clock, Unit]
+  def put(node: Node): ZIO[Clock, UnpackFailure, Unit]
 
 type AccessTime = Long // epoch millis
 
@@ -16,6 +16,8 @@ case class CacheItem(
     version: Int,
     lastTime: EventTime,
     lastSequence: Int,
+    properties: PropertySnapshot | Null,
+    edges: EdgeSnapshot | Null,
     packed: PackedNodeContents,
     lastAccess: AccessTime
 )
@@ -42,23 +44,31 @@ final case class NodeCacheLive(
       Node(
         id = id,
         version = item.version,
-        latest = item.lastTime,
-        sequence = item.lastSequence,
+        lastTime = item.lastTime,
+        lastSequence = item.lastSequence,
+        properties = item.properties,
+        edges = item.edges,
         packed = item.packed
       )
     }
 
-  override def put(node: Node): URIO[Clock, Unit] =
+  override def put(node: Node): ZIO[Clock, UnpackFailure, Unit] =
     for
       clock <- ZIO.service[Clock]
       now <- clock.currentTime(MILLIS)
+
+      properties <- node.properties
+      edges <- node.edges
+
       _ <- trimIfOverCapacity(now).commit
-      _ <- putSTM(node, now).commit
+      _ <- putSTM(node, now, properties, edges).commit
     yield ()
 
   private def putSTM(
       node: Node,
-      now: AccessTime
+      now: AccessTime,
+      properties: PropertySnapshot,
+      edges: EdgeSnapshot
   ): USTM[Unit] =
     for _ <- items.put(
         node.id,
@@ -66,6 +76,8 @@ final case class NodeCacheLive(
           version = node.version,
           lastTime = node.lastTime,
           lastSequence = node.lastSequence,
+          properties = properties,
+          edges = edges,
           packed = node.packed,
           lastAccess = now
         )
