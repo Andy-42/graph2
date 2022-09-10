@@ -6,9 +6,12 @@ import zio.config._
 import zio.config.magnolia.Descriptor
 import zio.config.magnolia.descriptor
 
-final case class LRUCacheConfig(
-    lruCacheCapacity: Int, // TODO: must be positive
-    fractionOfCacheToRetainOnTrim: Float
+final case class NodeCacheConfig(
+    capacity: Int, // TODO: must be positive
+    fractionToRetainOnTrim: Float,
+
+    snapshotPurgeFrequency: Duration,
+    fractionOfSnapshotsToRetainOnSnapshotPurge: Float
 )
 
 final case class EdgeReconciliationConfig(
@@ -19,5 +22,5 @@ final case class EdgeReconciliationConfig(
 )
 
 object Config:
-  val lruCacheDescriptor = descriptor[LRUCacheConfig]
+  val lruCacheDescriptor = descriptor[NodeCacheConfig]
   val edgeReconciliationDescriptor = descriptor[EdgeReconciliationConfig]

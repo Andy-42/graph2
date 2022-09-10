@@ -10,6 +10,8 @@ trait NodeCache:
   def get(id: NodeId): URIO[Clock, Option[Node]]
   def put(node: Node): ZIO[Clock, UnpackFailure, Unit]
 
+  def startSnapshotTrim: URIO[Clock, Unit]
+
 type AccessTime = Long // epoch millis
 
 case class CacheItem(
@@ -22,8 +24,10 @@ case class CacheItem(
     lastAccess: AccessTime
 )
 
+// TODO: Implement periodic trimming of properties/edges to keep only recently accessed
+
 final case class NodeCacheLive(
-    config: LRUCacheConfig,
+    config: NodeCacheConfig,
     oldest: TRef[AccessTime], // All items in the cache will have a lastAccess > oldest
     items: TMap[NodeId, CacheItem]
 ) extends NodeCache:
@@ -85,11 +89,39 @@ final case class NodeCacheLive(
     yield ()
 
   private def trimIfOverCapacity(now: AccessTime): USTM[Unit] =
-    ZSTM.ifSTM(items.size.map(_ > config.lruCacheCapacity))(
+    ZSTM.ifSTM(items.size.map(_ > config.capacity))(
       onTrue = trim(now),
       onFalse = ZSTM.unit
     )
 
+  private def trimSnapshot(now: AccessTime): USTM[Unit] =
+    for
+      oldest <- oldest.get
+      retain = lastTimeToRetainSnapshot(oldest, now)
+      _ <- items.transformValues(cacheItem =>
+        // Purge the edges and properties.
+        // This could potentially purge only one or the other, or could also be based on the size of properties/edges
+        if cacheItem.lastAccess > retain && cacheItem.properties != null then cacheItem
+        else cacheItem.copy(properties = null, edges = null)
+      )
+    yield ()
+
+  // TODO: Logging  
+  def snapshotTrim: URIO[Clock, Unit] =
+    for
+      clock <- ZIO.service[Clock]
+      now <- clock.currentTime(MILLIS)
+      _ <- trimSnapshot(now).commit
+    yield ()
+
+  private def lastTimeToRetainSnapshot(oldest: AccessTime, now: AccessTime): AccessTime =
+    now - Math.ceil((now - oldest + 1) * config.fractionOfSnapshotsToRetainOnSnapshotPurge).toLong
+
+  override def startSnapshotTrim: URIO[Clock, Unit] =
+    snapshotTrim.repeat(Schedule.spaced(config.snapshotPurgeFrequency))
+    .fork *> ZIO.unit // TODO: Handle fiber death
+
+  // TODO: Logging  
   private def trim(now: AccessTime): USTM[Unit] =
     for
       currentOldest <- oldest.get
@@ -111,21 +143,24 @@ final case class NodeCacheLive(
     *   A new value for oldest that can be used to remove some fraction of the oldest cache items.
     */
   private def lastTimeToPurge(oldest: AccessTime, now: AccessTime): AccessTime =
-    now - Math.ceil((now - oldest + 1) * config.fractionOfCacheToRetainOnTrim).toLong
+    now - Math.ceil((now - oldest + 1) * config.fractionToRetainOnTrim).toLong
 
 object NodeCache:
 
-  val layer: URLayer[LRUCacheConfig & Clock, NodeCache] =
+  val layer: URLayer[NodeCacheConfig & Clock, NodeCache] =
     ZLayer {
       for
-        config <- ZIO.service[LRUCacheConfig]
-        clock <- ZIO.service[Clock]
+        config <- ZIO.service[NodeCacheConfig]
+        clock <- ZIO.service[Clock] // TODO: Make this a field?
         now <- clock.currentTime(MILLIS)
         items <- TMap.empty[NodeId, CacheItem].commit
         oldest <- TRef.make(now - 1).commit
-      yield NodeCacheLive(
-        config = config,
-        oldest = oldest,
-        items = items
-      )
+    
+        nodeCache = NodeCacheLive(
+          config = config,
+          oldest = oldest,
+          items = items
+        )
+        _ <- nodeCache.startSnapshotTrim
+      yield nodeCache 
     }
