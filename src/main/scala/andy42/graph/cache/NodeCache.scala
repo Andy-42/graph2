@@ -7,10 +7,10 @@ import zio.stm._
 import java.time.temporal.ChronoUnit.MILLIS
 
 trait NodeCache:
-  def get(id: NodeId): URIO[Clock, Option[Node]]
-  def put(node: Node): ZIO[Clock, UnpackFailure, Unit]
+  def get(id: NodeId): UIO[Option[Node]]
+  def put(node: Node): IO[UnpackFailure, Unit]
 
-  def startSnapshotTrim: URIO[Clock, Unit]
+  def startSnapshotTrim: UIO[Unit]
 
 type AccessTime = Long // epoch millis
 
@@ -18,23 +18,23 @@ case class CacheItem(
     version: Int,
     lastTime: EventTime,
     lastSequence: Int,
+
     properties: PropertySnapshot | Null,
     edges: EdgeSnapshot | Null,
     packed: PackedNodeContents,
+    
     lastAccess: AccessTime
 )
 
-// TODO: Implement periodic trimming of properties/edges to keep only recently accessed
-
 final case class NodeCacheLive(
     config: NodeCacheConfig,
+    clock: Clock,
     oldest: TRef[AccessTime], // All items in the cache will have a lastAccess > oldest
     items: TMap[NodeId, CacheItem]
 ) extends NodeCache:
 
-  override def get(id: NodeId): URIO[Clock, Option[Node]] =
+  override def get(id: NodeId): UIO[Option[Node]] =
     for
-      clock <- ZIO.service[Clock]
       now <- clock.currentTime(MILLIS)
       optionNode <- getSTM(id, now).commit
     yield optionNode
@@ -56,9 +56,8 @@ final case class NodeCacheLive(
       )
     }
 
-  override def put(node: Node): ZIO[Clock, UnpackFailure, Unit] =
+  override def put(node: Node): IO[UnpackFailure, Unit] =
     for
-      clock <- ZIO.service[Clock]
       now <- clock.currentTime(MILLIS)
 
       properties <- node.properties
@@ -107,9 +106,8 @@ final case class NodeCacheLive(
     yield ()
 
   // TODO: Logging  
-  def snapshotTrim: URIO[Clock, Unit] =
+  def snapshotTrim: UIO[Unit] =
     for
-      clock <- ZIO.service[Clock]
       now <- clock.currentTime(MILLIS)
       _ <- trimSnapshot(now).commit
     yield ()
@@ -117,7 +115,7 @@ final case class NodeCacheLive(
   private def lastTimeToRetainSnapshot(oldest: AccessTime, now: AccessTime): AccessTime =
     now - Math.ceil((now - oldest + 1) * config.fractionOfSnapshotsToRetainOnSnapshotPurge).toLong
 
-  override def startSnapshotTrim: URIO[Clock, Unit] =
+  override def startSnapshotTrim: UIO[Unit] =
     snapshotTrim.repeat(Schedule.spaced(config.snapshotPurgeFrequency))
     .fork *> ZIO.unit // TODO: Handle fiber death
 
@@ -158,6 +156,7 @@ object NodeCache:
     
         nodeCache = NodeCacheLive(
           config = config,
+          clock = clock,
           oldest = oldest,
           items = items
         )
