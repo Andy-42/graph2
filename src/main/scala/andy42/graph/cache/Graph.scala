@@ -17,7 +17,7 @@ import zio.stm.*
  */
 trait Graph:
 
-  def get(id: NodeId): ZIO[Clock, UnpackFailure | PersistenceFailure, Node]
+  def get(id: NodeId): IO[UnpackFailure | PersistenceFailure, Node]
 
   /** Append events to a Node's history. This is the fundamental API that all mutation events are based on.
     */
@@ -25,7 +25,7 @@ trait Graph:
       id: NodeId,
       time: EventTime,
       events: Vector[Event]
-  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node]
+  ): IO[UnpackFailure | PersistenceFailure, Node]
 
   /** Append events
     */
@@ -34,7 +34,7 @@ trait Graph:
       time: EventTime,
       properties: PropertySnapshot = Map.empty,
       edges: EdgeSnapshot = Set.empty
-  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
+  ): IO[UnpackFailure | PersistenceFailure, Node] =
     val propertyEvents = properties.map((k, v) => Event.PropertyAdded(k, v))
     val edgeEvents = edges.map(Event.EdgeAdded(_))
     val allEvents = (propertyEvents ++ edgeEvents).toVector
@@ -43,6 +43,7 @@ trait Graph:
 
 final case class GraphLive(
     inFlight: TSet[NodeId],
+    clock: Clock,
     cache: NodeCache,
     nodeDataService: NodeDataService,
     edgeSynchronization: EdgeSynchronization,
@@ -51,7 +52,7 @@ final case class GraphLive(
 
   override def get(
       id: NodeId
-  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
+  ): IO[UnpackFailure | PersistenceFailure, Node] =
     ZIO.scoped {
       for
         _ <- withNodePermit(id)
@@ -77,7 +78,7 @@ final case class GraphLive(
       id: NodeId,
       time: EventTime,
       events: Vector[Event]
-  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
+  ): IO[UnpackFailure | PersistenceFailure, Node] =
     ZIO.scoped {
       for
         _ <- withNodePermit(id)
@@ -102,7 +103,7 @@ final case class GraphLive(
       time: EventTime,
       newEvents: Vector[Event],
       node: Node
-  ): ZIO[Clock, UnpackFailure | PersistenceFailure, Node] =
+  ): IO[UnpackFailure | PersistenceFailure, Node] =
 
     val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(newEvents)
 
@@ -200,14 +201,15 @@ final case class GraphLive(
     )
 
 object Graph:
-  val layer: URLayer[NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
+  val layer: URLayer[Clock & NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
     ZLayer {
       for
+        clock <- ZIO.service[Clock]
         lruCache <- ZIO.service[NodeCache]
         nodeDataService <- ZIO.service[NodeDataService]
         edgeSynchronization <- ZIO.service[EdgeSynchronization]
         standingQueryEvaluation <- ZIO.service[StandingQueryEvaluation]
 
         inFlight <- TSet.empty[NodeId].commit
-      yield GraphLive(inFlight, lruCache, nodeDataService, edgeSynchronization, standingQueryEvaluation)
+      yield GraphLive(inFlight, clock, lruCache, nodeDataService, edgeSynchronization, standingQueryEvaluation)
     }

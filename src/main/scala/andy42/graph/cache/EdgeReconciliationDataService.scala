@@ -8,12 +8,17 @@ import zio._
 
 import javax.sql.DataSource
 
+
+trait EdgeReconciliationDataService:
+  def markWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit]
+  
 final case class EdgeReconciliation(
     windowStart: Long, // clustering key
     windowSize: Long, // payload
     state: Byte // payload
 )
 
+// TODO: Smells like an enum
 object EdgeReconciliation:
   val Reconciled: Byte = 1.toByte
   val Inconsistent: Byte = 2.toByte
@@ -25,9 +30,6 @@ object EdgeReconciliation:
   // The window is known or suspected of being inconsistent
   def inconsistent(windowStart: Long, windowSize: Long): EdgeReconciliation =
     new EdgeReconciliation(windowStart, windowSize, Inconsistent)
-
-trait EdgeReconciliationDataService:
-  def markWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit]
 
 final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconciliationDataService:
 

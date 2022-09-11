@@ -23,9 +23,9 @@ trait EdgeSynchronization:
       id: NodeId,
       time: EventTime,
       events: Vector[Event]
-  ): URIO[Clock, Unit]
+  ): UIO[Unit]
 
-  def startReconciliation(config: EdgeReconciliationConfig): URIO[Clock & EdgeReconciliationDataService, Unit]
+  def startReconciliation: URIO[EdgeReconciliationDataService, Unit]
 
 final case class EdgeReconciliationEvent(
     id: NodeId,
@@ -35,6 +35,9 @@ final case class EdgeReconciliationEvent(
   def edgeHash: Long = edge.hash(id)
 
 final case class EdgeSynchronizationLive(
+    config: EdgeReconciliationConfig,
+    edgeReconciliationService: EdgeReconciliationService,
+    clock: Clock,
     graph: Graph,
     queue: Queue[EdgeReconciliationEvent]
 ) extends EdgeSynchronization:
@@ -43,7 +46,7 @@ final case class EdgeSynchronizationLive(
       id: NodeId,
       time: EventTime,
       events: Vector[Event]
-  ): URIO[Clock, Unit] =
+  ): UIO[Unit] =
     for
       _ <- ZIO.foreach(events) { // Propagate the corresponding half-edge to the other node
 
@@ -67,24 +70,26 @@ final case class EdgeSynchronizationLive(
 
   // TODO: Need unit tests on hash reconciliation scheme to show algebra works
 
-  def startReconciliation(config: EdgeReconciliationConfig): URIO[Clock & EdgeReconciliationDataService, Unit] =
+  def startReconciliation: UIO[Unit] =
     ZStream
       .fromQueue(queue, maxChunkSize = config.maxChunkSize)
       // TODO: Ensure fires at regular intervals - zip with something using config.maximumIntervalBetweenChunks
       .chunks
-      .scanZIO(EdgeReconciliationState(config))((s, c) => s.addChunk(c))
+      .scanZIO(edgeReconciliationService.zero)((state, chunk) => edgeReconciliationService.addChunk(state, chunk))
       .runDrain
       .fork *> ZIO.unit // TODO: Error handling if fiber dies
 
 object EdgeSynchronization:
 
-  val layer: URLayer[Graph & Clock & EdgeReconciliationConfig & EdgeReconciliationDataService, EdgeSynchronization] =
+  val layer: URLayer[EdgeReconciliationConfig & Graph & Clock & EdgeReconciliationService, EdgeSynchronization] =
     ZLayer {
       for
         config <- ZIO.service[EdgeReconciliationConfig]
+        edgeReconciliationService <- ZIO.service[EdgeReconciliationService]
+        clock <- ZIO.service[Clock]
         graph <- ZIO.service[Graph]
         queue <- Queue.unbounded[EdgeReconciliationEvent]
-        live = EdgeSynchronizationLive(graph, queue)
-        _ <- live.startReconciliation(config)
+        live = EdgeSynchronizationLive(config, edgeReconciliationService, clock, graph, queue)
+        _ <- live.startReconciliation
       yield live
     }
