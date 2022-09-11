@@ -164,9 +164,9 @@ final case class GraphLive(
       (before, after) = originalHistory.partition(_.time <= time)
 
       sequence = before.lastOption match
-        case None                                       => 0
-        case Some(lastEvents) if lastEvents.time < time => 0
-        case Some(lastEvents)                           => lastEvents.sequence + 1
+        case None                                     => 0
+        case Some(lastEvent) if lastEvent.time < time => 0
+        case Some(lastEvent)                          => lastEvent.sequence + 1
 
       newEventsAtTime = EventsAtTime(time = time, sequence = sequence, events = newEvents)
 
@@ -205,11 +205,11 @@ object Graph:
     ZLayer {
       for
         clock <- ZIO.service[Clock]
-        lruCache <- ZIO.service[NodeCache]
+        nodeCache <- ZIO.service[NodeCache]
         nodeDataService <- ZIO.service[NodeDataService]
         edgeSynchronization <- ZIO.service[EdgeSynchronization]
         standingQueryEvaluation <- ZIO.service[StandingQueryEvaluation]
 
         inFlight <- TSet.empty[NodeId].commit
-      yield GraphLive(inFlight, clock, lruCache, nodeDataService, edgeSynchronization, standingQueryEvaluation)
+      yield GraphLive(inFlight, clock, nodeCache, nodeDataService, edgeSynchronization, standingQueryEvaluation)
     }
