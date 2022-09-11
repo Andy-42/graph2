@@ -24,8 +24,8 @@ trait EdgeSynchronization:
       time: EventTime,
       events: Vector[Event]
   ): UIO[Unit]
-
-  def startReconciliation: URIO[EdgeReconciliationDataService, Unit]
+  
+  def startReconciliation: UIO[Unit]
 
 final case class EdgeReconciliationEvent(
     id: NodeId,
