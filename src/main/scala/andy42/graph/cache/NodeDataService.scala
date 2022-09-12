@@ -4,6 +4,8 @@ import andy42.graph.model._
 import io.getquill._
 import io.getquill.context.qzio.ImplicitSyntax._
 import zio._
+import org.msgpack.core.MessageBufferPacker
+import org.msgpack.core.MessagePack
 
 import javax.sql.DataSource
 
@@ -41,6 +43,17 @@ object GraphHistory:
       events = Events.pack(eventsAtTime.events)
     )
 
+  def pack(graphHistory: List[GraphHistory]): Array[Byte] =
+    given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
+
+    graphHistory.foreach { historyElement =>
+      packer.packLong(historyElement.time)
+      packer.packInt(historyElement.sequence)
+      packer.writePayload(historyElement.events)
+    }
+    packer.toByteArray()
+
+
 final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
 
   val ctx = PostgresZioJdbcContext(Literal)
@@ -68,9 +81,7 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
     run(quotedGet(id)).implicitly
       .mapError(SQLReadFailure(id, _))
       .flatMap (history => 
-        for
-          nodeHistory <- ZIO.foreach(history.toVector)(_.toEventsAtTime)
-          packed = history.map(_.events).reduce(_ ++ _) // TODO: More efficient history packing
+        for nodeHistory <- ZIO.foreach(history.toVector)(_.toEventsAtTime)
         yield 
           if nodeHistory.isEmpty then
             Node.empty(id)
@@ -78,7 +89,7 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
             Node.replaceHistory(
               id = id,
               history = nodeHistory,
-              packed = packed
+              packed = GraphHistory.pack(history) // Repack history without repacking events
             )
       )
 

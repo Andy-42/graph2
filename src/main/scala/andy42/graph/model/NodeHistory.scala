@@ -29,14 +29,14 @@ object EventHistory extends Unpackable[NodeHistory]:
     yield a
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpack(packed: PackedNodeContents): IO[UnpackFailure, NodeHistory] =
+  def unpack(packed: PackedNodeHistory): IO[UnpackFailure, NodeHistory] =
     EventHistory.unpack(using MessagePack.newDefaultUnpacker(packed))
 
   def pack(eventHistory: NodeHistory)(using packer: MessagePacker): MessagePacker =
     eventHistory.foreach(_.pack)
     packer
 
-  def packToArray(eventHistory: NodeHistory): PackedNodeContents =
+  def packToArray(eventHistory: NodeHistory): PackedNodeHistory =
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     pack(eventHistory)
     packer.toByteArray()
@@ -52,7 +52,7 @@ object EventHistory extends Unpackable[NodeHistory]:
     * @return
     *   The packed history, with the new EventsAtTime packed and appended to the history.
     */
-  def append(packed: PackedNodeContents, eventsAtTime: EventsAtTime): Array[Byte] =
+  def append(packed: PackedNodeHistory, eventsAtTime: EventsAtTime): Array[Byte] =
     implicit val packer = MessagePack.newDefaultBufferPacker()
     eventsAtTime.pack
     packed ++ packer.toByteArray()

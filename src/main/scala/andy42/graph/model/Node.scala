@@ -13,7 +13,7 @@ object NodeSnapshot:
   val empty =
     NodeSnapshot(time = StartOfTime, sequence = 0, properties = PropertySnapshot.empty, edges = EdgeSnapshot.empty)
 
-type PackedNodeContents = Array[Byte]
+type PackedNodeHistory = Array[Byte]
 
 sealed trait Node:
   def id: NodeId
@@ -23,7 +23,7 @@ sealed trait Node:
   def lastSequence: Int
 
   def history: IO[UnpackFailure, NodeHistory]
-  def packed: PackedNodeContents
+  def packedHistory: PackedNodeHistory
 
   def append(events: Vector[Event], time: EventTime): IO[UnpackFailure, Node]
 
@@ -36,21 +36,21 @@ sealed trait Node:
 
   def wasAlwaysEmpty: Boolean
 
-final case class NodeFromPackedHistory(
+final case class NodeImplementation(
     id: NodeId,
     version: Int,
     lastTime: EventTime,
     lastSequence: Int,
 
-    // These may be provided if the caller has them available
+    // These may be provided at construction time if they are available
     private val reifiedCurrent: NodeSnapshot | Null = null,
     private val reifiedHistory: NodeHistory | Null = null,
-    packed: PackedNodeContents
+    packedHistory: PackedNodeHistory
 ) extends Node:
 
   override val history: IO[UnpackFailure, NodeHistory] =
     if reifiedHistory != null then ZIO.succeed(reifiedHistory)
-    else EventHistory.unpack(using MessagePack.newDefaultUnpacker(packed))
+    else EventHistory.unpack(using MessagePack.newDefaultUnpacker(packedHistory))
 
   override def append(events: Vector[Event], time: EventTime): IO[UnpackFailure, Node] =
     require(time >= lastTime)
@@ -62,7 +62,7 @@ final case class NodeFromPackedHistory(
       version = version + 1,
       lastTime = time,
       lastSequence = sequence,
-      packed = packed ++ EventsAtTime(time, sequence, events).toByteArray
+      packedHistory = packedHistory ++ EventsAtTime(time, sequence, events).toByteArray
     )
 
   override val current: IO[UnpackFailure, NodeSnapshot] =
@@ -74,44 +74,44 @@ final case class NodeFromPackedHistory(
         nodeSnapshot = CollapseNodeHistory(history)
       yield nodeSnapshot
 
-  override def wasAlwaysEmpty: Boolean = packed.isEmpty
+  override def wasAlwaysEmpty: Boolean = packedHistory.isEmpty
 
 object Node:
 
   // A node with an empty history
   def empty(id: NodeId): Node =
-    NodeFromPackedHistory(
+    NodeImplementation(
       id = id,
       version = 0,
       lastTime = StartOfTime,
       lastSequence = 0,
-      packed = Array.empty[Byte]
+      packedHistory = Array.empty[Byte]
     )
 
   def replaceHistory(
       id: NodeId,
       history: NodeHistory,
-      packed: PackedNodeContents | Null = null
+      packed: PackedNodeHistory | Null = null
   ): Node =
     require(history.nonEmpty)
 
-    NodeFromPackedHistory(
+    NodeImplementation(
       id = id,
       version = history.length,
       lastTime = history.last.time,
       lastSequence = history.last.sequence,
       reifiedCurrent = CollapseNodeHistory(history),
       reifiedHistory = history,
-      packed = if packed != null then packed else history.toByteArray
+      packedHistory = if packed != null then packed else history.toByteArray
     )
 
   // A node being created from the cache
   def fromCacheItem(id: NodeId, item: CacheItem): Node =
-    NodeFromPackedHistory(
+    NodeImplementation(
       id = id,
       version = item.version,
       lastTime = item.lastTime,
       lastSequence = item.lastSequence,
       reifiedCurrent = item.current, // This may be present in the cache, or null
-      packed = item.packed
+      packedHistory = item.packed
     )

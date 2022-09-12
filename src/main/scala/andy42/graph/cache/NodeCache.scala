@@ -20,7 +20,7 @@ case class CacheItem(
     lastSequence: Int,
 
     current: NodeSnapshot | Null,
-    packed: PackedNodeContents,
+    packed: PackedNodeHistory,
     
     lastAccess: AccessTime
 )
@@ -36,6 +36,8 @@ final case class NodeCacheLive(
     for
       now <- clock.currentTime(MILLIS)
       optionNode <- getSTM(id, now).commit
+
+      // TODO: Make getSTM return a CacheItem, and the 
     yield optionNode
 
   private def getSTM(
@@ -67,7 +69,7 @@ final case class NodeCacheLive(
           lastTime = node.lastTime,
           lastSequence = node.lastSequence,
           current = current,
-          packed = node.packed,
+          packed = node.packedHistory,
           lastAccess = now
         )
       )
