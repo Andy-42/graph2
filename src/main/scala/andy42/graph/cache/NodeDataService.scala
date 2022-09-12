@@ -11,7 +11,7 @@ trait NodeDataService:
 
   /** Get the full history of the node. The result will be in ascending order of (time, sequence).
     */
-  def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, NodeHistory]
+  def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node]
 
   /** Append an EventsAtTime to a node's persisted history. Within the historyfor a Node, the (time, sequence) must be
     * unique. Within a time, the sequence numbers should be a dense sequence starting at zero.
@@ -64,10 +64,23 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
 
   given Implicit[DataSource] = Implicit(ds)
 
-  override def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, NodeHistory] =
+  override def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
     run(quotedGet(id)).implicitly
       .mapError(SQLReadFailure(id, _))
-      .flatMap(history => ZIO.foreach(history.toVector)(_.toEventsAtTime))
+      .flatMap (history => 
+        for
+          nodeHistory <- ZIO.foreach(history.toVector)(_.toEventsAtTime)
+          packed = history.map(_.events).reduce(_ ++ _) // TODO: More efficient history packing
+        yield 
+          if nodeHistory.isEmpty then
+            Node.empty(id)
+          else
+            Node.replaceHistory(
+              id = id,
+              history = nodeHistory,
+              packed = packed
+            )
+      )
 
   override def append(id: NodeId, eventsAtTime: EventsAtTime): IO[PersistenceFailure, Unit] =
     run(quotedAppend(GraphHistory.toGraphHistory(id, eventsAtTime))).implicitly

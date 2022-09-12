@@ -19,8 +19,7 @@ case class CacheItem(
     lastTime: EventTime,
     lastSequence: Int,
 
-    properties: PropertySnapshot | Null,
-    edges: EdgeSnapshot | Null,
+    current: NodeSnapshot | Null,
     packed: PackedNodeContents,
     
     lastAccess: AccessTime
@@ -44,34 +43,22 @@ final case class NodeCacheLive(
       now: AccessTime
   ): USTM[Option[Node]] =
     for optionItem <- items.updateWith(id)(_.map(_.copy(lastAccess = now)))
-    yield optionItem.map { item =>
-      Node(
-        id = id,
-        version = item.version,
-        lastTime = item.lastTime,
-        lastSequence = item.lastSequence,
-        properties = item.properties,
-        edges = item.edges,
-        packed = item.packed
-      )
-    }
+    yield optionItem.map( cacheItem => Node.fromCacheItem(id, cacheItem))
 
   override def put(node: Node): IO[UnpackFailure, Unit] =
     for
       now <- clock.currentTime(MILLIS)
 
-      properties <- node.properties
-      edges <- node.edges
+      current <- node.current
 
       _ <- trimIfOverCapacity(now).commit
-      _ <- putSTM(node, now, properties, edges).commit
+      _ <- putSTM(node, now, current).commit
     yield ()
 
   private def putSTM(
       node: Node,
       now: AccessTime,
-      properties: PropertySnapshot,
-      edges: EdgeSnapshot
+      current: NodeSnapshot
   ): USTM[Unit] =
     for _ <- items.put(
         node.id,
@@ -79,8 +66,7 @@ final case class NodeCacheLive(
           version = node.version,
           lastTime = node.lastTime,
           lastSequence = node.lastSequence,
-          properties = properties,
-          edges = edges,
+          current = current,
           packed = node.packed,
           lastAccess = now
         )
@@ -100,8 +86,8 @@ final case class NodeCacheLive(
       _ <- items.transformValues(cacheItem =>
         // Purge the edges and properties.
         // This could potentially purge only one or the other, or could also be based on the size of properties/edges
-        if cacheItem.lastAccess > retain && cacheItem.properties != null then cacheItem
-        else cacheItem.copy(properties = null, edges = null)
+        if cacheItem.lastAccess > retain || cacheItem.current == null then cacheItem
+        else cacheItem.copy(current = null)
       )
     yield ()
 

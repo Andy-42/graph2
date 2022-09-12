@@ -59,18 +59,13 @@ final case class GraphLive(
 
         optionNode <- cache.get(id)
         node <- optionNode.fold {
-          // Node does not exist in cache
-          nodeDataService.get(id).flatMap { nodeHistory =>
-            if nodeHistory.isEmpty then
-              // Node doesn't have any history in the persisted store, so synthesize an empty node.
-              // Since a node with an empty history is always considered to exist, there is no point adding it to the cache.
-              ZIO.succeed(Node.empty(id))
-            else
-              val node = Node(id, nodeHistory)
-              // Create a node from the non-empty history and add it to the cache.
-              cache.put(node) *> ZIO.succeed(node)
-          }
-        } { ZIO.succeed(_) } // Node was fetched from the cache
+          for
+            node <- nodeDataService.get(id)
+            _ <-
+              if node.wasAlwaysEmpty then ZIO.unit
+              else cache.put(node)
+          yield node
+        } { ZIO.succeed } // Node was fetched from the cache
       yield node
     }
 
@@ -83,8 +78,8 @@ final case class GraphLive(
       for
         _ <- withNodePermit(id)
 
-        node <- get(id)
-        newNode <- applyEvents(time, events, node)
+        existingNode <- get(id)
+        newNode <- applyEvents(time, events, existingNode)
       yield newNode
     }
 
@@ -108,46 +103,40 @@ final case class GraphLive(
     val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(newEvents)
 
     for
-      x <- determineNextNodeStateAndChangesToPersist(node, time, deduplicatedEvents)
+      x <- determineNextNodeStateAndHistoryToPersist(node, time, deduplicatedEvents)
+      nextNodeState = x._1
+      historyToPersist = x._2
 
-      // Persist to the data store and cache, if necessary
-      _ <- x.changesToPersist.fold(ZIO.unit)(nodeDataService.append(x.nextNodeState.id, _))
-      _ <- x.changesToPersist.fold(ZIO.unit)(_ => cache.put(x.nextNodeState))
+      // Persist to the data store and cache, if there is new history to persist
+      _ <- historyToPersist.fold(ZIO.unit)(nodeDataService.append(nextNodeState.id, _))
+      _ <- historyToPersist.fold(ZIO.unit)(_ => cache.put(nextNodeState))
 
       // Handle any events that are a result of this node being appended to.
       // Note that we notify on deduplicated events and not on the events being persisted.
       // since we may be re-processing a change and we have to guarantee that all post-persist notifications were generated.
-      _ <- standingQueryEvaluation.nodeChanged(x.nextNodeState, deduplicatedEvents)
-      _ <- edgeSynchronization.eventsAppended(x.nextNodeState.id, time, deduplicatedEvents)
-    yield x.nextNodeState
+      _ <- standingQueryEvaluation.nodeChanged(nextNodeState, deduplicatedEvents)
+      _ <- edgeSynchronization.eventsAppended(nextNodeState.id, time, deduplicatedEvents)
+    yield nextNodeState
 
-  final case class NextNodeStateAndChangesToPersist(nextNodeState: Node, changesToPersist: Option[EventsAtTime])
-
-  private def determineNextNodeStateAndChangesToPersist(
+  private def determineNextNodeStateAndHistoryToPersist(
       node: Node,
       time: EventTime,
       events: Vector[Event]
-  ): IO[UnpackFailure, NextNodeStateAndChangesToPersist] =
+  ): IO[UnpackFailure, (Node, Option[EventsAtTime])] =
     if node.wasAlwaysEmpty then
-      ZIO.succeed {
-        // Creating a new node can be done in an optimized way since we don't need to merge in events.
-        val newEventsAtTime = EventsAtTime(time = time, sequence = 0, events = events)
-        NextNodeStateAndChangesToPersist(
-          nextNodeState = Node(node.id, Vector(newEventsAtTime)),
-          changesToPersist = Some(newEventsAtTime)
-        )
-      }
+      for
+        nextNodeState <- node.append(events, time)
+        eventsAtTime = EventsAtTime(time = time, sequence = 0, events = events)
+      yield nextNodeState -> Some(eventsAtTime)
     else
       node.atTime(time).flatMap { nodeSnapshot =>
 
         // Discard any events that would have no effect on the state at that point in time
-        val eventsWithEffect =
-          EventHasEffectOps.filterHasEffect(events = events, nodeSnapshot = nodeSnapshot)
+        val eventsWithEffect = EventHasEffectOps.filterHasEffect(events, nodeSnapshot)
 
-        if eventsWithEffect.isEmpty then
-          ZIO.succeed(NextNodeStateAndChangesToPersist(nextNodeState = node, changesToPersist = None))
+        if eventsWithEffect.isEmpty then ZIO.succeed(node -> None)
         else if time >= nodeSnapshot.time then appendEventsToEndOfHistory(node, eventsWithEffect, time)
-        else mergeInNewEvents(node = node, newEvents = eventsWithEffect, time = time)
+        else mergeInNewEvents(node, eventsWithEffect, time)
       }
 
   /** General merge of new events at any point in time into the node's history. This requires unpacking the node's
@@ -157,7 +146,7 @@ final case class GraphLive(
       node: Node,
       newEvents: Vector[Event],
       time: EventTime
-  ): IO[UnpackFailure, NextNodeStateAndChangesToPersist] =
+  ): IO[UnpackFailure, (Node, Option[EventsAtTime])] =
     for
       originalHistory <- node.history
 
@@ -169,12 +158,9 @@ final case class GraphLive(
         case Some(lastEvent)                          => lastEvent.sequence + 1
 
       newEventsAtTime = EventsAtTime(time = time, sequence = sequence, events = newEvents)
-
       newHistory = (before :+ newEventsAtTime) ++ after
-    yield NextNodeStateAndChangesToPersist(
-      nextNodeState = Node(node.id, newHistory),
-      changesToPersist = Some(newEventsAtTime)
-    )
+      nextNodeState = Node.replaceHistory(node.id, newHistory)
+    yield nextNodeState -> Some(newEventsAtTime)
 
   /** Append events to the end of history. Appending events can be done more efficiently by avoiding the need to unpack
     * all of history to a NodeHistory, but instead we can just append the packed history to the end of the packed
@@ -184,7 +170,7 @@ final case class GraphLive(
       node: Node,
       events: Vector[Event],
       time: EventTime
-  ): IO[UnpackFailure, NextNodeStateAndChangesToPersist] =
+  ): IO[UnpackFailure, (Node, Option[EventsAtTime])] =
     require(events.nonEmpty)
     require(time >= node.lastTime)
 
@@ -195,10 +181,7 @@ final case class GraphLive(
     )
 
     for nextNodeState <- node.append(events, time)
-    yield NextNodeStateAndChangesToPersist(
-      nextNodeState = nextNodeState,
-      changesToPersist = Some(eventsAtTime)
-    )
+    yield nextNodeState -> Some(eventsAtTime)
 
 object Graph:
   val layer: URLayer[Clock & NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
