@@ -39,8 +39,8 @@ final case class EventsAtTime(
     packer
 
   def toByteArray: Array[Byte] =
-    val packer = MessagePack.newDefaultBufferPacker()
-    pack(packer)
+    given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
+    pack
     packer.toByteArray()
 
 object EventsAtTime extends Unpackable[EventsAtTime]:

@@ -3,8 +3,7 @@ package andy42.graph.model
 import org.msgpack.core.MessagePacker
 import org.msgpack.core.MessageUnpacker
 import org.msgpack.value.ValueType
-import zio.IO
-import zio.ZIO
+import zio._
 
 import java.io.IOException
 import scala.collection.mutable.ArrayBuffer
