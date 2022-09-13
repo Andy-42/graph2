@@ -30,13 +30,12 @@ final case class EventsAtTime(
   require(events.nonEmpty)
   require(sequence >= 0)
 
-  override def pack(implicit packer: MessagePacker): MessagePacker =
+  override def pack(implicit packer: MessagePacker): Unit =
     packer
       .packLong(time)
       .packInt(sequence)
       .packInt(events.length)
     events.foreach(_.pack)
-    packer
 
 
 object EventsAtTime extends Unpackable[EventsAtTime]:

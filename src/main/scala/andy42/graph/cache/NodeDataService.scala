@@ -39,7 +39,7 @@ final case class GraphHistory(
     * This is the same representation as for an EventsAtTime, but
     * packing directly from a GraphHistory avoids having to unpack and repack events.
    */ 
-  override def pack(using packer: MessagePacker): MessagePacker =
+  override def pack(using packer: MessagePacker): Unit =
     packer.packLong(time)
     packer.packInt(sequence)
     packer.writePayload(events)

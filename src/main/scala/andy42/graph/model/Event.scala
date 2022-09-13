@@ -16,7 +16,7 @@ enum Event extends Packable:
   case FarEdgeAdded(edge: Edge)
   case FarEdgeRemoved(edge: Edge)
 
-  override def pack(using packer: MessagePacker): MessagePacker = this match
+  override def pack(using packer: MessagePacker): Unit = this match
     case NodeRemoved =>
       packer.packInt(ordinal)
 
