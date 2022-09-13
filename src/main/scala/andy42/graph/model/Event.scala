@@ -118,15 +118,7 @@ object Event extends Unpackable[Event]:
     yield Edge(k, other)
   }.refineOrDie(UnpackFailure.refine)
 
-object Events:
-
-  def pack(events: Vector[Event]): Array[Byte] =
-
-    given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
-
-    packer.packInt(events.length)
-    events.foreach(_.pack)
-    packer.toByteArray()
+object Events extends SeqPacker[Event]:
 
   def unpack(packed: Array[Byte]): IO[UnpackFailure, Vector[Event]] = {
 

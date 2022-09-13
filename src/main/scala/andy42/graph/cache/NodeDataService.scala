@@ -6,6 +6,7 @@ import io.getquill.context.qzio.ImplicitSyntax._
 import zio._
 import org.msgpack.core.MessageBufferPacker
 import org.msgpack.core.MessagePack
+import org.msgpack.core.MessagePacker
 
 import javax.sql.DataSource
 
@@ -28,31 +29,31 @@ final case class GraphHistory(
     time: EventTime, // sort key
     sequence: Int, // sort key
     events: Array[Byte] // packed payload
-):
+) extends Packable:
   def toEventsAtTime: IO[UnpackFailure, EventsAtTime] =
     for events <- Events.unpack(events)
     yield EventsAtTime(time, sequence, events)
 
-object GraphHistory:
+   /**
+    * Pack a GraphHistory to packed form.
+    * This is the same representation as for an EventsAtTime, but
+    * packing directly from a GraphHistory avoids having to unpack and repack events.
+   */ 
+  override def pack(using packer: MessagePacker): MessagePacker =
+    packer.packLong(time)
+    packer.packInt(sequence)
+    packer.writePayload(events)
+
+// TODO: GraphHistory (for single element) should have a different name
+object GraphHistory extends UncountedSeqPacker[GraphHistory]:
 
   def toGraphHistory(id: NodeId, eventsAtTime: EventsAtTime): GraphHistory =
     GraphHistory(
       id = id,
       time = eventsAtTime.time,
       sequence = eventsAtTime.sequence,
-      events = Events.pack(eventsAtTime.events)
+      events = eventsAtTime.toPacked
     )
-
-  def pack(graphHistory: List[GraphHistory]): Array[Byte] =
-    given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
-
-    graphHistory.foreach { historyElement =>
-      packer.packLong(historyElement.time)
-      packer.packInt(historyElement.sequence)
-      packer.writePayload(historyElement.events)
-    }
-    packer.toByteArray()
-
 
 final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
 
@@ -89,7 +90,7 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
             Node.replaceWithHistory(
               id = id,
               history = nodeHistory,
-              packed = GraphHistory.pack(history) // Repack history without repacking events
+              packed = GraphHistory.toPacked(history) // Repack history without repacking events
             )
       )
 

@@ -7,7 +7,7 @@ import zio._
 import java.time.Instant
 import java.io.IOException
 
-object PropertyValue:
+object PropertyValue extends Unpackable[PropertyValueType]:
 
   private def unpackScalar(using unpacker: MessageUnpacker): IO[UnpackFailure, ScalarType] = {
     unpacker.getNextFormat.getValueType match
@@ -27,7 +27,7 @@ object PropertyValue:
       case valueType: ValueType => ZIO.fail(UnexpectedScalarValueType(valueType))
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, PropertyValueType] = {
+  override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, PropertyValueType] = {
     unpacker.getNextFormat.getValueType match
       case ValueType.NIL       => ZIO.unit
       case ValueType.BOOLEAN   => ZIO.attempt(unpacker.unpackBoolean())
@@ -78,6 +78,8 @@ object PropertyValue:
         packer.packMapHeader(v.size)
         v.foreach { case (k, v) => packer.packString(k); pack(v) }
         packer
+
+  // FIXME: These duplicate UnpackableOps
 
   private def unpackToVector(length: Int)(using unpacker: MessageUnpacker): IO[UnpackFailure, Vector[ScalarType]] =
     val a = Array.ofDim[ScalarType](length)

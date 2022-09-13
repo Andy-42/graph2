@@ -38,10 +38,6 @@ final case class EventsAtTime(
     events.foreach(_.pack)
     packer
 
-  def toByteArray: Array[Byte] =
-    given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
-    pack
-    packer.toByteArray()
 
 object EventsAtTime extends Unpackable[EventsAtTime]:
 

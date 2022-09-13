@@ -11,7 +11,7 @@ object NodeSnapshot:
   val empty =
     NodeSnapshot(time = StartOfTime, sequence = 0, properties = PropertySnapshot.empty, edges = EdgeSnapshot.empty)
 
-type PackedNodeHistory = Array[Byte]
+type PackedNodeHistory = Array[Byte] // TODO: Just Packed, or give it a special name?
 
 sealed trait Node:
   def id: NodeId
@@ -60,7 +60,7 @@ final case class NodeImplementation(
       version = version + 1,
       lastTime = time,
       lastSequence = sequence,
-      packedHistory = packedHistory ++ EventsAtTime(time, sequence, events).toByteArray
+      packedHistory = packedHistory ++ EventsAtTime(time, sequence, events).toPacked
     )
 
   override val current: IO[UnpackFailure, NodeSnapshot] =
