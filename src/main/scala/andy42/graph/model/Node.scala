@@ -50,7 +50,7 @@ final case class NodeImplementation(
 
   override val history: IO[UnpackFailure, NodeHistory] =
     if reifiedHistory != null then ZIO.succeed(reifiedHistory)
-    else EventHistory.unpack(using MessagePack.newDefaultUnpacker(packedHistory))
+    else NodeHistory.unpack(using MessagePack.newDefaultUnpacker(packedHistory))
 
   override def append(events: Vector[Event], time: EventTime): IO[UnpackFailure, Node] =
     require(time >= lastTime)
@@ -88,10 +88,11 @@ object Node:
       packedHistory = Array.empty[Byte]
     )
 
-  def replaceHistory(
+  def replaceWithHistory(
       id: NodeId,
       history: NodeHistory,
-      packed: PackedNodeHistory | Null = null
+      packed: PackedNodeHistory | Null = null,
+      current: NodeSnapshot | Null = null
   ): Node =
     require(history.nonEmpty)
 
@@ -100,7 +101,24 @@ object Node:
       version = history.length,
       lastTime = history.last.time,
       lastSequence = history.last.sequence,
-      reifiedCurrent = CollapseNodeHistory(history),
+      reifiedCurrent = if current != null then current else CollapseNodeHistory(history),
+      reifiedHistory = history,
+      packedHistory = if packed != null then packed else history.toByteArray
+    )
+
+  def replaceWithPackedHistory(
+    id: NodeId,
+    packed: PackedNodeHistory,
+    history: NodeHistory | Null = null,
+    current: NodeSnapshot | Null = null
+  ): Node =
+    require(packed.nonEmpty)
+    NodeImplementation(
+      id = id,
+      version = history.length,
+      lastTime = history.last.time,
+      lastSequence = history.last.sequence,
+      reifiedCurrent = if current != null then current else CollapseNodeHistory(history),
       reifiedHistory = history,
       packedHistory = if packed != null then packed else history.toByteArray
     )

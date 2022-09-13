@@ -159,7 +159,7 @@ final case class GraphLive(
 
       newEventsAtTime = EventsAtTime(time = time, sequence = sequence, events = newEvents)
       newHistory = (before :+ newEventsAtTime) ++ after
-      nextNodeState = Node.replaceHistory(node.id, newHistory)
+      nextNodeState = Node.replaceWithHistory(node.id, newHistory)
     yield nextNodeState -> Some(newEventsAtTime)
 
   /** Append events to the end of history. Appending events can be done more efficiently by avoiding the need to unpack

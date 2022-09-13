@@ -3,11 +3,12 @@ package andy42.graph.cache
 import andy42.graph.model._
 import zio._
 import zio.stm._
+import andy42.graph.model.NodeHistory
 
 import java.time.temporal.ChronoUnit.MILLIS
 
 trait NodeCache:
-  def get(id: NodeId): UIO[Option[Node]]
+  def get(id: NodeId): IO[UnpackFailure, Option[Node]]
   def put(node: Node): IO[UnpackFailure, Unit]
 
   def startSnapshotTrim: UIO[Unit]
@@ -18,10 +19,8 @@ case class CacheItem(
     version: Int,
     lastTime: EventTime,
     lastSequence: Int,
-
     current: NodeSnapshot | Null,
     packed: PackedNodeHistory,
-    
     lastAccess: AccessTime
 )
 
@@ -32,20 +31,43 @@ final case class NodeCacheLive(
     items: TMap[NodeId, CacheItem]
 ) extends NodeCache:
 
-  override def get(id: NodeId): UIO[Option[Node]] =
+  override def get(id: NodeId): IO[UnpackFailure, Option[Node]] =
     for
       now <- clock.currentTime(MILLIS)
-      optionNode <- getSTM(id, now).commit
+      optionCacheItem <- getSTM(id, now).commit
 
-      // TODO: Make getSTM return a CacheItem, and the 
+      optionNode <- optionCacheItem.fold(ZIO.succeed(None)) { cacheItem =>
+        if cacheItem.current != null then
+          ZIO.succeed(
+            Some(
+              Node.replaceWithPackedHistory(
+                id = id,
+                packed = cacheItem.packed,
+                current = cacheItem.current
+              )
+            )
+          )
+        else
+          for
+            history <- NodeHistory.unpackNodeHistory(cacheItem.packed)
+            snapshot = CollapseNodeHistory(history)
+          yield Some(
+            Node.replaceWithHistory(
+              id = id,
+              history = history,
+              current = snapshot,
+              packed = cacheItem.packed
+            )
+          )
+      }
     yield optionNode
 
   private def getSTM(
       id: NodeId,
       now: AccessTime
-  ): USTM[Option[Node]] =
+  ): USTM[Option[CacheItem]] =
     for optionItem <- items.updateWith(id)(_.map(_.copy(lastAccess = now)))
-    yield optionItem.map( cacheItem => Node.fromCacheItem(id, cacheItem))
+    yield optionItem
 
   override def put(node: Node): IO[UnpackFailure, Unit] =
     for
@@ -86,14 +108,13 @@ final case class NodeCacheLive(
       oldest <- oldest.get
       retain = lastTimeToRetainSnapshot(oldest, now)
       _ <- items.transformValues(cacheItem =>
-        // Purge the edges and properties.
-        // This could potentially purge only one or the other, or could also be based on the size of properties/edges
-        if cacheItem.lastAccess > retain || cacheItem.current == null then cacheItem
+        // Purge the current node snapshot if the last access was before the retain time
+        if cacheItem.lastAccess >= retain || cacheItem.current == null then cacheItem
         else cacheItem.copy(current = null)
       )
     yield ()
 
-  // TODO: Logging  
+  // TODO: Logging
   def snapshotTrim: UIO[Unit] =
     for
       now <- clock.currentTime(MILLIS)
@@ -104,10 +125,9 @@ final case class NodeCacheLive(
     now - Math.ceil((now - oldest + 1) * config.fractionOfSnapshotsToRetainOnSnapshotPurge).toLong
 
   override def startSnapshotTrim: UIO[Unit] =
-    snapshotTrim.repeat(Schedule.spaced(config.snapshotPurgeFrequency))
-    .fork *> ZIO.unit // TODO: Handle fiber death
+    snapshotTrim.repeat(Schedule.spaced(config.snapshotPurgeFrequency)).fork *> ZIO.unit // TODO: Handle fiber death
 
-  // TODO: Logging  
+  // TODO: Logging
   private def trim(now: AccessTime): USTM[Unit] =
     for
       currentOldest <- oldest.get
@@ -141,7 +161,7 @@ object NodeCache:
         now <- clock.currentTime(MILLIS)
         items <- TMap.empty[NodeId, CacheItem].commit
         oldest <- TRef.make(now - 1).commit
-    
+
         nodeCache = NodeCacheLive(
           config = config,
           clock = clock,
@@ -149,5 +169,5 @@ object NodeCache:
           items = items
         )
         _ <- nodeCache.startSnapshotTrim
-      yield nodeCache 
+      yield nodeCache
     }

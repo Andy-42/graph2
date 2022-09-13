@@ -86,7 +86,7 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
           if nodeHistory.isEmpty then
             Node.empty(id)
           else
-            Node.replaceHistory(
+            Node.replaceWithHistory(
               id = id,
               history = nodeHistory,
               packed = GraphHistory.pack(history) // Repack history without repacking events

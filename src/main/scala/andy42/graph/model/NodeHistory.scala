@@ -15,22 +15,24 @@ type NodeHistory = Vector[EventsAtTime]
 extension (nodeHistory: NodeHistory)
   def toByteArray: Array[Byte] =
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
-    EventHistory.pack(nodeHistory)
+    NodeHistory.pack(nodeHistory)
     packer.toByteArray
 
-// TODO: /EventHistory/NodeHistory
-
-object EventHistory extends Unpackable[NodeHistory]:
+object NodeHistory extends Unpackable[NodeHistory]:
 
   val empty: NodeHistory = Vector.empty
+
+  def unpack(packed: PackedNodeHistory): IO[UnpackFailure, NodeHistory] =
+    unpack(using MessagePack.newDefaultUnpacker(packed))
 
   override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, NodeHistory] = {
     for a <- unpackToVector(EventsAtTime.unpack, unpacker.hasNext)
     yield a
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpack(packed: PackedNodeHistory): IO[UnpackFailure, NodeHistory] =
-    EventHistory.unpack(using MessagePack.newDefaultUnpacker(packed))
+  // TODO:
+  def unpackNodeHistory(packed: PackedNodeHistory): IO[UnpackFailure, NodeHistory] =
+    NodeHistory.unpack(using MessagePack.newDefaultUnpacker(packed))
 
   def pack(eventHistory: NodeHistory)(using packer: MessagePacker): MessagePacker =
     eventHistory.foreach(_.pack)
