@@ -1,11 +1,9 @@
 package andy42.graph.model
 
-import andy42.graph.model.NodeHistory
-import org.msgpack.core.MessageBufferPacker
-import org.msgpack.core.MessagePack
-import org.msgpack.core.MessageUnpacker
-import zio._
 import andy42.graph.cache.CacheItem
+import andy42.graph.model.NodeHistory
+import org.msgpack.core._
+import zio._
 
 final case class NodeSnapshot(time: EventTime, sequence: Int, properties: PropertySnapshot, edges: EdgeSnapshot)
 

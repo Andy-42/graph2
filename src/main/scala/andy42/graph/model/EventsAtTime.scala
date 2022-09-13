@@ -1,11 +1,8 @@
 package andy42.graph.model
 
 import andy42.graph.model.UnpackOperations.unpackToVector
-import org.msgpack.core.MessagePack
-import org.msgpack.core.MessagePacker
-import org.msgpack.core.MessageUnpacker
-import zio.IO
-import zio.ZIO
+import org.msgpack.core._
+import zio._
 
 import java.io.IOException
 

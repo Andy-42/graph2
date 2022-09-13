@@ -1,12 +1,8 @@
 package andy42.graph.model
 
 import andy42.graph.model.UnpackOperations.unpackToVector
-import org.msgpack.core.MessageBufferPacker
-import org.msgpack.core.MessagePack
-import org.msgpack.core.MessagePacker
-import org.msgpack.core.MessageUnpacker
-import zio.IO
-import zio.ZIO
+import org.msgpack.core._
+import zio._
 
 import java.io.IOException
 
@@ -44,8 +40,8 @@ object NodeHistory extends Unpackable[NodeHistory]:
     packer.toByteArray()
 
   /** Append an EventsAtTime at the end of history. This can be more efficient since it doesn't require unpacking all of
-    * history. The caller must ensure that eventsAtTime occurs after the last event (wrt. time, sequence) as though
-    * the eventsAtTime were unpacked.
+    * history. The caller must ensure that eventsAtTime occurs after the last event (wrt. time, sequence) as though the
+    * eventsAtTime were unpacked.
     *
     * @param packed
     *   The packed history for a node.
