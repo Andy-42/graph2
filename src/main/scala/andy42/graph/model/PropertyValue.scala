@@ -8,7 +8,7 @@ import zio._
 import java.io.IOException
 import java.time.Instant
 
-import UnpackOperations.unpackCountedToVector
+import UnpackOperations.unpackCountedToSeq
 
 object PropertyValue extends Unpackable[PropertyValueType]:
 
@@ -47,13 +47,13 @@ object PropertyValue extends Unpackable[PropertyValueType]:
       case ValueType.ARRAY =>
         for
           length <- ZIO.attempt(unpacker.unpackArrayHeader())
-          v <- unpackCountedToVector(unpackScalar, length)
-        yield PropertyArrayValue(v)
+          v <- unpackCountedToSeq(unpackScalar, length)
+        yield PropertyArrayValue(v.toVector)
 
       case ValueType.MAP =>
         for
           length <- ZIO.attempt(unpacker.unpackMapHeader())
-          m <- unpackCountedToVector(unpackKeyValue, length)
+          m <- unpackCountedToSeq(unpackKeyValue, length)
         yield PropertyMapValue(m.toMap)
   }.refineOrDie(UnpackFailure.refine)
 

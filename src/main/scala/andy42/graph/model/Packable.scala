@@ -45,15 +45,15 @@ trait Unpackable[T: ClassTag]:
 
 object UnpackOperations:
 
-  def unpackCountedToVector[T: ClassTag](
+  def unpackCountedToSeq[T: ClassTag](
       unpackElement: => IO[UnpackFailure | Throwable, T],
       length: Int
-  ): IO[UnpackFailure, Vector[T]] = {
+  ): IO[UnpackFailure, Seq[T]] = {
 
     val a: Array[T] = Array.ofDim[T](length)
 
-    def accumulate(i: Int = 0): IO[UnpackFailure | Throwable, Vector[T]] =
-      if i == length then ZIO.succeed(a.toVector)
+    def accumulate(i: Int = 0): IO[UnpackFailure | Throwable, Seq[T]] =
+      if i == length then ZIO.succeed(a)
       else
         unpackElement.flatMap { t =>
           a(i) = t
@@ -63,19 +63,19 @@ object UnpackOperations:
     accumulate()
   }.refineOrDie(UnpackFailure.refine)
 
-  def unpackUncountedToVector[T: ClassTag](
+  def unpackUncountedToSeq[T: ClassTag](
       unpackElement: => IO[UnpackFailure | Throwable, T],
       hasNext: => Boolean
-  ): IO[UnpackFailure, Vector[T]] = {
+  ): IO[UnpackFailure, Seq[T]] = {
     val buf = ArrayBuffer.empty[T]
 
-    def accumulate(): IO[UnpackFailure | Throwable, Vector[T]] =
+    def accumulate(): IO[UnpackFailure | Throwable, Seq[T]] =
       if hasNext then
         unpackElement.flatMap { t =>
           buf.addOne(t)
           accumulate()
         }
-      else ZIO.succeed(buf.toVector)
+      else ZIO.succeed(buf.toSeq)
 
     accumulate()
   }.refineOrDie(UnpackFailure.refine)

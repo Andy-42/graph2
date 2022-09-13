@@ -1,6 +1,6 @@
 package andy42.graph.model
 
-import andy42.graph.model.UnpackOperations.unpackUncountedToVector
+import andy42.graph.model.UnpackOperations.unpackUncountedToSeq
 import org.msgpack.core._
 import zio._
 
@@ -24,8 +24,8 @@ object NodeHistory extends Unpackable[NodeHistory]:
   val empty: NodeHistory = Vector.empty
 
   override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, NodeHistory] = {
-    for a <- unpackUncountedToVector(EventsAtTime.unpack, unpacker.hasNext)
-    yield a
+    for a <- unpackUncountedToSeq(EventsAtTime.unpack, unpacker.hasNext)
+    yield a.toVector
   }.refineOrDie(UnpackFailure.refine)
 
   def unpackNodeHistory(packed: PackedNodeHistory): IO[UnpackFailure, NodeHistory] =
