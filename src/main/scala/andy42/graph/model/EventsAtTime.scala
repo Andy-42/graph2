@@ -1,6 +1,6 @@
 package andy42.graph.model
 
-import andy42.graph.model.UnpackOperations.unpackToVector
+import andy42.graph.model.UnpackOperations.unpackCountedToVector
 import org.msgpack.core._
 import zio._
 
@@ -48,6 +48,6 @@ object EventsAtTime extends Unpackable[EventsAtTime]:
       time <- ZIO.attempt(unpacker.unpackLong())
       sequence <- ZIO.attempt(unpacker.unpackInt())
       length <- ZIO.attempt(unpacker.unpackInt())
-      events <- unpackToVector(Event.unpack, length)
+      events <- unpackCountedToVector(Event.unpack, length)
     yield EventsAtTime(time, sequence, events)
   }.refineOrDie(UnpackFailure.refine)

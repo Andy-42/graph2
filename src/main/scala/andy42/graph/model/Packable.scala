@@ -18,16 +18,16 @@ trait Packable:
   def toPacked: Packed =
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     this.pack
-    packer.toByteArray
+    packer.toByteArray()
 
-trait SeqPacker[T <: Packable]:
+trait CountedSeqPacker[T <: Packable]:
   def pack(a: Seq[T])(using packer: MessagePacker): MessagePacker =
     packer.packInt(a.length)
     a.foreach(_.pack)
     packer
 
   def toPacked(a: Seq[T]): Packed =
-    given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker
+    given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     packer.packInt(a.length)
     a.foreach(_.pack)
     packer.toByteArray()
@@ -47,13 +47,14 @@ trait Unpackable[T: ClassTag]:
 
 object UnpackOperations:
 
-  // FIXME: Unify these with similar ops in PropertyValue
-
-  def unpackToVector[T: ClassTag](unpackElement: => IO[UnpackFailure, T], length: Int): IO[UnpackFailure, Vector[T]] =
+  def unpackCountedToVector[T: ClassTag](
+      unpackElement: => IO[UnpackFailure | Throwable, T],
+      length: Int
+  ): IO[UnpackFailure, Vector[T]] = {
 
     val a: Array[T] = Array.ofDim[T](length)
 
-    def accumulate(i: Int = 0): IO[UnpackFailure, Vector[T]] =
+    def accumulate(i: Int = 0): IO[UnpackFailure | Throwable, Vector[T]] =
       if i == length then ZIO.succeed(a.toVector)
       else
         unpackElement.flatMap { t =>
@@ -62,14 +63,15 @@ object UnpackOperations:
         }
 
     accumulate()
+  }.refineOrDie(UnpackFailure.refine)
 
-  def unpackToVector[T: ClassTag](
-      unpackElement: => IO[UnpackFailure, T],
+  def unpackUncountedToVector[T: ClassTag](
+      unpackElement: => IO[UnpackFailure | Throwable, T],
       hasNext: => Boolean
-  ): IO[UnpackFailure, Vector[T]] =
+  ): IO[UnpackFailure, Vector[T]] = {
     val buf = ArrayBuffer.empty[T]
 
-    def accumulate(): IO[UnpackFailure, Vector[T]] =
+    def accumulate(): IO[UnpackFailure | Throwable, Vector[T]] =
       if hasNext then
         unpackElement.flatMap { t =>
           buf.addOne(t)
@@ -78,3 +80,4 @@ object UnpackOperations:
       else ZIO.succeed(buf.toVector)
 
     accumulate()
+  }.refineOrDie(UnpackFailure.refine)

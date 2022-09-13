@@ -1,11 +1,14 @@
 package andy42.graph.model
 
-import org.msgpack.core.MessageUnpacker
 import org.msgpack.core.MessagePacker
+import org.msgpack.core.MessageUnpacker
 import org.msgpack.value.ValueType
 import zio._
-import java.time.Instant
+
 import java.io.IOException
+import java.time.Instant
+
+import UnpackOperations.unpackCountedToVector
 
 object PropertyValue extends Unpackable[PropertyValueType]:
 
@@ -44,14 +47,14 @@ object PropertyValue extends Unpackable[PropertyValueType]:
       case ValueType.ARRAY =>
         for
           length <- ZIO.attempt(unpacker.unpackArrayHeader())
-          v <- unpackToVector(length)
+          v <- unpackCountedToVector(unpackScalar, length)
         yield PropertyArrayValue(v)
 
       case ValueType.MAP =>
         for
           length <- ZIO.attempt(unpacker.unpackMapHeader())
-          m <- unpackToMap(length)
-        yield PropertyMapValue(m)
+          m <- unpackCountedToVector(unpackKeyValue, length)
+        yield PropertyMapValue(m.toMap)
   }.refineOrDie(UnpackFailure.refine)
 
   def pack(value: PropertyValueType)(using packer: MessagePacker): MessagePacker =
@@ -79,39 +82,8 @@ object PropertyValue extends Unpackable[PropertyValueType]:
         v.foreach { case (k, v) => packer.packString(k); pack(v) }
         packer
 
-  // FIXME: These duplicate UnpackableOps
-
-  private def unpackToVector(length: Int)(using unpacker: MessageUnpacker): IO[UnpackFailure, Vector[ScalarType]] =
-    val a = Array.ofDim[ScalarType](length)
-
-    def accumulate(i: Int = 0): IO[UnpackFailure, Vector[ScalarType]] =
-      if i == length then ZIO.succeed(a.toVector)
-      else
-        unpackScalar.flatMap { t =>
-          a(i) = t
-          accumulate(i + 1)
-        }
-
-    accumulate()
-
-  private def unpackToMap(length: Int)(using unpacker: MessageUnpacker): IO[UnpackFailure, Map[String, ScalarType]] =
-    val a = Array.ofDim[(String, ScalarType)](length)
-
-    def nextKV(using
-        unpacker: MessageUnpacker
-    ): IO[UnpackFailure, (String, ScalarType)] = {
-      for
-        k <- ZIO.attempt(unpacker.unpackString())
-        v <- unpackScalar
-      yield k -> v
-    }.refineOrDie(UnpackFailure.refine)
-
-    def accumulate(i: Int = 0): IO[UnpackFailure, Map[String, ScalarType]] =
-      if i == length then ZIO.succeed(a.toMap)
-      else
-        nextKV.flatMap { t =>
-          a(i) = t
-          accumulate(i + 1)
-        }
-
-    accumulate()
+  def unpackKeyValue(using unpacker: MessageUnpacker): IO[UnpackFailure | Throwable, (String, ScalarType)] =
+    for
+      k <- ZIO.attempt(unpacker.unpackString())
+      v <- unpackScalar
+    yield k -> v

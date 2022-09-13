@@ -101,7 +101,7 @@ object Node:
       lastSequence = history.last.sequence,
       reifiedCurrent = if current != null then current else CollapseNodeHistory(history),
       reifiedHistory = history,
-      packedHistory = if packed != null then packed else history.toByteArray
+      packedHistory = if packed != null then packed else history.toPacked
     )
 
   def replaceWithPackedHistory(
@@ -118,7 +118,7 @@ object Node:
       lastSequence = history.last.sequence,
       reifiedCurrent = if current != null then current else CollapseNodeHistory(history),
       reifiedHistory = history,
-      packedHistory = if packed != null then packed else history.toByteArray
+      packedHistory = if packed != null then packed else history.toPacked
     )
 
   // A node being created from the cache

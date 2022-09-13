@@ -1,6 +1,6 @@
 package andy42.graph.model
 
-import andy42.graph.model.UnpackOperations.unpackToVector
+import andy42.graph.model.UnpackOperations.unpackUncountedToVector
 import org.msgpack.core._
 import zio._
 
@@ -14,7 +14,7 @@ extension (nodeHistory: NodeHistory)
     nodeHistory.foreach(_.pack)
     packer
 
-  def toByteArray: Array[Byte] = // TODO: toPacked?
+  def toPacked: Array[Byte] =
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     pack
     packer.toByteArray
@@ -24,7 +24,7 @@ object NodeHistory extends Unpackable[NodeHistory]:
   val empty: NodeHistory = Vector.empty
 
   override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, NodeHistory] = {
-    for a <- unpackToVector(EventsAtTime.unpack, unpacker.hasNext)
+    for a <- unpackUncountedToVector(EventsAtTime.unpack, unpacker.hasNext)
     yield a
   }.refineOrDie(UnpackFailure.refine)
 

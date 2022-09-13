@@ -1,7 +1,7 @@
 package andy42.graph.model
 
 import andy42.graph.model.PropertyValue
-import andy42.graph.model.UnpackOperations.unpackToVector
+import andy42.graph.model.UnpackOperations.unpackCountedToVector
 import org.msgpack.core._
 import zio._
 
@@ -118,7 +118,7 @@ object Event extends Unpackable[Event]:
     yield Edge(k, other)
   }.refineOrDie(UnpackFailure.refine)
 
-object Events extends SeqPacker[Event]:
+object Events extends CountedSeqPacker[Event]:
 
   def unpack(packed: Array[Byte]): IO[UnpackFailure, Vector[Event]] = {
 
@@ -126,6 +126,6 @@ object Events extends SeqPacker[Event]:
 
     for
       length <- ZIO.attempt(unpacker.unpackInt())
-      events <- unpackToVector(Event.unpack, length)
+      events <- unpackCountedToVector(Event.unpack, length)
     yield events
   }.refineOrDie(UnpackFailure.refine)
