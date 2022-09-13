@@ -25,15 +25,15 @@ object EdgeReconciliation:
 
   // All pairs of half-edges were determined to be reconciled for this window
   def reconciled(windowStart: Long, windowSize: Long): EdgeReconciliation =
-    new EdgeReconciliation(windowStart, windowSize, Reconciled)
+    EdgeReconciliation(windowStart, windowSize, Reconciled)
 
   // The window is known or suspected of being inconsistent
   def inconsistent(windowStart: Long, windowSize: Long): EdgeReconciliation =
-    new EdgeReconciliation(windowStart, windowSize, Inconsistent)
+    EdgeReconciliation(windowStart, windowSize, Inconsistent)
 
 final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconciliationDataService:
 
-  val ctx = new PostgresZioJdbcContext(Literal)
+  val ctx = PostgresZioJdbcContext(Literal)
   import ctx._
 
   inline def edgeReconciliationTable = quote { query[EdgeReconciliation] }

@@ -14,7 +14,7 @@ extension (nodeHistory: NodeHistory)
     nodeHistory.foreach(_.pack)
     packer
 
-  def toByteArray: Array[Byte] =
+  def toByteArray: Array[Byte] = // TODO: toPacked?
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     pack
     packer.toByteArray
