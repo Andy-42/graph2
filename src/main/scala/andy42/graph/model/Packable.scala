@@ -48,7 +48,6 @@ object UnpackOperations:
       length: Int
   ): IO[UnpackFailure, Seq[T]] =
     UnpackSafely {
-
       val a: Array[T] = Array.ofDim[T](length)
 
       def accumulate(i: Int = 0): IO[UnpackFailure | Throwable, Seq[T]] =
