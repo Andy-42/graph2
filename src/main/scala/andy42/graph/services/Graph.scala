@@ -74,13 +74,42 @@ final case class GraphLive(
       time: EventTime,
       events: Vector[Event]
   ): IO[UnpackFailure | PersistenceFailure, Node] =
+
+    val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(events)
+
+    for {
+      // Modify the change holding the node permit for the shortest time possible
+      nextNodeState <- applyEventsToPersistentStoreAndCache(id, time, events)
+
+      // Handle any events that are a result of this node being appended to.
+      // Note that we notify on deduplicated events and not on the events being persisted.
+      // since we may be re-processing a change and we have to guarantee that all post-persist notifications were generated.
+
+      // TODO: Is there any potential creating deadlock on the locks that this would need to process events (esp. get in SQE)?
+      // TODO: Do we need to differentiate the lock types as for a reader-writer-lock?
+      _ <- standingQueryEvaluation.nodeChanged(nextNodeState, deduplicatedEvents)
+      _ <- edgeSynchronization.eventsAppended(nextNodeState.id, time, deduplicatedEvents)
+
+    } yield nextNodeState
+
+  def applyEventsToPersistentStoreAndCache(
+      id: NodeId,
+      time: EventTime,
+      events: Vector[Event]
+  ): IO[UnpackFailure | PersistenceFailure, Node] =
     ZIO.scoped {
       for
         _ <- withNodePermit(id)
-
         existingNode <- get(id)
-        newNode <- applyEvents(time, events, existingNode)
-      yield newNode
+
+        x <- determineNextNodeStateAndHistoryToPersist(existingNode, time, events)
+        nextNode = x.nextNode
+        changes: Option[EventsAtTime] = x.changes
+
+        // Persist to the data store and cache, if there is new history to persist
+        _ <- changes.fold(ZIO.unit)(nodeDataService.append(nextNode.id, _))
+        _ <- changes.fold(ZIO.unit)(_ => cache.put(nextNode))
+      yield nextNode
     }
 
   private def acquirePermit(id: => NodeId): UIO[NodeId] =
@@ -91,50 +120,32 @@ final case class GraphLive(
   private def releasePermit(id: => NodeId): UIO[Unit] =
     inFlight.delete(id).commit
 
+  /** Only one fiber can modify the state of a Node (either through get or append) at one time. Rather than each node
+    * serializing its mutations (e.g., through an Actor mailbox), this graph serializes access by
+    *
+    * @param id
+    * @return
+    */
   private def withNodePermit(id: NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
-
-  private def applyEvents(
-      time: EventTime,
-      newEvents: Vector[Event],
-      node: Node
-  ): IO[UnpackFailure | PersistenceFailure, Node] =
-
-    val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(newEvents)
-
-    for
-      x <- determineNextNodeStateAndHistoryToPersist(node, time, deduplicatedEvents)
-      nextNodeState = x._1
-      historyToPersist = x._2
-
-      // Persist to the data store and cache, if there is new history to persist
-      _ <- historyToPersist.fold(ZIO.unit)(nodeDataService.append(nextNodeState.id, _))
-      _ <- historyToPersist.fold(ZIO.unit)(_ => cache.put(nextNodeState))
-
-      // Handle any events that are a result of this node being appended to.
-      // Note that we notify on deduplicated events and not on the events being persisted.
-      // since we may be re-processing a change and we have to guarantee that all post-persist notifications were generated.
-      _ <- standingQueryEvaluation.nodeChanged(nextNodeState, deduplicatedEvents)
-      _ <- edgeSynchronization.eventsAppended(nextNodeState.id, time, deduplicatedEvents)
-    yield nextNodeState
 
   private def determineNextNodeStateAndHistoryToPersist(
       node: Node,
       time: EventTime,
       events: Vector[Event]
-  ): IO[UnpackFailure, (Node, Option[EventsAtTime])] =
+  ): IO[UnpackFailure, NextNodeAndEvents] =
     if node.wasAlwaysEmpty then
       for
         nextNodeState <- node.append(events, time)
         eventsAtTime = EventsAtTime(time = time, sequence = 0, events = events)
-      yield nextNodeState -> Some(eventsAtTime)
+      yield NextNodeAndEvents(nextNodeState, Some(eventsAtTime))
     else
       node.atTime(time).flatMap { nodeSnapshot =>
 
         // Discard any events that would have no effect on the state at that point in time
         val eventsWithEffect = EventHasEffectOps.filterHasEffect(events, nodeSnapshot)
 
-        if eventsWithEffect.isEmpty then ZIO.succeed(node -> None)
+        if eventsWithEffect.isEmpty then ZIO.succeed(NextNodeAndEvents(node, changes = None))
         else if time >= nodeSnapshot.time then appendEventsToEndOfHistory(node, eventsWithEffect, time)
         else mergeInNewEvents(node, eventsWithEffect, time)
       }
@@ -146,7 +157,7 @@ final case class GraphLive(
       node: Node,
       newEvents: Vector[Event],
       time: EventTime
-  ): IO[UnpackFailure, (Node, Option[EventsAtTime])] =
+  ): IO[UnpackFailure, NextNodeAndEvents] =
     for
       originalHistory <- node.history
 
@@ -160,7 +171,7 @@ final case class GraphLive(
       newEventsAtTime = EventsAtTime(time = time, sequence = sequence, events = newEvents)
       newHistory = (before :+ newEventsAtTime) ++ after
       nextNodeState = Node.replaceWithHistory(node.id, newHistory)
-    yield nextNodeState -> Some(newEventsAtTime)
+    yield NextNodeAndEvents(nextNodeState, Some(newEventsAtTime))
 
   /** Append events to the end of history. Appending events can be done more efficiently by avoiding the need to unpack
     * all of history to a NodeHistory, but instead we can just append the packed history to the end of the packed
@@ -170,7 +181,7 @@ final case class GraphLive(
       node: Node,
       events: Vector[Event],
       time: EventTime
-  ): IO[UnpackFailure, (Node, Option[EventsAtTime])] =
+  ): IO[UnpackFailure, NextNodeAndEvents] =
     require(events.nonEmpty)
     require(time >= node.lastTime)
 
@@ -181,7 +192,9 @@ final case class GraphLive(
     )
 
     for nextNodeState <- node.append(events, time)
-    yield nextNodeState -> Some(eventsAtTime)
+    yield NextNodeAndEvents(nextNodeState, Some(eventsAtTime))
+
+case class NextNodeAndEvents(nextNode: Node, changes: Option[EventsAtTime])
 
 object Graph:
   val layer: URLayer[Clock & NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
