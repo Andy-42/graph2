@@ -37,16 +37,16 @@ final case class EventsAtTime(
       .packInt(events.length)
     events.foreach(_.pack)
 
-
 object EventsAtTime extends Unpackable[EventsAtTime]:
 
   val empty = EventsAtTime(StartOfTime, 0, Vector.empty)
 
-  override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, EventsAtTime] = {
-    for
-      time <- ZIO.attempt(unpacker.unpackLong())
-      sequence <- ZIO.attempt(unpacker.unpackInt())
-      length <- ZIO.attempt(unpacker.unpackInt())
-      events <- unpackCountedToSeq(Event.unpack, length)
-    yield EventsAtTime(time, sequence, events.toVector)
-  }.refineOrDie(UnpackFailure.refine)
+  override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, EventsAtTime] =
+    UnpackSafely {
+      for
+        time <- ZIO.attempt(unpacker.unpackLong())
+        sequence <- ZIO.attempt(unpacker.unpackInt())
+        length <- ZIO.attempt(unpacker.unpackInt())
+        events <- unpackCountedToSeq(Event.unpack, length)
+      yield EventsAtTime(time, sequence, events.toVector)
+    }

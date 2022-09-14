@@ -11,7 +11,12 @@ object NodeSnapshot:
   val empty =
     NodeSnapshot(time = StartOfTime, sequence = 0, properties = PropertySnapshot.empty, edges = EdgeSnapshot.empty)
 
-type PackedNodeHistory = Array[Byte] // TODO: Just Packed, or give it a special name?
+/**
+  * PackedNodeHistory is the packed form of of NodeHistory or GraphHistory.
+  * It is not counted like other packed forms so that it can be appended without completely re-writing the entire history.
+  * This only works for the outermost packed form since unpacking requires testing that whether there is more packed data to consume.
+  */
+type PackedNodeHistory = Packed
 
 sealed trait Node:
   def id: NodeId

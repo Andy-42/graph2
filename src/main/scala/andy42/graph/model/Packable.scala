@@ -46,34 +46,36 @@ object UnpackOperations:
   def unpackCountedToSeq[T: ClassTag](
       unpackElement: => IO[UnpackFailure | Throwable, T],
       length: Int
-  ): IO[UnpackFailure, Seq[T]] = {
+  ): IO[UnpackFailure, Seq[T]] =
+    UnpackSafely {
 
-    val a: Array[T] = Array.ofDim[T](length)
+      val a: Array[T] = Array.ofDim[T](length)
 
-    def accumulate(i: Int = 0): IO[UnpackFailure | Throwable, Seq[T]] =
-      if i == length then ZIO.succeed(a)
-      else
-        unpackElement.flatMap { t =>
-          a(i) = t
-          accumulate(i + 1)
-        }
+      def accumulate(i: Int = 0): IO[UnpackFailure | Throwable, Seq[T]] =
+        if i == length then ZIO.succeed(a)
+        else
+          unpackElement.flatMap { t =>
+            a(i) = t
+            accumulate(i + 1)
+          }
 
-    accumulate()
-  }.refineOrDie(UnpackFailure.refine)
+      accumulate()
+    }
 
   def unpackUncountedToSeq[T: ClassTag](
       unpackElement: => IO[UnpackFailure | Throwable, T],
       hasNext: => Boolean
-  ): IO[UnpackFailure, Seq[T]] = {
-    val buf = ArrayBuffer.empty[T]
+  ): IO[UnpackFailure, Seq[T]] =
+    UnpackSafely {
+      val buf = ArrayBuffer.empty[T]
 
-    def accumulate(): IO[UnpackFailure | Throwable, Seq[T]] =
-      if hasNext then
-        unpackElement.flatMap { t =>
-          buf.addOne(t)
-          accumulate()
-        }
-      else ZIO.succeed(buf.toSeq)
+      def accumulate(): IO[UnpackFailure | Throwable, Seq[T]] =
+        if hasNext then
+          unpackElement.flatMap { t =>
+            buf.addOne(t)
+            accumulate()
+          }
+        else ZIO.succeed(buf.toSeq)
 
-    accumulate()
-  }.refineOrDie(UnpackFailure.refine)
+      accumulate()
+    }

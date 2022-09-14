@@ -89,16 +89,18 @@ object Event extends Unpackable[Event]:
       case unexpectedEventType =>
         ZIO.fail(UnexpectedEventDiscriminator(unexpectedEventType))
 
-  def unpackPropertyAdded(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] = {
-    for
-      k <- ZIO.attempt(unpacker.unpackString())
-      value <- PropertyValue.unpack
-    yield PropertyAdded(k, value)
-  }.refineOrDie(UnpackFailure.refine)
+  def unpackPropertyAdded(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
+    UnpackSafely {
+      for
+        k <- ZIO.attempt(unpacker.unpackString())
+        value <- PropertyValue.unpack
+      yield PropertyAdded(k, value)
+    }
 
-  def unpackPropertyRemoved(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] = {
-    for k <- ZIO.attempt(unpacker.unpackString()) yield PropertyRemoved(k)
-  }.refineOrDie(UnpackFailure.refine)
+  def unpackPropertyRemoved(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
+    UnpackSafely {
+      for k <- ZIO.attempt(unpacker.unpackString()) yield PropertyRemoved(k)
+    }
 
   def unpackEdgeAdded(isFar: Boolean)(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
     for edge <- unpackEdge
@@ -110,22 +112,23 @@ object Event extends Unpackable[Event]:
     for edge <- unpackEdge
     yield if isFar then FarEdgeRemoved(edge) else EdgeRemoved(edge)
 
-  private def unpackEdge(using unpacker: MessageUnpacker): IO[UnpackFailure, Edge] = {
-    for
-      k <- ZIO.attempt(unpacker.unpackString())
-      length <- ZIO.attempt(unpacker.unpackBinaryHeader())
-      other <- ZIO.attempt(unpacker.readPayload(length).toVector)
-    yield Edge(k, other)
-  }.refineOrDie(UnpackFailure.refine)
+  private def unpackEdge(using unpacker: MessageUnpacker): IO[UnpackFailure, Edge] =
+    UnpackSafely {
+      for
+        k <- ZIO.attempt(unpacker.unpackString())
+        length <- ZIO.attempt(unpacker.unpackBinaryHeader())
+        other <- ZIO.attempt(unpacker.readPayload(length).toVector)
+      yield Edge(k, other)
+    }
 
 object Events extends CountedSeqPacker[Event]:
 
-  def unpack(packed: Array[Byte]): IO[UnpackFailure, Vector[Event]] = {
+  def unpack(packed: Array[Byte]): IO[UnpackFailure, Vector[Event]] =
+    UnpackSafely {
+      given unpacker: MessageUnpacker = MessagePack.newDefaultUnpacker(packed)
 
-    given unpacker: MessageUnpacker = MessagePack.newDefaultUnpacker(packed)
-
-    for
-      length <- ZIO.attempt(unpacker.unpackInt())
-      events <- unpackCountedToSeq(Event.unpack, length)
-    yield events.toVector
-  }.refineOrDie(UnpackFailure.refine)
+      for
+        length <- ZIO.attempt(unpacker.unpackInt())
+        events <- unpackCountedToSeq(Event.unpack, length)
+      yield events.toVector
+    }

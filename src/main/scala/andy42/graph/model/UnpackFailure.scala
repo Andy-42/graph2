@@ -18,17 +18,17 @@ final case class UnexpectedEventDiscriminator(discriminator: Int) extends Unpack
 // Got a org.msgpack.value.ValueType for a structure type (Map, Set) where a scalar type was expected
 final case class UnexpectedScalarValueType(valueType: ValueType) extends UnpackFailure
 
-object UnpackFailure:
+
+/**
+  * For contexts where MessagePack APIs can produce an error result of Throwable (always an IOException),
+  * we want to transform that into an UnpackFailure.
+  */
+object UnpackSafely:
+
   val refine: PartialFunction[UnpackFailure | Throwable, UnpackFailure] =
     case unpackFailure: UnpackFailure => unpackFailure
     case ioe: IOException             => DecodingFailure(ioe)
 
-// TODO: Move refineOrDie into a nice template
-// override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, EventsAtTime] = {
-// ...
-// }.refineOrDie(UnpackFailure.refine)
-//
-// =>
-// override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, EventsAtTime] = 
-// AttemptUnpack { ... }
+  def apply[T](f: => IO[UnpackFailure | Throwable, T]): IO[UnpackFailure, T] =
+    f.refineOrDie(refine) 
 
