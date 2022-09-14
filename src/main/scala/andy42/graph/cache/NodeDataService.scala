@@ -3,20 +3,20 @@ package andy42.graph.cache
 import andy42.graph.model._
 import io.getquill._
 import io.getquill.context.qzio.ImplicitSyntax._
+import org.msgpack.core._
 import zio._
-import org.msgpack.core.MessageBufferPacker
-import org.msgpack.core.MessagePack
-import org.msgpack.core.MessagePacker
 
 import javax.sql.DataSource
 
 trait NodeDataService:
 
-  /** Get the full history of the node. The result will be in ascending order of (time, sequence).
+  /** Get a Node from persistent store.
+    *
+    * This always gets the full history of a node. If the node is not in the data store, an empty node is returned.
     */
   def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node]
 
-  /** Append an EventsAtTime to a node's persisted history. Within the historyfor a Node, the (time, sequence) must be
+  /** Append an EventsAtTime to a node's persisted history. Within the history for a Node, the (time, sequence) must be
     * unique. Within a time, the sequence numbers should be a dense sequence starting at zero.
     */
   def append(
@@ -24,55 +24,65 @@ trait NodeDataService:
       eventsAtTime: EventsAtTime
   ): IO[PersistenceFailure, Unit]
 
-final case class GraphHistory(
+/** This class models the persistent data store
+  *
+  * @param id
+  * @param time
+  * @param sequence
+  * @param events
+  */
+final case class GraphEventsAtTime(
     id: NodeId, // clustering key
     time: EventTime, // sort key
     sequence: Int, // sort key
     events: Array[Byte] // packed payload
 ) extends Packable:
+
   def toEventsAtTime: IO[UnpackFailure, EventsAtTime] =
     for events <- Events.unpack(events)
     yield EventsAtTime(time, sequence, events)
 
-   /**
-    * Pack a GraphHistory to packed form.
-    * This is the same representation as for an EventsAtTime, but
-    * packing directly from a GraphHistory avoids having to unpack and repack events.
-   */ 
+  /** Pack this GraphEventsAtTime to packed form. This is the same representation as for an EventsAtTime, but packing
+    * directly from a GraphEventsAtTime avoids having to (unpack and) repack events.
+    */
   override def pack(using packer: MessagePacker): Unit =
     packer.packLong(time)
     packer.packInt(sequence)
     packer.writePayload(events)
 
-// TODO: GraphHistory (for single element) should have a different name
-object GraphHistory extends UncountedSeqPacker[GraphHistory]:
-
-  def toGraphHistory(id: NodeId, eventsAtTime: EventsAtTime): GraphHistory =
-    GraphHistory(
+extension (eventsAtTime: EventsAtTime)
+  def toGraphEventsAtTime(id: NodeId): GraphEventsAtTime =
+    GraphEventsAtTime(
       id = id,
       time = eventsAtTime.time,
       sequence = eventsAtTime.sequence,
       events = eventsAtTime.toPacked
     )
 
+extension (graphHistory: List[GraphEventsAtTime])
+  def toPacked: PackedNodeHistory =
+    given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
+    graphHistory.foreach(_.pack)
+    packer.toByteArray()
+
 final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
 
   val ctx = PostgresZioJdbcContext(Literal)
   import ctx._
 
-  inline def graph = quote { query[GraphHistory] }
+  inline def graph = quote { query[GraphEventsAtTime] }
 
   inline def quotedGet(id: NodeId) = quote {
     graph
       .filter(_.id == lift(id))
-      .sortBy(graphHistory => (graphHistory.time, graphHistory.sequence))(
+      .sortBy(graphEventsAtTime => (graphEventsAtTime.time, graphEventsAtTime.sequence))(
         Ord(Ord.asc, Ord.asc)
       )
   }
 
-  inline def quotedAppend(graphHistory: GraphHistory) = quote {
+  inline def quotedAppend(graphEventsAtTime: GraphEventsAtTime) = quote {
     graph
-      .insertValue(lift(graphHistory))
+      .insertValue(lift(graphEventsAtTime))
       .onConflictUpdate(_.id, _.time, _.sequence)((table, excluded) => table.events -> excluded.events)
   }
 
@@ -81,21 +91,21 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
   override def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
     run(quotedGet(id)).implicitly
       .mapError(SQLReadFailure(id, _))
-      .flatMap (history => 
+      .flatMap(history =>
+        // Unpacking the node history at this point validates that the node unpacks correctly.
         for nodeHistory <- ZIO.foreach(history.toVector)(_.toEventsAtTime)
-        yield 
-          if nodeHistory.isEmpty then
-            Node.empty(id)
+        yield
+          if nodeHistory.isEmpty then Node.empty(id)
           else
             Node.replaceWithHistory(
               id = id,
               history = nodeHistory,
-              packed = GraphHistory.toPacked(history) // Repack history without repacking events
+              packed = history.toPacked
             )
       )
 
   override def append(id: NodeId, eventsAtTime: EventsAtTime): IO[PersistenceFailure, Unit] =
-    run(quotedAppend(GraphHistory.toGraphHistory(id, eventsAtTime))).implicitly
+    run(quotedAppend(eventsAtTime.toGraphEventsAtTime(id))).implicitly
       .mapError(SQLWriteFailure(id, _))
       .flatMap { rowsInsertedOrUpdated =>
         if rowsInsertedOrUpdated != 1 then
