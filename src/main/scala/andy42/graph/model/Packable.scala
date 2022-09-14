@@ -11,8 +11,6 @@ import scala.reflect.ClassTag
 type Packed = Array[Byte]
 
 trait Packable:
-  /** Write self to packer and return packer.
-    */
   def pack(using packer: MessagePacker): Unit
 
   def toPacked: Packed =
