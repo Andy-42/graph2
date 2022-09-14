@@ -18,18 +18,25 @@ trait NodeDataService:
 
   /** Append an EventsAtTime to a node's persisted history. Within the history for a Node, the (time, sequence) must be
     * unique. Within a time, the sequence numbers should be a dense sequence starting at zero.
+    * 
+    * The graph model should have perfect knowledge of the state of the persistent store, so an append should never fail
+    * due to a duplicate key. 
     */
   def append(
       id: NodeId,
       eventsAtTime: EventsAtTime
   ): IO[PersistenceFailure, Unit]
 
-/** This class models the persistent data store
+/** GraphEventsAtTime models the persistent data store.
   *
   * @param id
+  *   The Node indentifier; clustering key.
   * @param time
+  *   The epoch millis time when the events were appended to in the history; sort key.
   * @param sequence
+  *   A disambiguator if multiple appends happen to the same event and time; sort key.
   * @param events
+  *   The events written as a counted sequence packed Event.
   */
 final case class GraphEventsAtTime(
     id: NodeId, // clustering key
@@ -81,9 +88,7 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
   }
 
   inline def quotedAppend(graphEventsAtTime: GraphEventsAtTime) = quote {
-    graph
-      .insertValue(lift(graphEventsAtTime))
-      .onConflictUpdate(_.id, _.time, _.sequence)((table, excluded) => table.events -> excluded.events)
+    graph.insertValue(lift(graphEventsAtTime))
   }
 
   given Implicit[DataSource] = Implicit(ds)
@@ -92,7 +97,9 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
     run(quotedGet(id)).implicitly
       .mapError(SQLReadFailure(id, _))
       .flatMap(history =>
-        // Unpacking the node history at this point validates that the node unpacks correctly.
+        // Unpacking the NodeHistory is not strictly necessary at this point, but it is done because:
+        //  - it validates that the node unpacks correctly as it enters the system from the data store, and
+        //  - it allows the Node constructor to create a current NodeSnapshot and cache it in the instance.
         for nodeHistory <- ZIO.foreach(history.toVector)(_.toEventsAtTime)
         yield
           if nodeHistory.isEmpty then Node.empty(id)
