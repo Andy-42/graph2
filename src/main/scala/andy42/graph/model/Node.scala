@@ -37,7 +37,7 @@ sealed trait Node:
       for nodeHistory <- history
       yield CollapseNodeHistory(nodeHistory, time)
 
-  def wasAlwaysEmpty: Boolean
+  def hasEmptyHistory: Boolean
 
 final case class NodeImplementation(
     id: NodeId,
@@ -77,7 +77,7 @@ final case class NodeImplementation(
         nodeSnapshot = CollapseNodeHistory(history)
       yield nodeSnapshot
 
-  override def wasAlwaysEmpty: Boolean = packedHistory.isEmpty
+  override def hasEmptyHistory: Boolean = packedHistory.isEmpty
 
 object Node:
 

@@ -56,18 +56,24 @@ final case class GraphLive(
     ZIO.scoped {
       for
         _ <- withNodePermit(id)
-
-        optionNode <- cache.get(id)
-        node <- optionNode.fold {
-          for
-            node <- nodeDataService.get(id)
-            _ <-
-              if node.wasAlwaysEmpty then ZIO.unit
-              else cache.put(node)
-          yield node
-        } { ZIO.succeed } // Node was fetched from the cache
+        node <- getWithPermitHeld(id)
       yield node
     }
+
+  private def getWithPermitHeld(
+      id: NodeId
+  ): IO[UnpackFailure | PersistenceFailure, Node] =
+    for
+      optionNode <- cache.get(id)
+      node <- optionNode.fold {
+        for
+          node <- nodeDataService.get(id)
+          _ <-
+            if node.hasEmptyHistory then ZIO.unit
+            else cache.put(node)
+        yield node
+      } { ZIO.succeed } // Node was fetched from the cache
+    yield node
 
   override def append(
       id: NodeId,
@@ -77,22 +83,21 @@ final case class GraphLive(
 
     val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(events)
 
-    for {
-      // Modify the change holding the node permit for the shortest time possible
+    for
+      // Modify the node while holding the permit to change the node state for the shortest time possible
       nextNodeState <- applyEventsToPersistentStoreAndCache(id, time, events)
 
       // Handle any events that are a result of this node being appended to.
-      // Note that we notify on deduplicated events and not on the events being persisted.
-      // since we may be re-processing a change and we have to guarantee that all post-persist notifications were generated.
+      // Note that we notify on deduplicated events and not on the events (if any) that were persisted.
+      // This append may be re-processing a change and we have to guarantee that all post-persist notifications were generated.
 
-      // TODO: Is there any potential creating deadlock on the locks that this would need to process events (esp. get in SQE)?
-      // TODO: Do we need to differentiate the lock types as for a reader-writer-lock?
+      // Processing these events are required for the append request to complete successfully,
+      // but since the node permit has been released, there is no possiblity of deadlock.
       _ <- standingQueryEvaluation.nodeChanged(nextNodeState, deduplicatedEvents)
       _ <- edgeSynchronization.eventsAppended(nextNodeState.id, time, deduplicatedEvents)
+    yield nextNodeState
 
-    } yield nextNodeState
-
-  def applyEventsToPersistentStoreAndCache(
+  private def applyEventsToPersistentStoreAndCache(
       id: NodeId,
       time: EventTime,
       events: Vector[Event]
@@ -100,7 +105,7 @@ final case class GraphLive(
     ZIO.scoped {
       for
         _ <- withNodePermit(id)
-        existingNode <- get(id)
+        existingNode <- getWithPermitHeld(id)
 
         x <- determineNextNodeStateAndHistoryToPersist(existingNode, time, events)
         nextNode = x.nextNode
@@ -134,7 +139,7 @@ final case class GraphLive(
       time: EventTime,
       events: Vector[Event]
   ): IO[UnpackFailure, NextNodeAndEvents] =
-    if node.wasAlwaysEmpty then
+    if node.hasEmptyHistory then
       for
         nextNodeState <- node.append(events, time)
         eventsAtTime = EventsAtTime(time = time, sequence = 0, events = events)
@@ -150,8 +155,8 @@ final case class GraphLive(
         else mergeInNewEvents(node, eventsWithEffect, time)
       }
 
-  /** General merge of new events at any point in time into the node's history. This requires unpacking the node's
-    * history to a NodeHistory which may require more resources for large nodes.
+  /** General merge of new events at any point in time into the node's history. This requires unpacking the node's history
+    * to a NodeHistory which may require more resources for large nodes.
     */
   private def mergeInNewEvents(
       node: Node,
@@ -174,8 +179,8 @@ final case class GraphLive(
     yield NextNodeAndEvents(nextNodeState, Some(newEventsAtTime))
 
   /** Append events to the end of history. Appending events can be done more efficiently by avoiding the need to unpack
-    * all of history to a NodeHistory, but instead we can just append the packed history to the end of the packed
-    * history. This could be significant for nodes with a large history (esp. may edges).
+    * all of history to a NodeHistory, but instead we can just append the packed history to the end of the packed history.
+    * This could be significant for nodes with a large history (esp. may edges).
     */
   private def appendEventsToEndOfHistory(
       node: Node,
@@ -194,7 +199,9 @@ final case class GraphLive(
     for nextNodeState <- node.append(events, time)
     yield NextNodeAndEvents(nextNodeState, Some(eventsAtTime))
 
-case class NextNodeAndEvents(nextNode: Node, changes: Option[EventsAtTime])
+  case class NextNodeAndEvents(nextNode: Node, changes: Option[EventsAtTime])
+
+end GraphLive
 
 object Graph:
   val layer: URLayer[Clock & NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
