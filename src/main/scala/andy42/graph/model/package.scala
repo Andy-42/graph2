@@ -41,7 +41,7 @@ package object model:
       *
       * This works even with a larger aggregation there are many values being included in no particular order. 
       * As long as each item in is ^-ed into the aggregate twice. Each edge's hash will include the the key,
-      * and the ids at either end once. If the aggregate includes both 
+      * and the ids at either end once.
       * 
       * forall(edge => (edge.hash(id) ^ edge.reverse(id).hash(edge.other) == 0)
       * 
