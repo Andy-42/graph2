@@ -127,9 +127,9 @@ final case class GraphLive(
 
   /** Only one fiber can modify the state of a Node (either through get or append) at one time. Rather than each node
     * serializing its mutations (e.g., through an Actor mailbox), this graph serializes access by
-    *
-    * @param id
-    * @return
+    * 
+    * If the node permit is currently being held by another fiber, acquiring the permit will
+    * wait (on an STM retry) until it is released.
     */
   private def withNodePermit(id: NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
