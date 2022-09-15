@@ -4,7 +4,7 @@ import zio._
 import zio.test._
 import zio.test.Assertion._
 
-object EdgeReconciliationSpec extends ZIOSpecDefault {
+object EdgeReconciliationSpec extends ZIOSpecDefault:
 
   val nodeIdGen: Gen[Sized, NodeId] = Gen.vectorOfN(16)(Gen.byte)
 
@@ -45,4 +45,3 @@ object EdgeReconciliationSpec extends ZIOSpecDefault {
       }
     }
   )
-}
