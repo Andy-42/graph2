@@ -8,10 +8,7 @@ import scala.util.hashing.MurmurHash3
 
 final case class Edge(k: String, other: NodeId, direction: EdgeDirection) extends Packable:
 
-  def reverse(id: NodeId): Edge = this.direction match
-    case EdgeDirection.Outgoing   => copy(other = id, direction = EdgeDirection.Incoming)
-    case EdgeDirection.Incoming   => copy(other = id, direction = EdgeDirection.Outgoing)
-    case EdgeDirection.Undirected => copy(other = id, direction = EdgeDirection.Undirected)
+  def reverse(id: NodeId): Edge = copy(other = id, direction = direction.reversed)
 
   /** A hash of the edge that can be used to test eventual consistency of the far edge state.
     *
