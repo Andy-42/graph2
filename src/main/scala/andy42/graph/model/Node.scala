@@ -134,5 +134,5 @@ object Node:
       lastTime = item.lastTime,
       lastSequence = item.lastSequence,
       reifiedCurrent = item.current, // This may be present in the cache, or null
-      packedHistory = item.packed
+      packedHistory = item.packed 
     )
