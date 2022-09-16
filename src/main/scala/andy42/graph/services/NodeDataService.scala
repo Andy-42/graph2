@@ -120,10 +120,9 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
         else ZIO.unit
       }
 
-object NodeDataService {
+object NodeDataService:
   val layer: URLayer[DataSource, NodeDataService] =
     ZLayer {
       for ds <- ZIO.service[DataSource]
       yield NodeDataServiceLive(ds)
     }
-}
