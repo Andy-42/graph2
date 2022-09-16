@@ -8,11 +8,15 @@ object EdgeReconciliationSpec extends ZIOSpecDefault:
 
   val nodeIdGen: Gen[Sized, NodeId] = Gen.vectorOfN(16)(Gen.byte)
 
+  val edgeDirectionGen: Gen[Sized, EdgeDirection] =
+    Gen.oneOf(Gen.const(EdgeDirection.Incoming), Gen.const(EdgeDirection.Outgoing), Gen.const(EdgeDirection.Undirected))
+
   val edgeGen: Gen[Sized, Edge] =
     for
       k <- Gen.string
       other <- nodeIdGen
-    yield Edge(k, other)
+      direction <- edgeDirectionGen
+    yield Edge(k, other, direction)
 
   val idAndEdgeGen: Gen[Sized, (NodeId, Edge)] =
     for
@@ -40,7 +44,7 @@ object EdgeReconciliationSpec extends ZIOSpecDefault:
 
         val allHashes = scala.util.Random.shuffle(nearHashes ++ farHashes)
         val reconciliation = allHashes.fold(0L)(_ ^ _)
-        
+
         assertTrue(reconciliation == 0L)
       }
     }

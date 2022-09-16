@@ -1,11 +1,13 @@
 package andy42.graph.model
 
 import andy42.graph.model.PropertyValue
+import andy42.graph.model.UnexpectedEventDiscriminator
 import andy42.graph.model.UnpackOperations.unpackCountedToSeq
 import org.msgpack.core._
 import zio._
 
 import java.io.IOException
+
 
 enum Event extends Packable:
   case NodeRemoved
@@ -16,48 +18,30 @@ enum Event extends Packable:
   case FarEdgeAdded(edge: Edge)
   case FarEdgeRemoved(edge: Edge)
 
-  override def pack(using packer: MessagePacker): Unit = this match
-    case NodeRemoved =>
-      packer.packInt(ordinal)
+  override def pack(using packer: MessagePacker): Unit =
+    packer.packInt(ordinal)
 
-    case PropertyAdded(k, value) =>
-      packer
-        .packInt(ordinal)
-        .packString(k)
-      PropertyValue.pack(value)
+    this match
+      case NodeRemoved =>
 
-    case PropertyRemoved(k) =>
-      packer
-        .packInt(ordinal)
-        .packString(k)
+      case PropertyAdded(k, value) =>
+        packer.packString(k)
+        PropertyValue.pack(value)
 
-    case EdgeAdded(edge) =>
-      packer
-        .packInt(ordinal)
-        .packString(edge.k)
-        .packBinaryHeader(edge.other.length)
-        .writePayload(edge.other.to(Array))
+      case PropertyRemoved(k) =>
+        packer.packString(k)
 
-    case EdgeRemoved(edge) =>
-      packer
-        .packInt(ordinal)
-        .packString(edge.k)
-        .packBinaryHeader(edge.other.length)
-        .writePayload(edge.other.to(Array))
+      case EdgeAdded(edge) =>
+        edge.pack
 
-    case FarEdgeAdded(edge) =>
-      packer
-        .packInt(ordinal)
-        .packString(edge.k)
-        .packBinaryHeader(edge.other.length)
-        .writePayload(edge.other.to(Array))
+      case EdgeRemoved(edge) =>
+        edge.pack
 
-    case FarEdgeRemoved(edge: Edge) =>
-      packer
-        .packInt(ordinal)
-        .packString(edge.k)
-        .packBinaryHeader(edge.other.length)
-        .writePayload(edge.other.to(Array))
+      case FarEdgeAdded(edge) =>
+        edge.pack
+
+      case FarEdgeRemoved(edge: Edge) =>
+        edge.pack
 
   def edgeAffected: Option[Edge] = this match
     case EdgeAdded(edge)      => Some(edge)
@@ -103,23 +87,14 @@ object Event extends Unpackable[Event]:
     }
 
   def unpackEdgeAdded(isFar: Boolean)(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
-    for edge <- unpackEdge
+    for edge <- Edge.unpack
     yield if isFar then FarEdgeAdded(edge) else EdgeAdded(edge)
 
   def unpackEdgeRemoved(
       isFar: Boolean
   )(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
-    for edge <- unpackEdge
+    for edge <- Edge.unpack
     yield if isFar then FarEdgeRemoved(edge) else EdgeRemoved(edge)
-
-  private def unpackEdge(using unpacker: MessageUnpacker): IO[UnpackFailure, Edge] =
-    UnpackSafely {
-      for
-        k <- ZIO.attempt(unpacker.unpackString())
-        length <- ZIO.attempt(unpacker.unpackBinaryHeader())
-        other <- ZIO.attempt(unpacker.readPayload(length).toVector)
-      yield Edge(k, other)
-    }
 
 object Events extends CountedSeqPacker[Event]:
 

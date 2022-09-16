@@ -5,6 +5,16 @@ import andy42.graph.model.NodeHistory
 import org.msgpack.core._
 import zio._
 
+
+type NodeId = Vector[Byte] // Any length, but an 8-byte UUID-like identifier is typical
+
+// The time an event occurs
+type EventTime = Long // Epoch Millis
+val StartOfTime: EventTime = Long.MinValue
+val EndOfTime: EventTime = Long.MaxValue
+
+type Sequence = Int // Break ties when multiple groups of events are processed in the same EventTime
+
 final case class NodeSnapshot(time: EventTime, sequence: Int, properties: PropertySnapshot, edges: EdgeSnapshot)
 
 object NodeSnapshot:
