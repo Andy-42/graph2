@@ -8,20 +8,19 @@ import zio._
 
 import javax.sql.DataSource
 
-
 trait EdgeReconciliationDataService:
   def markWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit]
-  
-final case class EdgeReconciliation(
+
+final case class EdgeReconciliation private (
     windowStart: Long, // clustering key
     windowSize: Long, // payload
     state: Byte // payload
 )
 
-// TODO: Smells like an enum
 object EdgeReconciliation:
   val Reconciled: Byte = 1.toByte
   val Inconsistent: Byte = 2.toByte
+  val Unknown: Byte = 3.toByte
 
   // All pairs of half-edges were determined to be reconciled for this window
   def reconciled(windowStart: Long, windowSize: Long): EdgeReconciliation =
@@ -30,6 +29,11 @@ object EdgeReconciliation:
   // The window is known or suspected of being inconsistent
   def inconsistent(windowStart: Long, windowSize: Long): EdgeReconciliation =
     EdgeReconciliation(windowStart, windowSize, Inconsistent)
+
+  // The state is unknown. This is not typically something that we expect to write,
+  // and it would normally be represented as a gap in the table.
+  def unknown(windowStart: Long, windowSize: Long): EdgeReconciliation =
+    EdgeReconciliation(windowStart, windowSize, Unknown)
 
 final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconciliationDataService:
 
