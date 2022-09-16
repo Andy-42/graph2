@@ -166,6 +166,8 @@ case class EdgeReconciliationServiceLive(
   private val windowStartAnnotation = LogAnnotation[WindowStart]("windowStart", (_, x) => x, _.toString)
   private val edgeHashAnnotation = LogAnnotation[EdgeHash]("edgeHash", (_, x) => x, _.toString)
 
+end EdgeReconciliationServiceLive
+
 object EdgeReconciliationState:
   val layer: RLayer[Clock & EdgeReconciliationConfig & EdgeReconciliationDataService, EdgeReconciliationService] =
     ZLayer {
