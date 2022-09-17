@@ -1,8 +1,8 @@
 package andy42.graph.model
 
-import zio._
-import zio.test._
-import zio.test.Assertion._
+import zio.*
+import zio.test.*
+import zio.test.Assertion.*
 
 object EdgeReconciliationSpec extends ZIOSpecDefault:
 

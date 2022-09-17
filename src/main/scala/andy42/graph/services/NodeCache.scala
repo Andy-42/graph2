@@ -1,8 +1,8 @@
 package andy42.graph.cache
 
-import andy42.graph.model._
-import zio._
-import zio.stm._
+import andy42.graph.model.*
+import zio.*
+import zio.stm.*
 import andy42.graph.model.NodeHistory
 
 import java.time.temporal.ChronoUnit.MILLIS

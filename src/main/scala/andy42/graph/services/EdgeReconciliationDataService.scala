@@ -2,9 +2,9 @@ package andy42.graph.cache
 
 import andy42.graph.model.Edge
 import andy42.graph.model.NodeId
-import io.getquill._
-import io.getquill.context.qzio.ImplicitSyntax._
-import zio._
+import io.getquill.*
+import io.getquill.context.qzio.ImplicitSyntax.*
+import zio.*
 
 import javax.sql.DataSource
 
@@ -38,7 +38,7 @@ object EdgeReconciliation:
 final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconciliationDataService:
 
   val ctx = PostgresZioJdbcContext(Literal)
-  import ctx._
+  import ctx.*
 
   inline def edgeReconciliationTable = quote { query[EdgeReconciliation] }
 

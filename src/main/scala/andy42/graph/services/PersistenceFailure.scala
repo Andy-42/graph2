@@ -5,7 +5,7 @@ import java.sql.SQLException
 import andy42.graph.model.NodeId
 
 import zio.logging.{LogAnnotation, LogFormat }
-import zio._
+import zio.*
 
 sealed trait PersistenceFailure extends Throwable:
   def message: String

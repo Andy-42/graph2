@@ -1,7 +1,7 @@
 package andy42.graph.cache
 
-import andy42.graph.model._
-import zio._
+import andy42.graph.model.*
+import zio.*
 import zio.logging.LogAnnotation
 import zio.stream.ZStream
 

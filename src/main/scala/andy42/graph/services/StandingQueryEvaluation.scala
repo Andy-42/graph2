@@ -2,7 +2,7 @@ package andy42.graph.cache
 
 import andy42.graph.model.Event
 import andy42.graph.model.Node
-import zio._
+import zio.*
 import zio.stm.STM
 import zio.stm.TQueue
 

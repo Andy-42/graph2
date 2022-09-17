@@ -2,8 +2,8 @@ package andy42.graph.model
 
 import andy42.graph.cache.CacheItem
 import andy42.graph.model.NodeHistory
-import org.msgpack.core._
-import zio._
+import org.msgpack.core.*
+import zio.*
 
 
 type NodeId = Vector[Byte] // Any length, but an 8-byte UUID-like identifier is typical

@@ -1,7 +1,7 @@
 package andy42.graph.model
 
 import org.msgpack.value.ValueType
-import zio._
+import zio.*
 
 import java.io.IOException
 import scala.collection.mutable.ArrayBuffer

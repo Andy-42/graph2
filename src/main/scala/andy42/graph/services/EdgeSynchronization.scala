@@ -1,9 +1,9 @@
 package andy42.graph.cache
 
 import andy42.graph.cache.EdgeReconciliationConfig
-import andy42.graph.model._
-import zio._
-import zio.stm._
+import andy42.graph.model.*
+import zio.*
+import zio.stm.*
 import zio.stream.ZStream
 
 import java.time.temporal.ChronoUnit.MILLIS
@@ -67,8 +67,6 @@ final case class EdgeSynchronizationLive(
         event.edgeAffected.fold(ZIO.unit)(edge => queue.offer(EdgeReconciliationEvent(id, time, edge)))
       }
     yield ()
-
-  // TODO: Need unit tests on hash reconciliation scheme to show algebra works
 
   def startReconciliation: UIO[Unit] =
     ZStream

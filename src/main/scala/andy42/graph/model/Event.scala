@@ -3,8 +3,8 @@ package andy42.graph.model
 import andy42.graph.model.PropertyValue
 import andy42.graph.model.UnexpectedEventDiscriminator
 import andy42.graph.model.UnpackOperations.unpackCountedToSeq
-import org.msgpack.core._
-import zio._
+import org.msgpack.core.*
+import zio.*
 
 import java.io.IOException
 

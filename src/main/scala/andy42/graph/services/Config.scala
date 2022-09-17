@@ -1,8 +1,8 @@
 package andy42.graph.cache
 
 import andy42.graph.model.Edge
-import zio._
-import zio.config._
+import zio.*
+import zio.config.*
 import zio.config.magnolia.Descriptor
 import zio.config.magnolia.descriptor
 

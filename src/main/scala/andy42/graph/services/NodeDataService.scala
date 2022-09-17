@@ -1,10 +1,10 @@
 package andy42.graph.cache
 
-import andy42.graph.model._
-import io.getquill._
-import io.getquill.context.qzio.ImplicitSyntax._
-import org.msgpack.core._
-import zio._
+import andy42.graph.model.*
+import io.getquill.*
+import io.getquill.context.qzio.ImplicitSyntax.*
+import org.msgpack.core.*
+import zio.*
 
 import javax.sql.DataSource
 
@@ -75,7 +75,7 @@ extension (graphHistory: List[GraphEventsAtTime])
 final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
 
   val ctx = PostgresZioJdbcContext(Literal)
-  import ctx._
+  import ctx.*
 
   inline def graph = quote { query[GraphEventsAtTime] }
 

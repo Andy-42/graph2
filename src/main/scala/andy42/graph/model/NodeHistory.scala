@@ -1,8 +1,8 @@
 package andy42.graph.model
 
 import andy42.graph.model.UnpackOperations.unpackUncountedToSeq
-import org.msgpack.core._
-import zio._
+import org.msgpack.core.*
+import zio.*
 
 import java.io.IOException
 

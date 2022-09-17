@@ -1,7 +1,7 @@
 package andy42.graph.model
 
-import org.msgpack.core._
-import zio._
+import org.msgpack.core.*
+import zio.*
 
 import java.time.Instant
 
