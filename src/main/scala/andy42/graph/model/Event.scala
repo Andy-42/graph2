@@ -8,7 +8,6 @@ import zio.*
 
 import java.io.IOException
 
-
 enum Event extends Packable:
   case NodeRemoved
   case PropertyAdded(k: String, value: PropertyValueType)
@@ -31,17 +30,10 @@ enum Event extends Packable:
       case PropertyRemoved(k) =>
         packer.packString(k)
 
-      case EdgeAdded(edge) =>
-        edge.pack
-
-      case EdgeRemoved(edge) =>
-        edge.pack
-
-      case FarEdgeAdded(edge) =>
-        edge.pack
-
-      case FarEdgeRemoved(edge: Edge) =>
-        edge.pack
+      case EdgeAdded(edge)      => edge.pack
+      case EdgeRemoved(edge)    => edge.pack
+      case FarEdgeAdded(edge)   => edge.pack
+      case FarEdgeRemoved(edge) => edge.pack
 
   def edgeAffected: Option[Edge] = this match
     case EdgeAdded(edge)      => Some(edge)
