@@ -1,8 +1,6 @@
 package andy42.graph.model
 
-import andy42.graph.model.PropertyValue
-import andy42.graph.model.UnexpectedEventDiscriminator
-import andy42.graph.model.UnpackOperations.unpackCountedToSeq
+import andy42.graph.model.*
 import org.msgpack.core.*
 import zio.*
 
@@ -22,18 +20,32 @@ enum Event extends Packable:
 
     this match
       case NodeRemoved =>
+        packer.packInt(Event.nodeRemovedOrdinal)
 
       case PropertyAdded(k, value) =>
+        packer.packInt(Event.propertyAddedOrdinal)
         packer.packString(k)
         PropertyValue.pack(value)
 
       case PropertyRemoved(k) =>
+        packer.packInt(Event.propertyRemovedOrdinal)
         packer.packString(k)
 
-      case EdgeAdded(edge)      => edge.pack
-      case EdgeRemoved(edge)    => edge.pack
-      case FarEdgeAdded(edge)   => edge.pack
-      case FarEdgeRemoved(edge) => edge.pack
+      case EdgeAdded(edge) =>
+        packer.packInt(Event.edgeAddedOrdinal)
+        edge.pack
+
+      case EdgeRemoved(edge) =>
+        packer.packInt(Event.edgeRemovedOrdinal)
+        edge.pack
+
+      case FarEdgeAdded(edge) =>
+        packer.packInt(Event.farEdgeAddedOrdinal)
+        edge.pack
+
+      case FarEdgeRemoved(edge) =>
+        packer.packInt(Event.farEdgeRemovedOrdinal)
+        edge.pack
 
   def edgeAffected: Option[Edge] = this match
     case EdgeAdded(edge)      => Some(edge)
@@ -96,6 +108,6 @@ object Events extends CountedSeqPacker[Event]:
 
       for
         length <- ZIO.attempt(unpacker.unpackInt())
-        events <- unpackCountedToSeq(Event.unpack, length)
+        events <- UnpackOperations.unpackCountedToSeq(Event.unpack, length)
       yield events.toVector
     }
