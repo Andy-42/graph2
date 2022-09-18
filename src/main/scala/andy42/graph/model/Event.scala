@@ -5,6 +5,8 @@ import org.msgpack.core.*
 import zio.*
 
 import java.io.IOException
+import andy42.graph.services.EdgeReconciliationEvent.apply
+import andy42.graph.services.EdgeReconciliationEvent
 
 enum Event extends Packable:
   case NodeRemoved
@@ -46,13 +48,6 @@ enum Event extends Packable:
       case FarEdgeRemoved(edge) =>
         packer.packInt(Event.farEdgeRemovedOrdinal)
         edge.pack
-
-  def edgeAffected: Option[Edge] = this match
-    case EdgeAdded(edge)      => Some(edge)
-    case EdgeRemoved(edge)    => Some(edge)
-    case FarEdgeAdded(edge)   => Some(edge)
-    case FarEdgeRemoved(edge) => Some(edge)
-    case _                    => None
 
 object Event extends Unpackable[Event]:
 

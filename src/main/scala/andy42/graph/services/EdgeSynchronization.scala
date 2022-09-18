@@ -46,6 +46,15 @@ final case class EdgeSynchronizationLive(
       time: EventTime,
       events: Vector[Event]
   ): UIO[Unit] =
+
+    def toReconciliationEvents =
+      events.collect {
+        case Event.EdgeAdded(edge)      => EdgeReconciliationEvent(id, time, edge)
+        case Event.EdgeRemoved(edge)    => EdgeReconciliationEvent(id, time, edge)
+        case Event.FarEdgeAdded(edge)   => EdgeReconciliationEvent(id, time, edge)
+        case Event.FarEdgeRemoved(edge) => EdgeReconciliationEvent(id, time, edge)
+      }
+
     for
       _ <- ZIO.foreach(events) { // Propagate the corresponding half-edge to the other node
 
@@ -62,9 +71,7 @@ final case class EdgeSynchronizationLive(
         case _ => ZIO.unit
       }
 
-      _ <- ZIO.foreach(events) { event => // Track that both half-edges are appended for every edge
-        event.edgeAffected.fold(ZIO.unit)(edge => queue.offer(EdgeReconciliationEvent(id, time, edge)))
-      }
+      _ <- queue.offerAll(toReconciliationEvents)
     yield ()
 
   def startReconciliation: UIO[Unit] =
