@@ -1,10 +1,6 @@
-package andy42.graph.cache
+package andy42.graph.services
 
-import andy42.graph.cache.NodeCache
-import andy42.graph.model
-import andy42.graph.model.EventDeduplication
 import andy42.graph.model.*
-import org.msgpack.core.MessagePack
 import zio.*
 import zio.stm.*
 
@@ -68,9 +64,7 @@ final case class GraphLive(
       node <- optionNode.fold {
         for
           node <- nodeDataService.get(id)
-          _ <-
-            if node.hasEmptyHistory then ZIO.unit
-            else cache.put(node)
+          _ <- if node.hasEmptyHistory then ZIO.unit else cache.put(node)
         yield node
       } { ZIO.succeed } // Node was fetched from the cache
     yield node

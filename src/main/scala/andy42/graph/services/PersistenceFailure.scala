@@ -1,4 +1,4 @@
-package andy42.graph.cache
+package andy42.graph.services
 
 import java.sql.SQLException
 

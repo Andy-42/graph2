@@ -1,4 +1,4 @@
-package andy42.graph.cache
+package andy42.graph.services
 
 import andy42.graph.model.Event
 import andy42.graph.model.Node

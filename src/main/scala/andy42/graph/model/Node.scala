@@ -1,6 +1,6 @@
 package andy42.graph.model
 
-import andy42.graph.cache.CacheItem
+import andy42.graph.services.CacheItem
 import andy42.graph.model.NodeHistory
 import org.msgpack.core.*
 import zio.*
