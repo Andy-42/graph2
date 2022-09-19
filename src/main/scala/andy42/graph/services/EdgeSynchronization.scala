@@ -23,7 +23,7 @@ trait EdgeSynchronization:
       time: EventTime,
       events: Vector[Event]
   ): UIO[Unit]
-  
+
   def startReconciliation: UIO[Unit]
 
 final case class EdgeReconciliationEvent(
@@ -46,15 +46,6 @@ final case class EdgeSynchronizationLive(
       time: EventTime,
       events: Vector[Event]
   ): UIO[Unit] =
-
-    def toReconciliationEvents =
-      events.collect {
-        case Event.EdgeAdded(edge)      => EdgeReconciliationEvent(id, time, edge)
-        case Event.EdgeRemoved(edge)    => EdgeReconciliationEvent(id, time, edge)
-        case Event.FarEdgeAdded(edge)   => EdgeReconciliationEvent(id, time, edge)
-        case Event.FarEdgeRemoved(edge) => EdgeReconciliationEvent(id, time, edge)
-      }
-
     for
       _ <- ZIO.foreach(events) { // Propagate the corresponding half-edge to the other node
 
@@ -71,7 +62,12 @@ final case class EdgeSynchronizationLive(
         case _ => ZIO.unit
       }
 
-      _ <- queue.offerAll(toReconciliationEvents)
+      _ <- queue.offerAll(events.collect {
+        case Event.EdgeAdded(edge)      => EdgeReconciliationEvent(id, time, edge)
+        case Event.EdgeRemoved(edge)    => EdgeReconciliationEvent(id, time, edge)
+        case Event.FarEdgeAdded(edge)   => EdgeReconciliationEvent(id, time, edge)
+        case Event.FarEdgeRemoved(edge) => EdgeReconciliationEvent(id, time, edge)
+      })
     yield ()
 
   def startReconciliation: UIO[Unit] =
@@ -92,7 +88,7 @@ object EdgeSynchronization:
         edgeReconciliationService <- ZIO.service[EdgeReconciliationService]
         clock <- ZIO.service[Clock]
         graph <- ZIO.service[Graph]
-        queue <- Queue.unbounded[EdgeReconciliationEvent]
+        queue <- Queue.unbounded[EdgeReconciliationEvent] // TODO: s/b bounded?
         live = EdgeSynchronizationLive(config, edgeReconciliationService, clock, graph, queue)
         _ <- live.startReconciliation
       yield live
