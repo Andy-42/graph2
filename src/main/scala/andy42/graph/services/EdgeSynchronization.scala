@@ -2,6 +2,7 @@ package andy42.graph.services
 
 import andy42.graph.model.*
 import zio.*
+import zio.logging.LogAnnotation
 import zio.stm.*
 import zio.stream.ZStream
 
@@ -49,17 +50,9 @@ final case class EdgeSynchronizationLive(
     for
       _ <- ZIO.foreach(events) { // Propagate the corresponding half-edge to the other node
 
-        case Event.EdgeAdded(edge) =>
-          graph
-            .append(edge.other, time, Vector(Event.FarEdgeAdded(edge.reverse(id))))
-            .fork // TODO: Handle fiber exit
-
-        case Event.EdgeRemoved(edge) =>
-          graph
-            .append(edge.other, time, Vector(Event.FarEdgeRemoved(edge.reverse(id))))
-            .fork // TODO: Handle fiber exit
-
-        case _ => ZIO.unit
+        case Event.EdgeAdded(edge)   => appendFarEvent(id, edge.other, time, Event.FarEdgeAdded(edge.reverse(id)))
+        case Event.EdgeRemoved(edge) => appendFarEvent(id, edge.other, time, Event.FarEdgeRemoved(edge.reverse(id)))
+        case _                       => ZIO.unit
       }
 
       _ <- queue.offerAll(events.collect {
@@ -70,14 +63,40 @@ final case class EdgeSynchronizationLive(
       })
     yield ()
 
+  private def appendFarEvent(id: NodeId, other: NodeId, time: EventTime, event: Event): UIO[Unit] =
+    import EdgeSynchronizationLogAnnotations._
+    val operation = graph.append(other, time, Vector(event))
+    @@ operationAnnotation ("append far event")
+    @@ timeAnnotation (time)
+    @@ nearNodeIdAnnotation (id)
+    @@ farNodeIdAnnotation (other)
+    @@ eventAnnotation (event)
+
+    operation.forkDaemon *> ZIO.unit
+
   def startReconciliation: UIO[Unit] =
-    ZStream
+    import EdgeSynchronizationLogAnnotations.operationAnnotation
+    val operation = ZStream
       .fromQueue(queue, maxChunkSize = config.maxChunkSize)
-      // TODO: Ensure fires at regular intervals - zip with something using config.maximumIntervalBetweenChunks
-      .chunks
+      // Ensure that a chunk is processed at regular intervals for window expiry processing
+      .groupedWithin(chunkSize = config.maxChunkSize, within = config.maximumIntervalBetweenChunks)
+      // For each chunk processed, add new events into running summaries and report on state of exired windows
       .scanZIO(edgeReconciliationService.zero)((state, chunk) => edgeReconciliationService.addChunk(state, chunk))
       .runDrain
-      .fork *> ZIO.unit // TODO: Error handling if fiber dies
+      @@ operationAnnotation("scan reconciliation event stream")
+
+    operation.forkDaemon *> ZIO.unit
+
+object EdgeSynchronizationLogAnnotations:
+
+  def formatNodeId(id: NodeId): String = id.map(_.toInt.toHexString).mkString
+  def formatEvent(event: Event): String = event.getClass.getSimpleName
+
+  val operationAnnotation = LogAnnotation[String]("operation", (_, x) => x, _.toString)
+  val nearNodeIdAnnotation = LogAnnotation[NodeId]("nearNodeId", (_, x) => x, formatNodeId)
+  val farNodeIdAnnotation = LogAnnotation[NodeId]("farNodeId", (_, x) => x, formatNodeId)
+  val eventAnnotation = LogAnnotation[Event]("event", (_, x) => x, formatEvent)
+  val timeAnnotation = LogAnnotation[EventTime]("time", (_, x) => x, _.toString)
 
 object EdgeSynchronization:
 
