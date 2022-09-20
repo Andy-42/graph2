@@ -48,14 +48,13 @@ final case class EdgeSynchronizationLive(
       events: Vector[Event]
   ): UIO[Unit] =
     for
-      _ <- ZIO.foreach(events) { // Propagate the corresponding half-edge to the other node
-
-        case Event.EdgeAdded(edge)   => appendFarEvent(id, edge.other, time, Event.FarEdgeAdded(edge.reverse(id)))
-        case Event.EdgeRemoved(edge) => appendFarEvent(id, edge.other, time, Event.FarEdgeRemoved(edge.reverse(id)))
+      _ <- ZIO.foreach(events) { // Propagate the corresponding (near) half-edge to the other (far) node
+        case Event.EdgeAdded(edge)   => appendFarEdgeEvent(id, edge.other, time, Event.FarEdgeAdded(edge.reverse(id)))
+        case Event.EdgeRemoved(edge) => appendFarEdgeEvent(id, edge.other, time, Event.FarEdgeRemoved(edge.reverse(id)))
         case _                       => ZIO.unit
       }
 
-      _ <- queue.offerAll(events.collect {
+      _ <- queue.offerAll(events.collect { // Add all edge events to the edge reconciliation
         case Event.EdgeAdded(edge)      => EdgeReconciliationEvent(id, time, edge)
         case Event.EdgeRemoved(edge)    => EdgeReconciliationEvent(id, time, edge)
         case Event.FarEdgeAdded(edge)   => EdgeReconciliationEvent(id, time, edge)
@@ -63,7 +62,20 @@ final case class EdgeSynchronizationLive(
       })
     yield ()
 
-  private def appendFarEvent(id: NodeId, other: NodeId, time: EventTime, event: Event): UIO[Unit] =
+  /** Append a FarEdgeAdded or FarEdgeRemoved to the other node.
+    *
+    * An edge is changed when an EdgeAdded or EdgeRemoved is appended to node `id`. A full edge is composed of a pair of
+    * half-edges, with each pair of edges reversed. This function appends the reversed edge to the other (far) node,
+    * making the edge whole.
+    *
+    * Appending the reversed edge to the far node is necessarily done outside of holding the node permit to avoid a
+    * communications deadlock. In this implementation, appending the reverse edge is done on a daemon fiber that may
+    * fail, and thereby cause an inconsistency in the graph (i.e., a missing half-edge).
+    * 
+    * TODO: The addition of log annotations assumes that the runtime will log an error for any failing fiber,
+    * and that the logging will include these annotations.
+    */
+  private def appendFarEdgeEvent(id: NodeId, other: NodeId, time: EventTime, event: Event): UIO[Unit] =
     import EdgeSynchronizationLogAnnotations._
     val operation = graph.append(other, time, Vector(event))
     @@ operationAnnotation ("append far event")
@@ -80,10 +92,10 @@ final case class EdgeSynchronizationLive(
       .fromQueue(queue, maxChunkSize = config.maxChunkSize)
       // Ensure that a chunk is processed at regular intervals for window expiry processing
       .groupedWithin(chunkSize = config.maxChunkSize, within = config.maximumIntervalBetweenChunks)
-      // For each chunk processed, add new events into running summaries and report on state of exired windows
+      // For each chunk processed, add new events into time window reconciliations, and report on state of expired windows
       .scanZIO(edgeReconciliationService.zero)((state, chunk) => edgeReconciliationService.addChunk(state, chunk))
       .runDrain
-      @@ operationAnnotation("scan reconciliation event stream")
+    @@ operationAnnotation ("scan reconciliation event stream")
 
     operation.forkDaemon *> ZIO.unit
 
