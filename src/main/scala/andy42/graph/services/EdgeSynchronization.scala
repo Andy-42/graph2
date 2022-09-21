@@ -71,33 +71,35 @@ final case class EdgeSynchronizationLive(
     * Appending the reversed edge to the far node is necessarily done outside of holding the node permit to avoid a
     * communications deadlock. In this implementation, appending the reverse edge is done on a daemon fiber that may
     * fail, and thereby cause an inconsistency in the graph (i.e., a missing half-edge).
-    * 
-    * TODO: The addition of log annotations assumes that the runtime will log an error for any failing fiber,
-    * and that the logging will include these annotations.
     */
   private def appendFarEdgeEvent(id: NodeId, other: NodeId, time: EventTime, event: Event): UIO[Unit] =
     import EdgeSynchronizationLogAnnotations._
-    val operation = graph.append(other, time, Vector(event))
-    @@ operationAnnotation ("append far event")
-    @@ timeAnnotation (time)
-    @@ nearNodeIdAnnotation (id)
-    @@ farNodeIdAnnotation (other)
-    @@ eventAnnotation (event)
-
-    operation.forkDaemon *> ZIO.unit
+    graph
+      .append(other, time, Vector(event))
+      .catchAllCause(cause =>
+        ZIO.logCause("Unexpected failure appending far edge event", cause)
+        @@ operationAnnotation ("append far edge event")
+        @@ timeAnnotation (time)
+        @@ nearNodeIdAnnotation (id)
+        @@ farNodeIdAnnotation (other)
+        @@ eventAnnotation (event)
+      )
+      .forkDaemon *> ZIO.unit
 
   def startReconciliation: UIO[Unit] =
     import EdgeSynchronizationLogAnnotations.operationAnnotation
-    val operation = ZStream
+    ZStream
       .fromQueue(queue, maxChunkSize = config.maxChunkSize)
       // Ensure that a chunk is processed at regular intervals for window expiry processing
       .groupedWithin(chunkSize = config.maxChunkSize, within = config.maximumIntervalBetweenChunks)
       // For each chunk processed, add new events into time window reconciliations, and report on state of expired windows
       .scanZIO(edgeReconciliationService.zero)((state, chunk) => edgeReconciliationService.addChunk(state, chunk))
       .runDrain
-    @@ operationAnnotation ("scan reconciliation event stream")
-
-    operation.forkDaemon *> ZIO.unit
+      .catchAllCause(cause =>
+        ZIO.logCause("Unexpected failure scanning edge reconciliation event stream", cause)
+        @@ operationAnnotation ("scan edge reconciliation event stream")
+      )
+      .forkDaemon *> ZIO.unit
 
 object EdgeSynchronizationLogAnnotations:
 
