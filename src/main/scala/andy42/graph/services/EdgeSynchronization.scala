@@ -2,7 +2,6 @@ package andy42.graph.services
 
 import andy42.graph.model.*
 import zio.*
-import zio.logging.LogAnnotation
 import zio.stm.*
 import zio.stream.ZStream
 
@@ -73,7 +72,7 @@ final case class EdgeSynchronizationLive(
     * fail, and thereby cause an inconsistency in the graph (i.e., a missing half-edge).
     */
   private def appendFarEdgeEvent(id: NodeId, other: NodeId, time: EventTime, event: Event): UIO[Unit] =
-    import EdgeSynchronizationLogAnnotations._
+    import LogAnnotations._
     graph
       .append(other, time, Vector(event))
       .catchAllCause(cause =>
@@ -86,8 +85,14 @@ final case class EdgeSynchronizationLive(
       )
       .forkDaemon *> ZIO.unit
 
+
+  /**
+   * Start the fiber that consumes the edge synchronization events and reconciles them.
+   * 
+   * TODO: If this daemon fiber fails, should it be restarted?
+  */    
   def startReconciliation: UIO[Unit] =
-    import EdgeSynchronizationLogAnnotations.operationAnnotation
+    import LogAnnotations.operationAnnotation
     ZStream
       .fromQueue(queue, maxChunkSize = config.maxChunkSize)
       // Ensure that a chunk is processed at regular intervals for window expiry processing
@@ -100,17 +105,6 @@ final case class EdgeSynchronizationLive(
         @@ operationAnnotation ("scan edge reconciliation event stream")
       )
       .forkDaemon *> ZIO.unit
-
-object EdgeSynchronizationLogAnnotations:
-
-  def formatNodeId(id: NodeId): String = id.map(_.toInt.toHexString).mkString
-  def formatEvent(event: Event): String = event.getClass.getSimpleName
-
-  val operationAnnotation = LogAnnotation[String]("operation", (_, x) => x, _.toString)
-  val nearNodeIdAnnotation = LogAnnotation[NodeId]("nearNodeId", (_, x) => x, formatNodeId)
-  val farNodeIdAnnotation = LogAnnotation[NodeId]("farNodeId", (_, x) => x, formatNodeId)
-  val eventAnnotation = LogAnnotation[Event]("event", (_, x) => x, formatEvent)
-  val timeAnnotation = LogAnnotation[EventTime]("time", (_, x) => x, _.toString)
 
 object EdgeSynchronization:
 

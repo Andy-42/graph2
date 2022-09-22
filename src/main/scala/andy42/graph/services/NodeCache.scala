@@ -5,6 +5,7 @@ import zio.*
 import zio.stm.*
 
 import java.time.temporal.ChronoUnit.MILLIS
+import com.sourcegraph.semanticdb_javac.Semanticdb.Access
 
 trait NodeCache:
   def get(id: NodeId): IO[UnpackFailure, Option[Node]]
@@ -74,7 +75,11 @@ final case class NodeCacheLive(
 
       current <- node.current
 
-      _ <- trimIfOverCapacity(now).commit
+      optionOldest <- trimIfOverCapacity(now).commit
+      _ <- optionOldest.fold(ZIO.unit)(oldest =>
+        ZIO.logInfo("Node cache trimmed") @@ LogAnnotations.cacheItemRetainWatermark(oldest)
+      )
+
       _ <- putSTM(node, now, current).commit
     yield ()
 
@@ -96,13 +101,13 @@ final case class NodeCacheLive(
       )
     yield ()
 
-  private def trimIfOverCapacity(now: AccessTime): USTM[Unit] =
+  private def trimIfOverCapacity(now: AccessTime): USTM[Option[AccessTime]] =
     ZSTM.ifSTM(items.size.map(_ > config.capacity))(
       onTrue = trim(now),
-      onFalse = ZSTM.unit
+      onFalse = ZSTM.succeed(None)
     )
 
-  private def trimSnapshot(now: AccessTime): USTM[Unit] =
+  private def trimSnapshot(now: AccessTime): USTM[AccessTime] =
     for
       oldest <- oldest.get
       retain = lastTimeToRetainSnapshot(oldest, now)
@@ -111,29 +116,34 @@ final case class NodeCacheLive(
         if cacheItem.lastAccess >= retain || cacheItem.current == null then cacheItem
         else cacheItem.copy(current = null)
       )
-    yield ()
+    yield retain
 
-  // TODO: Logging
   def snapshotTrim: UIO[Unit] =
     for
       now <- clock.currentTime(MILLIS)
-      _ <- trimSnapshot(now).commit
+      retain <- trimSnapshot(now).commit
+      _ <- ZIO.logInfo("Node cache snapshot trim") @@ LogAnnotations.snapshotRetainWatermark(retain)
     yield ()
 
   private def lastTimeToRetainSnapshot(oldest: AccessTime, now: AccessTime): AccessTime =
     now - Math.ceil((now - oldest + 1) * config.fractionOfSnapshotsToRetainOnSnapshotPurge).toLong
 
   override def startSnapshotTrim: UIO[Unit] =
-    snapshotTrim.repeat(Schedule.spaced(config.snapshotPurgeFrequency)).fork *> ZIO.unit // TODO: Handle fiber death
+    snapshotTrim
+      .repeat(Schedule.spaced(config.snapshotPurgeFrequency))
+      .catchAllCause(cause =>
+        val operation = "node cache snapshot trim"
+        ZIO.logCause(s"Unexpected failure in: $operation", cause) @@ LogAnnotations.operationAnnotation(operation)
+      )
+      .forkDaemon *> ZIO.unit
 
-  // TODO: Logging
-  private def trim(now: AccessTime): USTM[Unit] =
+  private def trim(now: AccessTime): USTM[Some[AccessTime]] =
     for
       currentOldest <- oldest.get
       newOldest = lastTimeToPurge(currentOldest, now)
       _ <- items.removeIfDiscard((_, cacheItem) => cacheItem.lastAccess < newOldest)
       _ <- oldest.set(newOldest)
-    yield ()
+    yield Some(newOldest)
 
   /** The time would retain the configured fraction of the cache if we removed all cache items with an access time less
     * than that time.
@@ -156,7 +166,7 @@ object NodeCache:
     ZLayer {
       for
         config <- ZIO.service[NodeCacheConfig]
-        clock <- ZIO.service[Clock] // TODO: Make this a field?
+        clock <- ZIO.service[Clock]
         now <- clock.currentTime(MILLIS)
         items <- TMap.empty[NodeId, CacheItem].commit
         oldest <- TRef.make(now - 1).commit

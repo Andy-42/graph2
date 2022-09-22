@@ -2,7 +2,6 @@ package andy42.graph.services
 
 import andy42.graph.model.*
 import zio.*
-import zio.logging.LogAnnotation
 import zio.stream.ZStream
 
 import java.time.temporal.ChronoUnit.MILLIS
@@ -60,6 +59,7 @@ case class EdgeReconciliationServiceLive(
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent],
       expiryThreshold: WindowStart
   ): UIO[Chunk[EdgeReconciliationEvent]] =
+    import LogAnnotations._
 
     // An event is expired if the last period in the window is expired
     extension (time: EventTime) def isExpired: Boolean = time.toWindowEnd < expiryThreshold
@@ -81,6 +81,7 @@ case class EdgeReconciliationServiceLive(
       state: EdgeReconciliationState,
       expiryThreshold: WindowStart
   ): UIO[EdgeReconciliationState] =
+    import LogAnnotations._
 
     extension (i: Int)
       def indexToWindowStart: WindowStart = i * windowSize + state.firstWindowStart
@@ -159,12 +160,7 @@ case class EdgeReconciliationServiceLive(
         edgeHashes = edgeHashes
       )
 
-  private val expiryThresholdAnnotation = LogAnnotation[WindowStart]("expiryThreshold", (_, x) => x, _.toString)
-  private val windowSizeAnnotation = LogAnnotation[MillisecondDuration]("windowSize", (_, x) => x, _.toString)
-  private val eventTimeAnnotation = LogAnnotation[EventTime]("time", (_, x) => x, _.toString)
-  private val eventWindowTimeAnnotation = LogAnnotation[WindowStart]("eventWindowTime", (_, x) => x, _.toString)
-  private val windowStartAnnotation = LogAnnotation[WindowStart]("windowStart", (_, x) => x, _.toString)
-  private val edgeHashAnnotation = LogAnnotation[EdgeHash]("edgeHash", (_, x) => x, _.toString)
+
 
 end EdgeReconciliationServiceLive
 
