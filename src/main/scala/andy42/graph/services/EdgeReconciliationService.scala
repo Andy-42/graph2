@@ -26,7 +26,6 @@ case class EdgeReconciliationState(
 
 case class EdgeReconciliationServiceLive(
     config: EdgeReconciliationConfig,
-    clock: Clock,
     edgeReconciliationDataService: EdgeReconciliationDataService
 ) extends EdgeReconciliationService:
 
@@ -48,7 +47,7 @@ case class EdgeReconciliationServiceLive(
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent]
   ): UIO[EdgeReconciliationState] =
     for
-      now <- clock.currentTime(MILLIS)
+      now <- Clock.currentTime(MILLIS)
       expiryThreshold = toWindowEnd(now - windowExpiry)
       currentEvents <- handleAndRemoveExpiredEvents(edgeReconciliationEvents, expiryThreshold)
       stateWithExpiredWindowsRemoved <- expireReconciliationWindows(state, expiryThreshold)
@@ -160,8 +159,6 @@ case class EdgeReconciliationServiceLive(
         edgeHashes = edgeHashes
       )
 
-
-
 end EdgeReconciliationServiceLive
 
 object EdgeReconciliationState:
@@ -169,7 +166,6 @@ object EdgeReconciliationState:
     ZLayer {
       for
         config <- ZIO.service[EdgeReconciliationConfig]
-        clock <- ZIO.service[Clock]
         dataService <- ZIO.service[EdgeReconciliationDataService]
-      yield EdgeReconciliationServiceLive(config, clock, dataService)
+      yield EdgeReconciliationServiceLive(config, dataService)
     }

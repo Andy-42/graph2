@@ -39,7 +39,6 @@ trait Graph:
 
 final case class GraphLive(
     inFlight: TSet[NodeId],
-    clock: Clock,
     cache: NodeCache,
     nodeDataService: NodeDataService,
     edgeSynchronization: EdgeSynchronization,
@@ -56,17 +55,16 @@ final case class GraphLive(
       yield node
     }
 
-  private def getWithPermitHeld(
-      id: NodeId
-  ): IO[UnpackFailure | PersistenceFailure, Node] =
+  private def getNodeFromDataServiceAndAddToCache(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
+    for
+      node <- nodeDataService.get(id)
+      _ <- if node.hasEmptyHistory then ZIO.unit else cache.put(node)
+    yield node
+
+  private def getWithPermitHeld(id: NodeId): IO[UnpackFailure | PersistenceFailure, Node] =
     for
       optionNode <- cache.get(id)
-      node <- optionNode.fold {
-        for
-          node <- nodeDataService.get(id)
-          _ <- if node.hasEmptyHistory then ZIO.unit else cache.put(node)
-        yield node
-      } { ZIO.succeed } // Node was fetched from the cache
+      node <- optionNode.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
     yield node
 
   override def append(
@@ -121,9 +119,9 @@ final case class GraphLive(
 
   /** Only one fiber can modify the state of a Node (either through get or append) at one time. Rather than each node
     * serializing its mutations (e.g., through an Actor mailbox), this graph serializes access by
-    * 
-    * If the node permit is currently being held by another fiber, acquiring the permit will
-    * wait (on an STM retry) until it is released.
+    *
+    * If the node permit is currently being held by another fiber, acquiring the permit will wait (on an STM retry)
+    * until it is released.
     */
   private def withNodePermit(id: NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
@@ -149,8 +147,8 @@ final case class GraphLive(
         else mergeInNewEvents(node, eventsWithEffect, time)
       }
 
-  /** General merge of new events at any point in time into the node's history. This requires unpacking the node's history
-    * to a NodeHistory which may require more resources for large nodes.
+  /** General merge of new events at any point in time into the node's history. This requires unpacking the node's
+    * history to a NodeHistory which may require more resources for large nodes.
     */
   private def mergeInNewEvents(
       node: Node,
@@ -173,8 +171,8 @@ final case class GraphLive(
     yield NextNodeAndEvents(nextNodeState, Some(newEventsAtTime))
 
   /** Append events to the end of history. Appending events can be done more efficiently by avoiding the need to unpack
-    * all of history to a NodeHistory, but instead we can just append the packed history to the end of the packed history.
-    * This could be significant for nodes with a large history (esp. may edges).
+    * all of history to a NodeHistory, but instead we can just append the packed history to the end of the packed
+    * history. This could be significant for nodes with a large history (esp. may edges).
     */
   private def appendEventsToEndOfHistory(
       node: Node,
@@ -201,12 +199,11 @@ object Graph:
   val layer: URLayer[Clock & NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
     ZLayer {
       for
-        clock <- ZIO.service[Clock]
         nodeCache <- ZIO.service[NodeCache]
         nodeDataService <- ZIO.service[NodeDataService]
         edgeSynchronization <- ZIO.service[EdgeSynchronization]
         standingQueryEvaluation <- ZIO.service[StandingQueryEvaluation]
 
         inFlight <- TSet.empty[NodeId].commit
-      yield GraphLive(inFlight, clock, nodeCache, nodeDataService, edgeSynchronization, standingQueryEvaluation)
+      yield GraphLive(inFlight, nodeCache, nodeDataService, edgeSynchronization, standingQueryEvaluation)
     }

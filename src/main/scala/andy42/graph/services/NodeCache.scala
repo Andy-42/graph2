@@ -26,14 +26,13 @@ case class CacheItem(
 
 final case class NodeCacheLive(
     config: NodeCacheConfig,
-    clock: Clock,
     oldest: TRef[AccessTime], // All items in the cache will have a lastAccess > oldest
     items: TMap[NodeId, CacheItem]
 ) extends NodeCache:
 
   override def get(id: NodeId): IO[UnpackFailure, Option[Node]] =
     for
-      now <- clock.currentTime(MILLIS)
+      now <- Clock.currentTime(MILLIS)
       optionCacheItem <- getSTM(id, now).commit
 
       optionNode <- optionCacheItem.fold(ZIO.succeed(None)) { cacheItem =>
@@ -71,7 +70,7 @@ final case class NodeCacheLive(
 
   override def put(node: Node): IO[UnpackFailure, Unit] =
     for
-      now <- clock.currentTime(MILLIS)
+      now <- Clock.currentTime(MILLIS)
 
       current <- node.current
 
@@ -120,7 +119,7 @@ final case class NodeCacheLive(
 
   def snapshotTrim: UIO[Unit] =
     for
-      now <- clock.currentTime(MILLIS)
+      now <- Clock.currentTime(MILLIS)
       retain <- trimSnapshot(now).commit
       _ <- ZIO.logInfo("Node cache snapshot trim") @@ LogAnnotations.snapshotRetainWatermark(retain)
     yield ()
@@ -166,17 +165,11 @@ object NodeCache:
     ZLayer {
       for
         config <- ZIO.service[NodeCacheConfig]
-        clock <- ZIO.service[Clock]
-        now <- clock.currentTime(MILLIS)
+        now <- Clock.currentTime(MILLIS)
         items <- TMap.empty[NodeId, CacheItem].commit
         oldest <- TRef.make(now - 1).commit
 
-        nodeCache = NodeCacheLive(
-          config = config,
-          clock = clock,
-          oldest = oldest,
-          items = items
-        )
+        nodeCache = NodeCacheLive(config, oldest, items)
         _ <- nodeCache.startSnapshotTrim
       yield nodeCache
     }

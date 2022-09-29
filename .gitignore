@@ -10,3 +10,9 @@
 .idea/**
 .bsp/**
 .bloop/**
+.DS_Store
+src/.DS_Store
+src/main/.DS_Store
+src/main/scala/.DS_Store
+src/main/scala/andy42/.DS_Store
+src/main/scala/andy42/graph/.DS_Store
