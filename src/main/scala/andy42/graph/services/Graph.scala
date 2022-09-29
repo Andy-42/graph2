@@ -5,17 +5,50 @@ import zio.*
 import zio.stm.*
 
 /*
- * This is the entry point to applying any change to a node.
+ * The Graph service represents the entire state of a graph.
+ *
+ * The Graph API consists of only two fundamental APIs:
+ *  - `get` gets the Node given its NodeId.
+ *  - `append` appends events to the Node's state at some point in time.
+ *
+ * All operations can affect the state of the Node in the NodeCache, including `get`, which
+ * can modify the last access time of the cached node. `append` operations may require
+ * reading from the cache (in one STM transaction), reading/writing to the persistent store
+ * (and effectful operation), followed by writing to the cache (a second STM transaction).
+ * This means that coherency of the cache cannot be maintained within a single transaction,
+ * this service implements a mechanism that serializes all operations on a Node.
+ * The graph is free to process operations on a Node in any order.
+ *
  * While changes can be applied as though they happened at any point in time (and in any order),
  * all changes to a node must be serialized. Rather than using an actor system and serializing the
  * changes by that mechanism, this API forces changes to be serialized by tracking the node ids that
  * have changes currently in flight in a transactional set.
+ *
+ * In addition to managing the state of the Nodes in the cache and persistent store, the
+ * Graph implementation also notifies downstream services of changes to the graph:
+ *  - Edge Synchronization propagates edge events on the near node to the other node.
+ *  - Standing Query Evaludation matches any node changes to standing queries.
+ *
+ * Since all changes to a node are serialized,
+ * attempting to propagate edge events to the far nodes within the transaction would
+ * create the possiblity of a communications deadlock. For that reason, edge reconciliation
+ * is done in an eventually consistent way.
+ *
+ * Edge Synchronization and Standing Query Evaluation notifications (as well as `append`) use
+ * at-least-once semantics. For example, if the graph is consuming events from a Kafka stream,
+ * a failed window can be re-processed by the Graph safely.
  */
 trait Graph:
 
+  /** Get a node from the graph.
+    *
+    * The returned node will contain the full history of the node.
+    */
   def get(id: NodeId): IO[UnpackFailure | PersistenceFailure, Node]
 
-  /** Append events to a Node's history. This is the fundamental API that all mutation events are based on.
+  /** Append events to a Node's history.
+    *
+    * This is the fundamental API that all mutation events are based on.
     */
   def append(
       id: NodeId,
@@ -23,7 +56,9 @@ trait Graph:
       events: Vector[Event]
   ): IO[UnpackFailure | PersistenceFailure, Node]
 
-  /** Append events
+  /** Append events to a node using property and edge snapshots.
+    *
+    * The snapshots are converted to events and applied through the fundamental append API.
     */
   def append(
       id: NodeId,
@@ -55,16 +90,16 @@ final case class GraphLive(
       yield node
     }
 
-  private def getNodeFromDataServiceAndAddToCache(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
-    for
-      node <- nodeDataService.get(id)
-      _ <- if node.hasEmptyHistory then ZIO.unit else cache.put(node)
-    yield node
-
   private def getWithPermitHeld(id: NodeId): IO[UnpackFailure | PersistenceFailure, Node] =
     for
       optionNode <- cache.get(id)
       node <- optionNode.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
+    yield node
+
+  private def getNodeFromDataServiceAndAddToCache(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
+    for
+      node <- nodeDataService.get(id)
+      _ <- if node.hasEmptyHistory then ZIO.unit else cache.put(node)
     yield node
 
   override def append(
@@ -123,7 +158,7 @@ final case class GraphLive(
     * If the node permit is currently being held by another fiber, acquiring the permit will wait (on an STM retry)
     * until it is released.
     */
-  private def withNodePermit(id: NodeId): ZIO[Scope, Nothing, NodeId] =
+  private def withNodePermit(id: => NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
   private def determineNextNodeStateAndHistoryToPersist(
@@ -196,7 +231,7 @@ final case class GraphLive(
 end GraphLive
 
 object Graph:
-  val layer: URLayer[Clock & NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
+  val layer: URLayer[NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
     ZLayer {
       for
         nodeCache <- ZIO.service[NodeCache]

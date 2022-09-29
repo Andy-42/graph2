@@ -162,7 +162,7 @@ case class EdgeReconciliationServiceLive(
 end EdgeReconciliationServiceLive
 
 object EdgeReconciliationState:
-  val layer: RLayer[Clock & EdgeReconciliationConfig & EdgeReconciliationDataService, EdgeReconciliationService] =
+  val layer: RLayer[EdgeReconciliationConfig & EdgeReconciliationDataService, EdgeReconciliationService] =
     ZLayer {
       for
         config <- ZIO.service[EdgeReconciliationConfig]
