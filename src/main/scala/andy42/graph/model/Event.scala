@@ -17,6 +17,14 @@ enum Event extends Packable:
   case FarEdgeAdded(edge: Edge)
   case FarEdgeRemoved(edge: Edge)
 
+  def isNearEdgeEvent: Boolean = this match
+    case _: EdgeAdded | _: EdgeRemoved => true
+    case _ => false
+
+  def isFarEdgeEvent: Boolean = this match
+    case _: FarEdgeAdded | _: FarEdgeRemoved => true
+    case _ => false
+
   override def pack(using packer: MessagePacker): Unit =
     packer.packInt(ordinal)
 

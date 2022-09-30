@@ -120,7 +120,7 @@ final case class GraphLive(
 
       // Processing these events are required for the append request to complete successfully,
       // but since the node permit has been released, there is no possiblity of deadlock.
-      _ <- standingQueryEvaluation.nodeChanged(nextNodeState, deduplicatedEvents)
+      _ <- standingQueryEvaluation.nodeChanged(nextNodeState, time, deduplicatedEvents)
       _ <- edgeSynchronization.eventsAppended(nextNodeState.id, time, deduplicatedEvents)
     yield nextNodeState
 
