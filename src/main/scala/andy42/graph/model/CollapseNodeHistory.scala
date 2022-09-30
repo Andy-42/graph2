@@ -17,11 +17,12 @@ object CollapseNodeHistory:
     */
   def apply(
       history: NodeHistory,
-      time: EventTime = EndOfTime
+      time: EventTime = EndOfTime,
+      previousSnapshot: Option[NodeSnapshot] = None
   ): NodeSnapshot =
 
-    var properties: PropertySnapshot = PropertySnapshot.empty
-    var edges: EdgeSnapshot = EdgeSnapshot.empty
+    var properties: PropertySnapshot = previousSnapshot.fold(PropertySnapshot.empty)(_.properties)
+    var edges: EdgeSnapshot = previousSnapshot.fold(EdgeSnapshot.empty)(_.edges)
 
     for
       eventsAtTime <- history if eventsAtTime.time <= time

@@ -78,6 +78,8 @@ final case class NodeImplementation(
       time: EventTime,
       events: Vector[Event]
   ): IO[UnpackFailure, (Node, Option[EventsAtTime])] =
+    require(events.nonEmpty)
+
     if hasEmptyHistory then
       val eventsAtTime = EventsAtTime(time = time, sequence = 0, events = events)
       val nextNodeState = Node.fromHistory(id, Vector(eventsAtTime))
@@ -102,6 +104,8 @@ final case class NodeImplementation(
       originalHistory: NodeHistory,
       newEvents: Vector[Event]
   ): (Node, Option[EventsAtTime]) =
+    require(time < lastTime)
+
     val (before, after) = originalHistory.partition(_.time <= time)
 
     val sequence = before.lastOption match
@@ -121,7 +125,6 @@ final case class NodeImplementation(
       currentSnapshot: NodeSnapshot,
       events: Vector[Event]
   ): (Node, Option[EventsAtTime]) =
-    require(events.nonEmpty)
     require(time >= lastTime)
 
     val eventsAtTime = EventsAtTime(
@@ -130,10 +133,15 @@ final case class NodeImplementation(
       events = events
     )
 
-    // TODO: There is an opportunity to update the current node snapshot efficiently -
-    // need to modify CollapseNodeHistory to work from a known starting point
+    // Appending to the end of history allows the next current NodeSnapshot to
+    // be generated without collapsing all of history.
+    val nextCurrent = CollapseNodeHistory(
+      history = Vector(eventsAtTime),
+      previousSnapshot = Some(currentSnapshot),
+      time = time
+    )
 
-    val nextNodeState = Node.fromHistory(id, history :+ eventsAtTime)
+    val nextNodeState = Node.fromHistory(id, history :+ eventsAtTime, current = nextCurrent)
 
     nextNodeState -> Some(eventsAtTime)
 
