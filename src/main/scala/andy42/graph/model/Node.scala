@@ -5,7 +5,6 @@ import andy42.graph.model.NodeHistory
 import org.msgpack.core.*
 import zio.*
 
-
 type NodeId = Vector[Byte] // Any length, but an 8-byte UUID-like identifier is typical
 
 // The time an event occurs
@@ -21,10 +20,9 @@ object NodeSnapshot:
   val empty =
     NodeSnapshot(time = StartOfTime, sequence = 0, properties = PropertySnapshot.empty, edges = EdgeSnapshot.empty)
 
-/**
-  * PackedNodeHistory is the packed form of of NodeHistory or GraphHistory.
-  * It is not counted like other packed forms so that it can be appended without completely re-writing the entire history.
-  * This only works for the outermost packed form since unpacking requires testing that whether there is more packed data to consume.
+/** PackedNodeHistory is the packed form of of NodeHistory or GraphHistory. It is not counted like other packed forms so
+  * that it can be appended without completely re-writing the entire history. This only works for the outermost packed
+  * form since unpacking requires testing that whether there is more packed data to consume.
   */
 type PackedNodeHistory = Packed
 
@@ -38,8 +36,6 @@ sealed trait Node:
   def history: IO[UnpackFailure, NodeHistory]
   def packedHistory: PackedNodeHistory
 
-  def append(events: Vector[Event], time: EventTime): IO[UnpackFailure, Node]
-
   def current: IO[UnpackFailure, NodeSnapshot]
   def atTime(time: EventTime): IO[UnpackFailure, NodeSnapshot] =
     if time >= lastTime then current
@@ -48,6 +44,8 @@ sealed trait Node:
       yield CollapseNodeHistory(nodeHistory, time)
 
   def hasEmptyHistory: Boolean
+
+  def append(time: EventTime, events: Vector[Event]): IO[UnpackFailure, (Node, Option[EventsAtTime])]
 
 final case class NodeImplementation(
     id: NodeId,
@@ -65,19 +63,6 @@ final case class NodeImplementation(
     if reifiedHistory != null then ZIO.succeed(reifiedHistory)
     else NodeHistory.unpack(using MessagePack.newDefaultUnpacker(packedHistory))
 
-  override def append(events: Vector[Event], time: EventTime): IO[UnpackFailure, Node] =
-    require(time >= lastTime)
-
-    val sequence = if time > lastTime then 0 else lastSequence + 1
-
-    for history <- history
-    yield copy(
-      version = version + 1,
-      lastTime = time,
-      lastSequence = sequence,
-      packedHistory = packedHistory ++ EventsAtTime(time, sequence, events).toPacked
-    )
-
   override val current: IO[UnpackFailure, NodeSnapshot] =
     if (reifiedCurrent != null)
       ZIO.succeed(reifiedCurrent)
@@ -88,6 +73,69 @@ final case class NodeImplementation(
       yield nodeSnapshot
 
   override def hasEmptyHistory: Boolean = packedHistory.isEmpty
+
+  override def append(
+      time: EventTime,
+      events: Vector[Event]
+  ): IO[UnpackFailure, (Node, Option[EventsAtTime])] =
+    if hasEmptyHistory then
+      val eventsAtTime = EventsAtTime(time = time, sequence = 0, events = events)
+      val nextNodeState = Node.fromHistory(id, Vector(eventsAtTime))
+      ZIO.succeed(nextNodeState -> Some(eventsAtTime))
+    else
+      for
+        history <- history
+
+        snapshot =
+          if time >= lastTime && reifiedCurrent != null then reifiedCurrent
+          else CollapseNodeHistory(history, time)
+      yield
+        // Discard any events that would have no effect on the state at that point in time
+        val eventsWithEffect = EventHasEffectOps.filterHasEffect(events, snapshot)
+
+        if eventsWithEffect.isEmpty then this -> None
+        else if time >= lastTime then appendEventsToEndOfHistory(time, history, snapshot, eventsWithEffect)
+        else appendEventsWithinHistory(time, history, eventsWithEffect)
+
+  private def appendEventsWithinHistory(
+      time: EventTime,
+      originalHistory: NodeHistory,
+      newEvents: Vector[Event]
+  ): (Node, Option[EventsAtTime]) =
+    val (before, after) = originalHistory.partition(_.time <= time)
+
+    val sequence = before.lastOption match
+      case None                                     => 0
+      case Some(lastEvent) if lastEvent.time < time => 0
+      case Some(lastEvent)                          => lastEvent.sequence + 1
+
+    val newEventsAtTime = EventsAtTime(time = time, sequence = sequence, events = newEvents)
+    val newHistory = (before :+ newEventsAtTime) ++ after
+    val nextNodeState = Node.fromHistory(id, newHistory)
+
+    nextNodeState -> Some(newEventsAtTime)
+
+  private def appendEventsToEndOfHistory(
+      time: EventTime,
+      history: NodeHistory,
+      currentSnapshot: NodeSnapshot,
+      events: Vector[Event]
+  ): (Node, Option[EventsAtTime]) =
+    require(events.nonEmpty)
+    require(time >= lastTime)
+
+    val eventsAtTime = EventsAtTime(
+      time = time,
+      sequence = if lastTime == time then lastSequence + 1 else 0,
+      events = events
+    )
+
+    // TODO: There is an opportunity to update the current node snapshot efficiently -
+    // need to modify CollapseNodeHistory to work from a known starting point
+
+    val nextNodeState = Node.fromHistory(id, history :+ eventsAtTime)
+
+    nextNodeState -> Some(eventsAtTime)
 
 object Node:
 
@@ -101,7 +149,7 @@ object Node:
       packedHistory = Array.empty[Byte]
     )
 
-  def replaceWithHistory(
+  def fromHistory(
       id: NodeId,
       history: NodeHistory,
       packed: PackedNodeHistory | Null = null,
@@ -119,13 +167,14 @@ object Node:
       packedHistory = if packed != null then packed else history.toPacked
     )
 
-  def replaceWithPackedHistory(
-    id: NodeId,
-    packed: PackedNodeHistory,
-    history: NodeHistory | Null = null,
-    current: NodeSnapshot | Null = null
+  def fromPackedHistory(
+      id: NodeId,
+      packed: PackedNodeHistory,
+      history: NodeHistory | Null = null,
+      current: NodeSnapshot | Null = null
   ): Node =
     require(packed.nonEmpty)
+
     NodeImplementation(
       id = id,
       version = history.length,
@@ -133,7 +182,7 @@ object Node:
       lastSequence = history.last.sequence,
       reifiedCurrent = if current != null then current else CollapseNodeHistory(history),
       reifiedHistory = history,
-      packedHistory = if packed != null then packed else history.toPacked
+      packedHistory = packed
     )
 
   // A node being created from the cache
@@ -144,5 +193,5 @@ object Node:
       lastTime = item.lastTime,
       lastSequence = item.lastSequence,
       reifiedCurrent = item.current, // This may be present in the cache, or null
-      packedHistory = item.packed 
+      packedHistory = item.packed
     )

@@ -40,7 +40,7 @@ final case class NodeCacheLive(
         if cacheItem.current != null then
           ZIO.succeed(
             Some(
-              Node.replaceWithPackedHistory(
+              Node.fromPackedHistory(
                 id = id,
                 packed = cacheItem.packed,
                 current = cacheItem.current
@@ -52,7 +52,7 @@ final case class NodeCacheLive(
             history <- NodeHistory.unpackNodeHistory(cacheItem.packed)
             snapshot = CollapseNodeHistory(history)
           yield Some(
-            Node.replaceWithHistory(
+            Node.fromHistory(
               id = id,
               history = history,
               current = snapshot,

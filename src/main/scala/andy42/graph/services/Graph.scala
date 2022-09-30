@@ -134,13 +134,12 @@ final case class GraphLive(
         _ <- withNodePermit(id)
         existingNode <- getWithPermitHeld(id)
 
-        x <- determineNextNodeStateAndHistoryToPersist(existingNode, time, events)
-        nextNode = x.nextNode
-        changes: Option[EventsAtTime] = x.changes
+        tuple <- existingNode.append(time, events)
+        (nextNode, maybeEventsAtTime) = tuple
 
         // Persist to the data store and cache, if there is new history to persist
-        _ <- changes.fold(ZIO.unit)(nodeDataService.append(nextNode.id, _))
-        _ <- changes.fold(ZIO.unit)(_ => cache.put(nextNode))
+        _ <- maybeEventsAtTime.fold(ZIO.unit)(nodeDataService.append(nextNode.id, _))
+        _ <- maybeEventsAtTime.fold(ZIO.unit)(_ => cache.put(nextNode))
       yield nextNode
     }
 
@@ -160,75 +159,6 @@ final case class GraphLive(
     */
   private def withNodePermit(id: => NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
-
-  private def determineNextNodeStateAndHistoryToPersist(
-      node: Node,
-      time: EventTime,
-      events: Vector[Event]
-  ): IO[UnpackFailure, NextNodeAndEvents] =
-    if node.hasEmptyHistory then
-      for
-        nextNodeState <- node.append(events, time)
-        eventsAtTime = EventsAtTime(time = time, sequence = 0, events = events)
-      yield NextNodeAndEvents(nextNodeState, Some(eventsAtTime))
-    else
-      node.atTime(time).flatMap { nodeSnapshot =>
-
-        // Discard any events that would have no effect on the state at that point in time
-        val eventsWithEffect = EventHasEffectOps.filterHasEffect(events, nodeSnapshot)
-
-        if eventsWithEffect.isEmpty then ZIO.succeed(NextNodeAndEvents(node, changes = None))
-        else if time >= nodeSnapshot.time then appendEventsToEndOfHistory(node, eventsWithEffect, time)
-        else mergeInNewEvents(node, eventsWithEffect, time)
-      }
-
-  /** General merge of new events at any point in time into the node's history. This requires unpacking the node's
-    * history to a NodeHistory which may require more resources for large nodes.
-    */
-  private def mergeInNewEvents(
-      node: Node,
-      newEvents: Vector[Event],
-      time: EventTime
-  ): IO[UnpackFailure, NextNodeAndEvents] =
-    for
-      originalHistory <- node.history
-
-      (before, after) = originalHistory.partition(_.time <= time)
-
-      sequence = before.lastOption match
-        case None                                     => 0
-        case Some(lastEvent) if lastEvent.time < time => 0
-        case Some(lastEvent)                          => lastEvent.sequence + 1
-
-      newEventsAtTime = EventsAtTime(time = time, sequence = sequence, events = newEvents)
-      newHistory = (before :+ newEventsAtTime) ++ after
-      nextNodeState = Node.replaceWithHistory(node.id, newHistory)
-    yield NextNodeAndEvents(nextNodeState, Some(newEventsAtTime))
-
-  /** Append events to the end of history. Appending events can be done more efficiently by avoiding the need to unpack
-    * all of history to a NodeHistory, but instead we can just append the packed history to the end of the packed
-    * history. This could be significant for nodes with a large history (esp. may edges).
-    */
-  private def appendEventsToEndOfHistory(
-      node: Node,
-      events: Vector[Event],
-      time: EventTime
-  ): IO[UnpackFailure, NextNodeAndEvents] =
-    require(events.nonEmpty)
-    require(time >= node.lastTime)
-
-    val eventsAtTime = EventsAtTime(
-      time = time,
-      sequence = if node.lastTime == time then node.lastSequence + 1 else 0,
-      events = events
-    )
-
-    for nextNodeState <- node.append(events, time)
-    yield NextNodeAndEvents(nextNodeState, Some(eventsAtTime))
-
-  case class NextNodeAndEvents(nextNode: Node, changes: Option[EventsAtTime])
-
-end GraphLive
 
 object Graph:
   val layer: URLayer[NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =

@@ -104,7 +104,7 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
         yield
           if nodeHistory.isEmpty then Node.empty(id)
           else
-            Node.replaceWithHistory(
+            Node.fromHistory(
               id = id,
               history = nodeHistory,
               packed = history.toPacked
