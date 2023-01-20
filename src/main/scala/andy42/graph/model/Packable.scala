@@ -16,7 +16,7 @@ trait Packable:
   def toPacked: Packed =
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     this.pack
-    packer.toByteArray()
+    packer.toByteArray
 
 trait CountedSeqPacker[T <: Packable]:
   def pack(a: Seq[T])(using packer: MessagePacker): Unit =
@@ -27,7 +27,7 @@ trait CountedSeqPacker[T <: Packable]:
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     packer.packInt(a.length)
     a.foreach(_.pack)
-    packer.toByteArray()
+    packer.toByteArray
 
 trait UncountedSeqPacker[T <: Packable]:
   def pack(a: Seq[T])(using packer: MessagePacker): Unit =
@@ -36,7 +36,7 @@ trait UncountedSeqPacker[T <: Packable]:
   def toPacked(a: Seq[T]): Packed =
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     a.foreach(_.pack)
-    packer.toByteArray()
+    packer.toByteArray
 
 trait Unpackable[T: ClassTag]:
   def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, T]

@@ -21,5 +21,5 @@ final case class EdgeReconciliationConfig(
 )
 
 object Config:
-  val lruCacheDescriptor = descriptor[NodeCacheConfig]
-  val edgeReconciliationDescriptor = descriptor[EdgeReconciliationConfig]
+  val lruCacheDescriptor: ConfigDescriptor[NodeCacheConfig] = descriptor[NodeCacheConfig]
+  val edgeReconciliationDescriptor: ConfigDescriptor[EdgeReconciliationConfig] = descriptor[EdgeReconciliationConfig]

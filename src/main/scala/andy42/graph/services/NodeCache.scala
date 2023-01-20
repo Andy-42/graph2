@@ -110,9 +110,9 @@ final case class NodeCacheLive(
     * This algorithm assumes that the distribution of access times in the cache is uniform, but the reality is that it
     * will skew to the more recent (gamma?).
     *
-    * @param oldest
+    * @param oldest // TODO: Fix comment
     *   The current oldest access time (all cache items have a more recent access time)
-    * @param now
+    * @param now // TODO: Fix comment
     * @return
     *   A new value for oldest that can be used to remove some fraction of the oldest cache items.
     */
@@ -124,10 +124,10 @@ final case class NodeCacheLive(
   override def startSnapshotTrimDaemon: UIO[Unit] =
     snapshotTrim
       .repeat(Schedule.spaced(config.snapshotPurgeFrequency))
-      .catchAllCause(cause =>
+      .catchAllCause { cause =>
         val operation = "node cache snapshot trim"
         ZIO.logCause(s"Unexpected failure in: $operation", cause) @@ LogAnnotations.operationAnnotation(operation)
-      )
+      }
       .forkDaemon *> ZIO.unit
 
   private def snapshotTrim: UIO[Unit] =

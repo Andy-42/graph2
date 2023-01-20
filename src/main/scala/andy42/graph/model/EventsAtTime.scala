@@ -39,7 +39,7 @@ final case class EventsAtTime(
 
 object EventsAtTime extends Unpackable[EventsAtTime]:
 
-  val empty = EventsAtTime(StartOfTime, 0, Vector.empty)
+  val empty: EventsAtTime = EventsAtTime(StartOfTime, 0, Vector.empty)
 
   override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, EventsAtTime] =
     UnpackSafely {

@@ -37,7 +37,7 @@ object EdgeReconciliation:
 
 final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconciliationDataService:
 
-  val ctx = PostgresZioJdbcContext(Literal)
+  val ctx: PostgresZioJdbcContext[Literal] = PostgresZioJdbcContext(Literal)
   import ctx.*
 
   inline def edgeReconciliationTable = quote { query[EdgeReconciliation] }

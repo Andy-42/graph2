@@ -2,12 +2,12 @@ name := "graph2"
 
 version := "0.1"
 
-scalaVersion := "3.1.3"
+scalaVersion := "3.2.1"
 
-val zioV = "2.0.2"
-val zioConfigMagnoliaV = "3.0.2"
-val zioLoggingV = "2.1.1"
-val quillV = "4.4.1"
+val zioV = "2.0.6"
+val zioConfigMagnoliaV = "3.0.7"
+val zioLoggingV = "2.1.7"
+val quillV = "4.6.0"
 val msgPackV = "0.9.3"
 
 libraryDependencies ++= Seq(

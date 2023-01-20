@@ -17,7 +17,7 @@ type Sequence = Int // Break ties when multiple groups of events are processed i
 final case class NodeSnapshot(time: EventTime, sequence: Int, properties: PropertySnapshot, edges: EdgeSnapshot)
 
 object NodeSnapshot:
-  val empty =
+  val empty: NodeSnapshot =
     NodeSnapshot(time = StartOfTime, sequence = 0, properties = PropertySnapshot.empty, edges = EdgeSnapshot.empty)
 
 /** PackedNodeHistory is the packed form of of NodeHistory or GraphHistory. It is not counted like other packed forms so
@@ -37,6 +37,7 @@ sealed trait Node:
   def packedHistory: PackedNodeHistory
 
   def current: IO[UnpackFailure, NodeSnapshot]
+  
   def atTime(time: EventTime): IO[UnpackFailure, NodeSnapshot] =
     if time >= lastTime then current
     else

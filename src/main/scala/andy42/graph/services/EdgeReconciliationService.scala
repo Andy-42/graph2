@@ -29,11 +29,11 @@ case class EdgeReconciliationServiceLive(
     edgeReconciliationDataService: EdgeReconciliationDataService
 ) extends EdgeReconciliationService:
 
-  val windowSize = config.windowSize.get(MILLIS)
-  val windowExpiry = config.windowExpiry.get(MILLIS)
+  val windowSize: Long = config.windowSize.get(MILLIS)
+  val windowExpiry: Long = config.windowExpiry.get(MILLIS)
 
   extension (time: EventTime)
-    def toWindowStart = (time - (time % windowSize))
+    def toWindowStart = time - (time % windowSize)
     def toWindowEnd = time.toWindowStart + windowSize - 1
 
   override def zero: EdgeReconciliationState =
