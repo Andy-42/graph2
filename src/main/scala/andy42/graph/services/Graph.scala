@@ -27,11 +27,11 @@ import zio.stm.*
  * In addition to managing the state of the Nodes in the cache and persistent store, the
  * Graph implementation also notifies downstream services of changes to the graph:
  *  - Edge Synchronization propagates edge events on the near node to the other node.
- *  - Standing Query Evaludation matches any node changes to standing queries.
+ *  - Standing Query Evaluation matches any node changes to standing queries.
  *
  * Since all changes to a node are serialized,
  * attempting to propagate edge events to the far nodes within the transaction would
- * create the possiblity of a communications deadlock. For that reason, edge reconciliation
+ * create the possibility of a communications deadlock. For that reason, edge reconciliation
  * is done in an eventually consistent way.
  *
  * Edge Synchronization and Standing Query Evaluation notifications (as well as `append`) use
@@ -115,11 +115,11 @@ final case class GraphLive(
       nextNodeState <- applyEventsToPersistentStoreAndCache(id, time, events)
 
       // Handle any events that are a result of this node being appended to.
-      // Note that we notify on deduplicated events and not on the events (if any) that were persisted.
+      // Note that we notify on de-duplicated events and not on the events (if any) that were persisted.
       // This append may be re-processing a change and we have to guarantee that all post-persist notifications were generated.
 
       // Processing these events are required for the append request to complete successfully,
-      // but since the node permit has been released, there is no possiblity of deadlock.
+      // but since the node permit has been released, there is no possibility of deadlock.
       _ <- standingQueryEvaluation.nodeChanged(nextNodeState, time, deduplicatedEvents)
       _ <- edgeSynchronization.eventsAppended(nextNodeState.id, time, deduplicatedEvents)
     yield nextNodeState

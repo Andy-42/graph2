@@ -104,17 +104,31 @@ final case class NodeCacheLive(
       _ <- watermark.set(nextWatermark)
     yield Some(nextWatermark)
 
-  /** The time would retain the configured fraction of the cache if we removed all cache items with an access time less
-    * than that time.
+  /** Calculate a new watermark that retains some fraction of the most current cache items.
     *
-    * This algorithm assumes that the distribution of access times in the cache is uniform, but the reality is that it
-    * will skew to the more recent (gamma?).
+    * The cache will contain items with access times between the `purgeWatermark` and `now`.
     *
-    * @param oldest // TODO: Fix comment
-    *   The current oldest access time (all cache items have a more recent access time)
-    * @param now // TODO: Fix comment
+    * If the access times in the cache were uniform (which they almost certainly are not), then retaining some fraction
+    * of the items based on access time will remove retain a corresponding fraction of the items in the cache. In the
+    * case where the access times are strongly skewed towards `now`, this could potentially remove fewer (or zero)
+    * items. Subsequent trim operations will cause the watermark to be moved forward again which will eventually cause
+    * some or all of the cache to be trimmed.
+    *
+    * This is a weaker requirement for cache trimming since any one trim operation might not have the desired effect.
+    * However, this method is designed to be simple to minimize computation within a transaction. This cache policy is
+    * less strict since it allows the cache to expand beyond the desired capacity, but it will eventually be trimmed to
+    * capacity.
+    *
+    * @param now
+    *   The current clock time.
+    * @param purgeWatermark
+    *   The current oldest access time for any item in the cache. All items in the cache will have an access time that
+    *   is greater than or equal to the purgeWatermark.
+    * @param fractionToRetain
+    *   When trimming the cache, we retain only those items that have an access time that are in the fraction of items
+    *   at the end of the internal between `now` and `purgeWatermark`.
     * @return
-    *   A new value for oldest that can be used to remove some fraction of the oldest cache items.
+    *   A new value for purgeWatermark that can be used to retain only some fraction of the newest cache items.
     */
   private def moveWatermarkForward(now: AccessTime, purgeWatermark: AccessTime, fractionToRetain: Double): AccessTime =
     val intervals = now - purgeWatermark + 1

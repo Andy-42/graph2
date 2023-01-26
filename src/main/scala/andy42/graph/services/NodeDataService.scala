@@ -18,9 +18,9 @@ trait NodeDataService:
 
   /** Append an EventsAtTime to a node's persisted history. Within the history for a Node, the (time, sequence) must be
     * unique. Within a time, the sequence numbers should be a dense sequence starting at zero.
-    * 
+    *
     * The graph model should have perfect knowledge of the state of the persistent store, so an append should never fail
-    * due to a duplicate key. 
+    * due to a duplicate key.
     */
   def append(
       id: NodeId,
@@ -30,7 +30,7 @@ trait NodeDataService:
 /** GraphEventsAtTime models the persistent data store.
   *
   * @param id
-  *   The Node indentifier; clustering key.
+  *   The Node identifier; clustering key.
   * @param time
   *   The epoch millis time when the events were appended to in the history; sort key.
   * @param sequence
@@ -70,26 +70,24 @@ extension (graphHistory: List[GraphEventsAtTime])
   def toPacked: PackedNodeHistory =
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     graphHistory.foreach(_.pack)
-    packer.toByteArray()
+    packer.toByteArray
 
 final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
 
-  val ctx = PostgresZioJdbcContext(Literal)
+  val ctx: PostgresZioJdbcContext[Literal] = PostgresZioJdbcContext(Literal)
   import ctx.*
 
-  inline def graph = quote { query[GraphEventsAtTime] }
+  inline def graph: EntityQuery[GraphEventsAtTime] = query[GraphEventsAtTime]
 
-  inline def quotedGet(id: NodeId) = quote {
+  inline def quotedGet(id: NodeId): Query[GraphEventsAtTime] =
     graph
       .filter(_.id == lift(id))
       .sortBy(graphEventsAtTime => (graphEventsAtTime.time, graphEventsAtTime.sequence))(
         Ord(Ord.asc, Ord.asc)
       )
-  }
 
-  inline def quotedAppend(graphEventsAtTime: GraphEventsAtTime) = quote {
+  inline def quotedAppend(graphEventsAtTime: GraphEventsAtTime): Insert[GraphEventsAtTime] =
     graph.insertValue(lift(graphEventsAtTime))
-  }
 
   given Implicit[DataSource] = Implicit(ds)
 

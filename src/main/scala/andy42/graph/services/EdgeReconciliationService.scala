@@ -136,7 +136,7 @@ case class EdgeReconciliationServiceLive(
           Array.ofDim[EdgeHash](slotsBetweenWindows(first = minEventWindowStart, second = maxEventWindowStart))
       )
     else
-      // Create a new edgeHashes that can accomodate the existing state and all the incoming events
+      // Create a new edgeHashes that can accommodate the existing state and all the incoming events
       val firstWindowStart = state.firstWindowStart min minEventWindowStart
       val lastWindowStart = (state.firstWindowStart + windowSize * state.edgeHashes.length) max maxEventWindowStart
       val edgeHashes = Array.ofDim[EdgeHash](slotsBetweenWindows(firstWindowStart, lastWindowStart))
