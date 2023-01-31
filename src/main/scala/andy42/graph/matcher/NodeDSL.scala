@@ -15,10 +15,12 @@ extension (snapshot: NodeSnapshot)
 
 extension (history: NodeHistory)
   def hasProperty(k: String): Boolean =
-    history.exists(_.events.exists {
-      case Event.PropertyAdded(k_, _) => true
-      case _                          => false
-    })
+    history.exists {
+      _.events.exists {
+        case Event.PropertyAdded(k_, _) => true
+        case _                          => false
+      }
+    }
 
   def propertySetMoreThanNTimes(k: String, n: Int): Boolean =
     history.flatMap(_.events).count {

@@ -20,7 +20,7 @@ object LogAnnotations:
     LogAnnotation[WindowStart]("windowStart", (_, x) => x, _.toString)
   val edgeHashAnnotation: LogAnnotation[EdgeHash] = LogAnnotation[EdgeHash]("edgeHash", (_, x) => x, _.toString)
 
-  val operationAnnotation: LogAnnotation[String] = LogAnnotation[String]("operation", (_, x) => x, _.toString)
+  val operationAnnotation: LogAnnotation[String] = LogAnnotation[String]("operation", (_, x) => x, _)
 
   val nearNodeIdAnnotation: LogAnnotation[NodeId] = LogAnnotation[NodeId]("nearNodeId", (_, x) => x, formatNodeId)
   val farNodeIdAnnotation: LogAnnotation[NodeId] = LogAnnotation[NodeId]("farNodeId", (_, x) => x, formatNodeId)

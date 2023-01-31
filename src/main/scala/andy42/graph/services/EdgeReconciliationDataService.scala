@@ -40,9 +40,11 @@ final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeR
   val ctx: PostgresZioJdbcContext[Literal] = PostgresZioJdbcContext(Literal)
   import ctx.*
 
-  inline def edgeReconciliationTable = quote { query[EdgeReconciliation] }
+  inline def edgeReconciliationTable: Quoted[EntityQuery[EdgeReconciliation]] = quote { 
+    query[EdgeReconciliation] 
+  }
 
-  inline def quotedMarkWindow(edgeReconciliation: EdgeReconciliation) = quote {
+  inline def quotedMarkWindow(edgeReconciliation: EdgeReconciliation): Quoted[Insert[EdgeReconciliation]] = quote {
     edgeReconciliationTable
       .insertValue(lift(edgeReconciliation))
       .onConflictUpdate(_.windowStart)(
