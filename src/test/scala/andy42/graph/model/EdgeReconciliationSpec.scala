@@ -16,7 +16,8 @@ object EdgeReconciliationSpec extends ZIOSpecDefault:
       k <- Gen.string
       other <- nodeIdGen
       direction <- edgeDirectionGen
-    yield Edge(k, other, direction)
+      isNear <- Gen.boolean
+    yield if isNear then NearEdge(k, other, direction) else FarEdge(k, other, direction)
 
   val idAndEdgeGen: Gen[Sized, (NodeId, Edge)] =
     for
@@ -24,7 +25,7 @@ object EdgeReconciliationSpec extends ZIOSpecDefault:
       edge <- edgeGen
     yield (id, edge)
 
-  def spec = suite("Edge Reconciliation")(
+  def spec: Spec[Sized, Nothing] = suite("Edge Reconciliation")(
     test("Edge.reverse round-trips") {
       check(nodeIdGen, edgeGen) { (id, edge) =>
         assertTrue(edge.reverse(id).reverse(edge.other) == edge)
@@ -43,7 +44,7 @@ object EdgeReconciliationSpec extends ZIOSpecDefault:
         val farHashes = idsAndEdges.map((id, edge) => edge.reverse(id).hash(edge.other))
 
         val allHashes = scala.util.Random.shuffle(nearHashes ++ farHashes)
-        val reconciliation = allHashes.fold(0L)(_ ^ _)
+        val reconciliation = allHashes.iterator.fold(0L)(_ ^ _)
 
         assertTrue(reconciliation == 0L)
       }

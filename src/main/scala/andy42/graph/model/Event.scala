@@ -10,10 +10,18 @@ import andy42.graph.services.EdgeReconciliationEvent
 
 enum Event extends Packable:
   case NodeRemoved
+  
   case PropertyAdded(k: String, value: PropertyValueType)
   case PropertyRemoved(k: String)
+
+  /**
+    * When an Edge is added it is adding a _Near_ edge to the graph.
+    * The graph will automatically create and add the corresponding _Far_ edge 
+    * (the reverse half-edge) to the graph.
+    */
   case EdgeAdded(edge: Edge)
   case EdgeRemoved(edge: Edge)
+  
   case FarEdgeAdded(edge: Edge)
   case FarEdgeRemoved(edge: Edge)
 
@@ -94,13 +102,11 @@ object Event extends Unpackable[Event]:
     }
 
   def unpackEdgeAdded(isFar: Boolean)(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
-    for edge <- Edge.unpack
+    for edge <- if isFar then FarEdge.unpack else NearEdge.unpack
     yield if isFar then FarEdgeAdded(edge) else EdgeAdded(edge)
 
-  def unpackEdgeRemoved(
-      isFar: Boolean
-  )(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
-    for edge <- Edge.unpack
+  def unpackEdgeRemoved(isFar: Boolean)(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
+    for edge <- if isFar then FarEdge.unpack else NearEdge.unpack
     yield if isFar then FarEdgeRemoved(edge) else EdgeRemoved(edge)
 
 object Events extends CountedSeqPacker[Event]:
