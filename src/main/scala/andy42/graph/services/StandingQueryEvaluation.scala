@@ -14,7 +14,7 @@ trait StandingQueryEvaluation:
     *
     * This node may have additional history appended to it that is not yet persisted.
     *
-    * Since far edges might not be synced yet, when we pull in node for matching, we can patch the far edges up to that
+    * Since far edges might not be synced yet, when we pull in a node for matching, we can patch the far edges up to that
     * they are consistent.
     */
   def nodeChanged(node: Node, time: EventTime, newEvents: Vector[Event]): IO[UnpackFailure | PersistenceFailure, Unit]
@@ -52,26 +52,31 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
 
     val nearEdgeEvents: Map[NodeId, Vector[Event]] = newEvents
       .collect {
-        case event: Event.EdgeAdded   => event.edge.other -> Event.FarEdgeAdded(event.edge)
-        case event: Event.EdgeRemoved => event.edge.other -> Event.FarEdgeRemoved(event.edge)
-      }
-      .groupBy(_._1)
-      .map((k, v) => k -> v.map(_._2))
+        case event: Event.EdgeAdded   => event.edge.other -> Event.FarEdgeAdded(event.edge.reverse(node.id))
+        case event: Event.EdgeRemoved => event.edge.other -> Event.FarEdgeRemoved(event.edge.reverse(node.id))
+      } 
+      .groupBy((id, _) => id )
+      .map { case (id, idEventPairs) => id -> idEventPairs.map(_._2) }
       .toMap
 
-    ZIO.foreach(nearEdgeEvents) { (otherId, events) =>
-      if otherId == node.id then // Edge points back to itself
-        for
-          x <- node.append(time, events)
-          (nextNode, _) = x
-        yield otherId -> nextNode
-      else // Edge references some other node
-        for
-          otherNode <- graph.get(otherId)
-          x <- otherNode.append(time, events)
-          (nextNode, _) = x
-        yield otherId -> nextNode
-    }
+    for 
+      affectedNodesWithChangesApplied <- ZIO.foreach(nearEdgeEvents) { (otherId, events) =>
+        if otherId == node.id then // Edge points back to itself
+          for
+            x <- node.append(time, events)
+            (nextNode, _) = x
+          yield otherId -> nextNode
+        else // Edge references some other node
+          for
+            otherNode <- graph.get(otherId)
+            x <- otherNode.append(time, events)
+            (nextNode, _) = x
+          yield otherId -> nextNode
+      }
+    yield if affectedNodesWithChangesApplied.contains(node.id) then
+      affectedNodesWithChangesApplied // A reflexive edge event caused node to be added
+    else
+      affectedNodesWithChangesApplied.updated(node.id, node) // No reflexive edge event, so add in the node that originated the events
 
   private def matchAgainstStandingQueries(
       changedNodes: Map[NodeId, Node],
