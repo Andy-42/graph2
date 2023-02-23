@@ -46,35 +46,44 @@ trait Graph:
     */
   def get(id: NodeId): IO[UnpackFailure | PersistenceFailure, Node]
 
-  /** Append events to the Graph history.
-   * On a successful return:
-   * - The events will have been appended to the Node history and committed to the persistent store, and
-   * - Any standing queries related to these nodes will have been evaluated and any positive match results committed, and
-   * - The appending of any far half-edges will have been initiated (but not necessarily committed)
-   * 
+  /** Append events to the Graph history. On a successful return:
+    *   - The events will have been appended to the Node history and committed to the persistent store, and
+    *   - Any standing queries related to these nodes will have been evaluated and any positive match results committed,
+    *     and
+    *   - The appending and reconciliation accounting of any far half-edges will have been initiated (but not
+    *     necessarily committed)
     *
     * This is the fundamental API that all mutations of the graph are based on.
-    * 
-    * @param mutations The events to be applied to the graph state.
-    * @return The Node state after the events have been applied.
-    * The length of this result can be different from `mutations` since multiple
-    * mutations can be applied to a single node.
+    *
+    * The processing is done in an idempotent way. This may result in duplicate standing query hits in the case that a
+    * failed `append` is retried.
+    *
+    * Far edge creation and edge reconciliation is necessarily done in an eventually consistent way. If this were done
+    * in the scope of this method, then it could create the potential for deadlock. The edge reconciliation scheme
+    * provides an auditing mechanism to ensure that all edges occur in balanced pairs.
+    *
+    * All the processing done is lock free, and there is no possiblity of deadlock.
+    *
+    * @param time
+    *   The time that the mutations occurred.
+    * @param mutations
+    *   The events to be applied to the graph state.
     */
   def append(time: EventTime, mutations: Vector[GraphMutationInput]): IO[UnpackFailure | PersistenceFailure, Unit]
 
 final case class GraphMutationInput(
-  id: NodeId,
-  event: Event
+    id: NodeId,
+    event: Event
 )
 
 final case class GroupedGraphMutationInput(
-  id: NodeId,
-  events: Vector[Event]
+    id: NodeId,
+    events: Vector[Event]
 )
 
 final case class GroupedGraphMutationOutput(
-  node: Node,
-  events: Vector[Event]
+    node: Node,
+    events: Vector[Event]
 )
 
 final case class GraphLive(
@@ -96,7 +105,6 @@ final case class GraphLive(
     }
 
   private def getWithPermitHeld(id: NodeId): IO[UnpackFailure | PersistenceFailure, Node] =
-
     for
       optionNode <- cache.get(id)
       node <- optionNode.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
@@ -112,53 +120,30 @@ final case class GraphLive(
     for id <- changes.map(_.id).distinct
     yield GroupedGraphMutationInput(
       id = id,
-      events = changes.collect {
-        case input @ GraphMutationInput(id, _) => input.event
+      events = changes.collect { case input @ GraphMutationInput(id, _) =>
+        input.event
       }
     )
 
-  /**
-    * TODO: This should be modified to take a batch of changes, and the SQE and edge synch should
-    * be done in a separate following step that processes the change for the entire batch.
-    * This should be more efficient than doing the batches separately.
-    * 
-    * The following steps are only guaranteed to be consistent within a batch.
-    * TODO: Describe the case where two near-simultaneous transactions could produce 
-    *
-    * @param id
-    * @param time
-    * @param events
-    * @return
-    */
   override def append(
-    time: EventTime,
-    changes: Vector[GraphMutationInput]
+      time: EventTime,
+      changes: Vector[GraphMutationInput]
   ): IO[UnpackFailure | PersistenceFailure, Unit] =
     if changes.isEmpty then ZIO.unit
-    else 
-      for 
+    else
+      for
         output <- ZIO.foreachPar(groupChangesByNodeId(changes))(processChangesForOneNode(time, _))
-        
-        // Handle any events that are a result of this node being appended to.
-        // Note that we notify on de-duplicated events and not on the events (if any) that were persisted.
-        // This append may be re-processing a change and we have to guarantee that all post-persist notifications were generated.
-
-        // Processing these events are required for the append request to complete successfully,
-        // but since the node permit has been released, there is no possibility of deadlock.
-        // TODO: Is there potential for deadlock here? Need to make the reasoning explicit.
         _ <- standingQueryEvaluation.graphChanged(time, output)
-
-        // Note that this only queues the edge synchronization and there is no waiting (or possibility of deadlock)
         _ <- edgeSynchronization.graphChanged(time, output)
       yield ()
-  
+
   def processChangesForOneNode(
-    time: EventTime, 
-    changes: GroupedGraphMutationInput
-  ): IO[UnpackFailure | PersistenceFailure, GroupedGraphMutationOutput] = 
+      time: EventTime,
+      changes: GroupedGraphMutationInput
+  ): IO[UnpackFailure | PersistenceFailure, GroupedGraphMutationOutput] =
     val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(changes.events)
 
-    for node <- applyEventsToPersistentStoreAndCache(changes.id, time,deduplicatedEvents)
+    for node <- applyEventsToPersistentStoreAndCache(changes.id, time, deduplicatedEvents)
     yield GroupedGraphMutationOutput(node, deduplicatedEvents)
 
   private def applyEventsToPersistentStoreAndCache(

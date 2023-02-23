@@ -12,8 +12,6 @@ trait StandingQueryEvaluation:
   /** A node has changed. The implementation will attempt to match all standing queries using this node as a starting
     * point.
     *
-    * This node may have additional history appended to it that is not yet persisted.
-    *
     * Since far edges might not be synced yet, when we pull in a node for matching, we can patch the far edges up to
     * that they are consistent.
     */
@@ -47,6 +45,13 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
       _ <- matchAgainstStandingQueries(time, changedNodes)
     yield ()
 
+  /**
+    * Get the new state for all nodes that were modified in this group of changes.
+    * The Graph will pass the new node states after the changes have been applied, but since
+    * it will not include any far edge events (since that is done in an eventually-consistent way),
+    * so we retrieve any nodes affected by edge events and patch them as though the far edges had been
+    * modified.
+    */
   private def allAffectedNodes(
       time: EventTime,
       mutations: Vector[GroupedGraphMutationOutput]
@@ -85,7 +90,6 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
   private def matchAgainstStandingQueries(
     time: EventTime,
     changedNodes: Vector[Node]
-      
   ): IO[UnpackFailure | PersistenceFailure, Unit] = ???
   // for each node in changedNodes and each standing query, match the subgraph against the standing query
   // The keys in the initial changedNode are the ones that are matched.
