@@ -137,7 +137,7 @@ final case class GraphLive(
     if changes.isEmpty then ZIO.unit
     else 
       for 
-        output: Vector[GroupedGraphMutationOutput] <- ZIO.foreachPar(groupChangesByNodeId(changes))(processChangesForOneNode(time, _))
+        output <- ZIO.foreachPar(groupChangesByNodeId(changes))(processChangesForOneNode(time, _))
         
         // Handle any events that are a result of this node being appended to.
         // Note that we notify on de-duplicated events and not on the events (if any) that were persisted.
