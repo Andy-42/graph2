@@ -43,63 +43,51 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
     // TODO: Config, no match on only far edge events.
 
     for
-      changedNodes: Map[NodeId, Node] <- allAffectedNodes(time, mutations)
-      _ <- matchAgainstStandingQueries(changedNodes, time)
+      changedNodes <- allAffectedNodes(time, mutations)
+      _ <- matchAgainstStandingQueries(time, changedNodes)
     yield ()
 
   private def allAffectedNodes(
       time: EventTime,
       mutations: Vector[GroupedGraphMutationOutput]
-  ): IO[UnpackFailure | PersistenceFailure, Map[NodeId, Node]] =
+  ): IO[UnpackFailure | PersistenceFailure, Vector[Node]] =
 
     def farEdgeEvents: Vector[(NodeId, Event)] =
       for
         mutation <- mutations
-        id = mutation.node.id
-        referencedNodeAndFarEdgeEvent: (NodeId, Event) <- mutation.events.collect {
-          case event: Event.EdgeAdded   => event.edge.other -> Event.FarEdgeAdded(event.edge.reverse(id))
-          case event: Event.EdgeRemoved => event.edge.other -> Event.FarEdgeRemoved(event.edge.reverse(id))
+        GroupedGraphMutationOutput(node, events) = mutation
+        referencedNodeAndFarEdgeEvent: (NodeId, Event) <- events.collect {
+          case event: Event.EdgeAdded   => event.edge.other -> Event.FarEdgeAdded(event.edge.reverse(node.id))
+          case event: Event.EdgeRemoved => event.edge.other -> Event.FarEdgeRemoved(event.edge.reverse(node.id))
         }
       yield referencedNodeAndFarEdgeEvent
 
-    type NodeMap = Map[NodeId, Node]
-    type EdgeEventMap = Map[NodeId, Vector[Event]]
-
-    val farEdgeEventsGroupedById: EdgeEventMap =
+    val farEdgeEventsGroupedById: Map[NodeId, Vector[Event]] =
       farEdgeEvents
         .groupBy((id, _) => id)
         .map((k, v) => k -> v.map(_._2).toVector)
 
-    val nodesInMutation: NodeMap = mutations.map(mutation => mutation.node.id -> mutation.node).toMap
-
     // Nodes referenced in NearEdge Events that are not already part of this mutation
-    val additionalReferencedNodeIds = farEdgeEventsGroupedById.keys.filter(!nodesInMutation.contains(_))
+    val additionalReferencedNodeIds = farEdgeEventsGroupedById.keys.filter { id =>
+      !mutations.exists(_.node.id == id)
+    }
 
-    def updateFarEdgeEvents(node: Node, events: Vector[Event]): IO[UnpackFailure, Node] =
-      for
-        x <- node.append(time, events)
-        (node, _) = x
-      yield node
+    def appendFarEdgeEvents(node: Node): IO[UnpackFailure | PersistenceFailure, Node] =
+      farEdgeEventsGroupedById
+        .get(node.id)
+        .fold(ZIO.succeed(node))(events => node.append(time, events))
 
     for
       additionalReferencedNodes <- ZIO.foreachPar(additionalReferencedNodeIds) { graph.get }
-      additionalReferencedNodesMap: NodeMap = additionalReferencedNodes.map(node => node.id -> node).toMap
-      xxx: NodeMap = nodesInMutation ++ additionalReferencedNodesMap
-    yield xxx
-      .map((id: NodeId, node: Node) =>
-
-        farEdgeEventsGroupedById
-          .get(id)
-          .fold(node)(updateFarEdgeEvents(node, _))
-
-        ???
-      )
+      updatedNodes <- ZIO.foreach(mutations.map(_.node) ++ additionalReferencedNodes)(appendFarEdgeEvents)
+    yield updatedNodes
 
   private def matchAgainstStandingQueries(
-      changedNodes: Map[NodeId, Node],
-      time: EventTime
+    time: EventTime,
+    changedNodes: Vector[Node]
+      
   ): IO[UnpackFailure | PersistenceFailure, Unit] = ???
-  // for each node in changedNode and each standing query, match the subgraph against the standing query
+  // for each node in changedNodes and each standing query, match the subgraph against the standing query
   // The keys in the initial changedNode are the ones that are matched.
   // As matching proceeds, accumulate all the nodes visited in a cache
 

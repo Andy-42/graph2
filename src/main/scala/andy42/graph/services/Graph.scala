@@ -171,7 +171,7 @@ final case class GraphLive(
         _ <- withNodePermit(id)
         existingNode <- getWithPermitHeld(id)
 
-        tuple <- existingNode.append(time, events)
+        tuple <- existingNode.appendWithEventsAtTime(time, events)
         (nextNode, maybeEventsAtTime) = tuple
 
         // Persist to the data store and cache, if there is new history to persist

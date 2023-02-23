@@ -46,8 +46,13 @@ sealed trait Node:
 
   def hasEmptyHistory: Boolean
 
-  // TODO: Rename this and create a wrapper that returns the node without the Option[EventsAtTime] - it is annoying to have to unpack the tuple result
-  def append(time: EventTime, events: Vector[Event]): IO[UnpackFailure, (Node, Option[EventsAtTime])]
+  def append(time: EventTime, events: Vector[Event]): IO[UnpackFailure, Node] =
+    for
+      x <- appendWithEventsAtTime(time, events)
+      (node, _) = x
+    yield node
+
+  def appendWithEventsAtTime(time: EventTime, events: Vector[Event]): IO[UnpackFailure, (Node, Option[EventsAtTime])]
 
 final case class NodeImplementation(
     id: NodeId,
@@ -76,7 +81,7 @@ final case class NodeImplementation(
 
   override def hasEmptyHistory: Boolean = packedHistory.isEmpty
 
-  override def append(
+  override def appendWithEventsAtTime(
       time: EventTime,
       events: Vector[Event]
   ): IO[UnpackFailure, (Node, Option[EventsAtTime])] =
