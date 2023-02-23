@@ -56,7 +56,7 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
       for
         mutation <- mutations
         GroupedGraphMutationOutput(node, events) = mutation
-        referencedNodeAndFarEdgeEvent: (NodeId, Event) <- events.collect {
+        referencedNodeAndFarEdgeEvent <- events.collect {
           case event: Event.EdgeAdded   => event.edge.other -> Event.FarEdgeAdded(event.edge.reverse(node.id))
           case event: Event.EdgeRemoved => event.edge.other -> Event.FarEdgeRemoved(event.edge.reverse(node.id))
         }
@@ -65,7 +65,7 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
     val farEdgeEventsGroupedById: Map[NodeId, Vector[Event]] =
       farEdgeEvents
         .groupBy((id, _) => id)
-        .map((k, v) => k -> v.map(_._2).toVector)
+        .map((k, v) => k -> v.map(_._2))
 
     // Nodes referenced in NearEdge Events that are not already part of this mutation
     val additionalReferencedNodeIds = farEdgeEventsGroupedById.keys.filter { id =>
@@ -78,7 +78,7 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
         .fold(ZIO.succeed(node))(events => node.append(time, events))
 
     for
-      additionalReferencedNodes <- ZIO.foreachPar(additionalReferencedNodeIds) { graph.get }
+      additionalReferencedNodes <- ZIO.foreachPar(additionalReferencedNodeIds)(graph.get)
       updatedNodes <- ZIO.foreach(mutations.map(_.node) ++ additionalReferencedNodes)(appendFarEdgeEvents)
     yield updatedNodes
 
