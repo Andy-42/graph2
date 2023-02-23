@@ -46,31 +46,36 @@ trait Graph:
     */
   def get(id: NodeId): IO[UnpackFailure | PersistenceFailure, Node]
 
-  /** Append events to a Node's history.
+  /** Append events to the Graph history.
+   * On a successful return:
+   * - The events will have been appended to the Node history and committed to the persistent store, and
+   * - Any standing queries related to these nodes will have been evaluated and any positive match results committed, and
+   * - The appending of any far half-edges will have been initiated (but not necessarily committed)
+   * 
     *
-    * This is the fundamental API that all mutation events are based on.
+    * This is the fundamental API that all mutations of the graph are based on.
+    * 
+    * @param mutations The events to be applied to the graph state.
+    * @return The Node state after the events have been applied.
+    * The length of this result can be different from `mutations` since multiple
+    * mutations can be applied to a single node.
     */
-  def append(
-      id: NodeId,
-      time: EventTime,
-      events: Vector[Event]
-  ): IO[UnpackFailure | PersistenceFailure, Node]
+  def append(time: EventTime, mutations: Vector[GraphMutationInput]): IO[UnpackFailure | PersistenceFailure, Unit]
 
-  /** Append events to a node using property and edge snapshots.
-    *
-    * The snapshots are converted to events and applied through the fundamental append API.
-    */
-  def append(
-      id: NodeId,
-      time: EventTime,
-      properties: PropertySnapshot = Map.empty,
-      edges: EdgeSnapshot = Set.empty
-  ): IO[UnpackFailure | PersistenceFailure, Node] =
-    val propertyEvents = properties.map((k, v) => Event.PropertyAdded(k, v))
-    val edgeEvents = edges.map(Event.EdgeAdded(_))
-    val allEvents = (propertyEvents ++ edgeEvents).toVector
+final case class GraphMutationInput(
+  id: NodeId,
+  event: Event
+)
 
-    if allEvents.isEmpty then get(id) else append(id, time, allEvents)
+final case class GroupedGraphMutationInput(
+  id: NodeId,
+  events: Vector[Event]
+)
+
+final case class GroupedGraphMutationOutput(
+  node: Node,
+  events: Vector[Event]
+)
 
 final case class GraphLive(
     inFlight: TSet[NodeId],
@@ -91,6 +96,7 @@ final case class GraphLive(
     }
 
   private def getWithPermitHeld(id: NodeId): IO[UnpackFailure | PersistenceFailure, Node] =
+
     for
       optionNode <- cache.get(id)
       node <- optionNode.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
@@ -102,27 +108,58 @@ final case class GraphLive(
       _ <- if node.hasEmptyHistory then ZIO.unit else cache.put(node)
     yield node
 
+  def groupChangesByNodeId(changes: Vector[GraphMutationInput]): Vector[GroupedGraphMutationInput] =
+    for id <- changes.map(_.id).distinct
+    yield GroupedGraphMutationInput(
+      id = id,
+      events = changes.collect {
+        case input @ GraphMutationInput(id, _) => input.event
+      }
+    )
+
+  /**
+    * TODO: This should be modified to take a batch of changes, and the SQE and edge synch should
+    * be done in a separate following step that processes the change for the entire batch.
+    * This should be more efficient than doing the batches separately.
+    * 
+    * The following steps are only guaranteed to be consistent within a batch.
+    * TODO: Describe the case where two near-simultaneous transactions could produce 
+    *
+    * @param id
+    * @param time
+    * @param events
+    * @return
+    */
   override def append(
-      id: NodeId,
-      time: EventTime,
-      events: Vector[Event]
-  ): IO[UnpackFailure | PersistenceFailure, Node] =
+    time: EventTime,
+    changes: Vector[GraphMutationInput]
+  ): IO[UnpackFailure | PersistenceFailure, Unit] =
+    if changes.isEmpty then ZIO.unit
+    else 
+      for 
+        output: Vector[GroupedGraphMutationOutput] <- ZIO.foreachPar(groupChangesByNodeId(changes))(processChangesForOneNode(time, _))
+        
+        // Handle any events that are a result of this node being appended to.
+        // Note that we notify on de-duplicated events and not on the events (if any) that were persisted.
+        // This append may be re-processing a change and we have to guarantee that all post-persist notifications were generated.
 
-    val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(events)
+        // Processing these events are required for the append request to complete successfully,
+        // but since the node permit has been released, there is no possibility of deadlock.
+        // TODO: Is there potential for deadlock here? Need to make the reasoning explicit.
+        _ <- standingQueryEvaluation.graphChanged(time, output)
 
-    for
-      // Modify the node while holding the permit to change the node state for the shortest time possible
-      nextNodeState <- applyEventsToPersistentStoreAndCache(id, time, events)
+        // Note that this only queues the edge synchronization and there is no waiting (or possibility of deadlock)
+        _ <- edgeSynchronization.graphChanged(time, output)
+      yield ()
+  
+  def processChangesForOneNode(
+    time: EventTime, 
+    changes: GroupedGraphMutationInput
+  ): IO[UnpackFailure | PersistenceFailure, GroupedGraphMutationOutput] = 
+    val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(changes.events)
 
-      // Handle any events that are a result of this node being appended to.
-      // Note that we notify on de-duplicated events and not on the events (if any) that were persisted.
-      // This append may be re-processing a change and we have to guarantee that all post-persist notifications were generated.
-
-      // Processing these events are required for the append request to complete successfully,
-      // but since the node permit has been released, there is no possibility of deadlock.
-      _ <- standingQueryEvaluation.nodeChanged(nextNodeState, time, deduplicatedEvents)
-      _ <- edgeSynchronization.eventsAppended(nextNodeState.id, time, deduplicatedEvents)
-    yield nextNodeState
+    for node <- applyEventsToPersistentStoreAndCache(changes.id, time,deduplicatedEvents)
+    yield GroupedGraphMutationOutput(node, deduplicatedEvents)
 
   private def applyEventsToPersistentStoreAndCache(
       id: NodeId,
