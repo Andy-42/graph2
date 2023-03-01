@@ -72,7 +72,7 @@ object GraphSpec extends ZIOSpecDefault:
           assert(nodeFromData)(equalTo(expectedNode)) &&
           assert(inFlightBefore.isEmpty)(isTrue) &&
           assert(inFlightAfter.isEmpty)(isTrue) &&
-          assert(nodeFromCacheAfter)(equalTo(Some(expectedNode))) &&
+          assert(nodeFromCacheAfter)(isSome(equalTo(expectedNode))) &&
           assert(standingQueryEvaluationParameters.toVector)(equalTo(expectedOutputEvents)) &&
           assert(edgeSynchronizationParameters.toVector)(equalTo(expectedOutputEvents))
       }.provide(
