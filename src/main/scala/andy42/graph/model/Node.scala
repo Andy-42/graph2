@@ -27,11 +27,11 @@ object NodeSnapshot:
 type PackedNodeHistory = Packed
 
 sealed trait Node:
-  def id: NodeId
+  val id: NodeId
 
-  def version: Int
-  def lastTime: EventTime
-  def lastSequence: Int
+  val version: Int
+  val lastTime: EventTime
+  val lastSequence: Int
 
   def history: IO[UnpackFailure, NodeHistory]
   def packedHistory: PackedNodeHistory
@@ -54,16 +54,16 @@ sealed trait Node:
 
   def appendWithEventsAtTime(time: EventTime, events: Vector[Event]): IO[UnpackFailure, (Node, Option[EventsAtTime])]
 
-final case class NodeImplementation(
-    id: NodeId,
-    version: Int,
-    lastTime: EventTime,
-    lastSequence: Int,
+final class NodeImplementation(
+    val id: NodeId,
+    val version: Int,
+    val lastTime: EventTime,
+    val lastSequence: Int,
 
     // These may be provided at construction time if they are available
     private val reifiedCurrent: NodeSnapshot | Null = null,
     private val reifiedHistory: NodeHistory | Null = null,
-    packedHistory: PackedNodeHistory
+    val packedHistory: PackedNodeHistory
 ) extends Node:
 
   override val history: IO[UnpackFailure, NodeHistory] =
@@ -152,11 +152,24 @@ final case class NodeImplementation(
 
     nextNodeState -> Some(eventsAtTime)
 
+  override def hashCode(): Int = super.hashCode()  
+  
+  override def equals(other: Any): Boolean =
+    if !other.isInstanceOf[NodeImplementation] then false
+    else
+      val otherNode = other.asInstanceOf[NodeImplementation]
+      
+      id == otherNode.id &&
+        version == otherNode.version &&
+        lastTime == otherNode.lastTime &&
+        lastSequence == otherNode.lastSequence &&
+        packedHistory.sameElements(otherNode.packedHistory)
+
 object Node:
 
   // A node with an empty history
   def empty(id: NodeId): Node =
-    NodeImplementation(
+    new NodeImplementation(
       id = id,
       version = 0,
       lastTime = StartOfTime,
@@ -170,16 +183,17 @@ object Node:
       packed: PackedNodeHistory | Null = null,
       current: NodeSnapshot | Null = null
   ): Node =
-    require(history.nonEmpty)
-
-    NodeImplementation(
-      id = id,
-      version = history.length,
-      lastTime = history.last.time,
-      lastSequence = history.last.sequence,
-      reifiedCurrent = if current != null then current else CollapseNodeHistory(history),
-      reifiedHistory = history,
-      packedHistory = if packed != null then packed else history.toPacked
+    if history.isEmpty then
+      Node.empty(id)
+    else
+      new NodeImplementation(
+        id = id,
+        version = history.length,
+        lastTime = history.last.time,
+        lastSequence = history.last.sequence,
+        reifiedCurrent = if current != null then current else CollapseNodeHistory(history),
+        reifiedHistory = history,
+        packedHistory = if packed != null then packed else history.toPacked
     )
 
   def fromPackedHistory(
@@ -190,7 +204,7 @@ object Node:
   ): Node =
     require(packed.nonEmpty)
 
-    NodeImplementation(
+    new NodeImplementation(
       id = id,
       version = history.length,
       lastTime = history.last.time,
@@ -202,7 +216,7 @@ object Node:
 
   // A node being created from the cache
   def fromCacheItem(id: NodeId, item: CacheItem): Node =
-    NodeImplementation(
+    new NodeImplementation(
       id = id,
       version = item.version,
       lastTime = item.lastTime,

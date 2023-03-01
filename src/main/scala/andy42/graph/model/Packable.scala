@@ -38,7 +38,7 @@ trait UncountedSeqPacker[T <: Packable]:
     a.foreach(_.pack)
     packer.toByteArray
 
-trait Unpackable[T: ClassTag]:
+trait Unpackable[T]:
   def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, T]
 
 object UnpackOperations:

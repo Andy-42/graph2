@@ -39,8 +39,6 @@ final case class EventsAtTime(
 
 object EventsAtTime extends Unpackable[EventsAtTime]:
 
-  val empty: EventsAtTime = EventsAtTime(StartOfTime, 0, Vector.empty)
-
   override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, EventsAtTime] =
     UnpackSafely {
       for
