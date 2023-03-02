@@ -54,8 +54,8 @@ object GraphSpec extends ZIOSpecDefault:
       edgeSynchronizationParameters <- testEdgeSynchronization.graphChangedParameters
       _ = true
     yield
-      // There are no nodes in progress by the graph either before or after
-      assert(inFlightBefore.isEmpty)(isTrue) &&
+    // There are no nodes in progress by the graph either before or after
+    assert(inFlightBefore.isEmpty)(isTrue) &&
       assert(inFlightAfter.isEmpty)(isTrue) &&
       // The node (as obtained from the graph) starts out empty and is modified as expected
       assert(nodeBefore.hasEmptyHistory)(isTrue) &&
@@ -77,6 +77,8 @@ object GraphSpec extends ZIOSpecDefault:
   override def spec =
     suite("Graph")(
       test("Test1") {
+
+        // TODO: Make this into property based test
 
         val id = genNodeId
         val time: EventTime = Random.nextLong()
