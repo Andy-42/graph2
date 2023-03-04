@@ -34,8 +34,8 @@ trait Edge extends Packable:
     */
   def hash(id: NodeId): EdgeHash =
     MurmurHash3.stringHash(k) ^
-      MurmurHash3.arrayHash(id.toArray) ^
-      MurmurHash3.arrayHash(other.toArray) ^
+      id.hashCode ^
+      other.hashCode ^
       direction.hashContribution
 
   def reverse(id: NodeId): Edge
@@ -43,8 +43,8 @@ trait Edge extends Packable:
   override def pack(using packer: MessagePacker): Unit =
     packer
       .packString(k)
-      .packBinaryHeader(other.length)
-      .writePayload(other.to(Array))
+      .packBinaryHeader(other.id.length)
+      .writePayload(other.id)
       .packInt(direction.ordinal)
 
 final case class NearEdge(k: String, other: NodeId, direction: EdgeDirection) extends Edge with Packable:
@@ -76,7 +76,7 @@ object Edge:
       for
         k <- ZIO.attempt(unpacker.unpackString())
         length <- ZIO.attempt(unpacker.unpackBinaryHeader())
-        other <- ZIO.attempt(unpacker.readPayload(length).toVector)
+        other <- ZIO.attempt(NodeId(unpacker.readPayload(length).toArray))
         directionOrdinal <- ZIO.attempt(unpacker.unpackInt())
         direction <- ZIO
           .attempt(EdgeDirection.fromOrdinal(directionOrdinal))

@@ -5,9 +5,10 @@ import andy42.graph.model.EventTime
 import zio._
 
 trait TestEdgeSynchronization:
+  // Implicitly clears
   def graphChangedParameters: UIO[Chunk[(EventTime, Vector[GroupedGraphMutationOutput])]]
 
-final case class TestEdgeSynchronizationService(queue: Queue[(EventTime, Vector[GroupedGraphMutationOutput])])
+final case class TestEdgeSynchronizationLive(queue: Queue[(EventTime, Vector[GroupedGraphMutationOutput])])
     extends EdgeSynchronization
     with TestEdgeSynchronization:
 
@@ -23,5 +24,5 @@ object TestEdgeSynchronization:
   val layer: ULayer[EdgeSynchronization] =
     ZLayer {
       for queue <- Queue.unbounded[(EventTime, Vector[GroupedGraphMutationOutput])]
-      yield TestEdgeSynchronizationService(queue)
+      yield TestEdgeSynchronizationLive(queue)
     }

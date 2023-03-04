@@ -8,43 +8,43 @@ import zio.*
 
 import javax.sql.DataSource
 
-trait EdgeReconciliationDataService:
-  def markWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit]
+trait EdgeReconciliationRepository:
+  def markWindow(edgeReconciliation: EdgeReconciliationSnapshot): UIO[Unit]
 
-final case class EdgeReconciliation private (
+final case class EdgeReconciliationSnapshot private (
     windowStart: Long, // clustering key
     windowSize: Long, // payload
     state: Byte // payload
 )
 
-object EdgeReconciliation:
+object EdgeReconciliationSnapshot:
   val Reconciled: Byte = 1.toByte
   val Inconsistent: Byte = 2.toByte
   val Unknown: Byte = 3.toByte
 
   // All pairs of half-edges were determined to be reconciled for this window
-  def reconciled(windowStart: Long, windowSize: Long): EdgeReconciliation =
-    EdgeReconciliation(windowStart, windowSize, Reconciled)
+  def reconciled(windowStart: Long, windowSize: Long): EdgeReconciliationSnapshot =
+    EdgeReconciliationSnapshot(windowStart, windowSize, Reconciled)
 
   // The window is known or suspected of being inconsistent
-  def inconsistent(windowStart: Long, windowSize: Long): EdgeReconciliation =
-    EdgeReconciliation(windowStart, windowSize, Inconsistent)
+  def inconsistent(windowStart: Long, windowSize: Long): EdgeReconciliationSnapshot =
+    EdgeReconciliationSnapshot(windowStart, windowSize, Inconsistent)
 
   // The state is unknown. This is not typically something that we expect to write,
   // and it would normally be represented as a gap in the table.
-  def unknown(windowStart: Long, windowSize: Long): EdgeReconciliation =
-    EdgeReconciliation(windowStart, windowSize, Unknown)
+  def unknown(windowStart: Long, windowSize: Long): EdgeReconciliationSnapshot =
+    EdgeReconciliationSnapshot(windowStart, windowSize, Unknown)
 
-final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeReconciliationDataService:
+final case class EdgeReconciliationRepositoryLive(ds: DataSource) extends EdgeReconciliationRepository:
 
   val ctx: PostgresZioJdbcContext[Literal] = PostgresZioJdbcContext(Literal)
   import ctx.*
 
-  inline def edgeReconciliationTable: Quoted[EntityQuery[EdgeReconciliation]] = quote { 
-    query[EdgeReconciliation] 
+  inline def edgeReconciliationTable: Quoted[EntityQuery[EdgeReconciliationSnapshot]] = quote { 
+    query[EdgeReconciliationSnapshot] 
   }
 
-  inline def quotedMarkWindow(edgeReconciliation: EdgeReconciliation): Quoted[Insert[EdgeReconciliation]] = quote {
+  inline def quotedMarkWindow(edgeReconciliation: EdgeReconciliationSnapshot): Quoted[Insert[EdgeReconciliationSnapshot]] = quote {
     edgeReconciliationTable
       .insertValue(lift(edgeReconciliation))
       .onConflictUpdate(_.windowStart)(
@@ -55,16 +55,16 @@ final case class EdgeReconciliationDataServiceLive(ds: DataSource) extends EdgeR
 
   given Implicit[DataSource] = Implicit(ds)
 
-  override def markWindow(edgeReconciliation: EdgeReconciliation): UIO[Unit] =
+  override def markWindow(edgeReconciliation: EdgeReconciliationSnapshot): UIO[Unit] =
     run(quotedMarkWindow(edgeReconciliation)).implicitly
       .retry(Schedule.recurs(5)) // TODO: Configure retry policy - either exponential or fibbonacci
       // TODO: Check that exactly one row is changed, otherwise log error
       // TODO: Log if retries fails
       .foldZIO(_ => ZIO.unit, _ => ZIO.unit) // TODO: Is this the best way to consume errors
 
-object EdgeReconciliationDataService:
-  val layer: URLayer[DataSource, EdgeReconciliationDataService] =
+object EdgeReconciliationRepository:
+  val layer: URLayer[DataSource, EdgeReconciliationRepository] =
     ZLayer {
       for ds <- ZIO.service[DataSource]
-      yield EdgeReconciliationDataServiceLive(ds)
+      yield EdgeReconciliationRepositoryLive(ds)
     }

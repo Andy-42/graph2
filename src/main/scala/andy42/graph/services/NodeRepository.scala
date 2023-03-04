@@ -8,7 +8,7 @@ import zio.*
 
 import javax.sql.DataSource
 
-trait NodeDataService:
+trait NodeRepository:
 
   /** Get a Node from persistent store.
     *
@@ -72,7 +72,7 @@ extension (graphHistory: List[GraphEventsAtTime])
     graphHistory.foreach(_.pack)
     packer.toByteArray
 
-final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
+final case class NodeRepositoryLive(ds: DataSource) extends NodeRepository:
 
   val ctx: PostgresZioJdbcContext[Literal] = PostgresZioJdbcContext(Literal)
   import ctx.*
@@ -90,6 +90,9 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
     graph.insertValue(lift(graphEventsAtTime))
 
   given Implicit[DataSource] = Implicit(ds)
+
+  given MappedEncoding[NodeId, Array[Byte]](_.id)
+  given MappedEncoding[Array[Byte], NodeId](NodeId(_))
 
   override def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
     run(quotedGet(id)).implicitly
@@ -118,9 +121,9 @@ final case class NodeDataServiceLive(ds: DataSource) extends NodeDataService:
         else ZIO.unit
       }
 
-object NodeDataService:
-  val layer: URLayer[DataSource, NodeDataService] =
+object NodeRepository:
+  val layer: URLayer[DataSource, NodeRepository] =
     ZLayer {
       for ds <- ZIO.service[DataSource]
-      yield NodeDataServiceLive(ds)
+      yield NodeRepositoryLive(ds)
     }

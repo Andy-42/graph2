@@ -1,11 +1,16 @@
 package andy42.graph.services
 
+import andy42.graph.model.EdgeHash
+import andy42.graph.model.Event
+import andy42.graph.model.EventTime
+import andy42.graph.model.NodeId
+import andy42.graph.services.MillisecondDuration
+import andy42.graph.services.WindowStart
 import zio.logging.LogAnnotation
-import andy42.graph.model.{EventTime, EdgeHash, NodeId, Event}
 
 object LogAnnotations:
 
-  def formatNodeId(id: NodeId): String = id.map(_.toInt.toHexString).mkString
+  def formatNodeId(id: NodeId): String = id.toString
   def formatEvent(event: Event): String = event.getClass.getSimpleName
 
   // Edge Reconciliation

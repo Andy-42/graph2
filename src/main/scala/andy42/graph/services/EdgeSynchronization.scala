@@ -31,7 +31,7 @@ final case class EdgeReconciliationEvent(
 
 final case class EdgeSynchronizationLive(
     config: EdgeReconciliationConfig,
-    edgeReconciliationService: EdgeReconciliationService,
+    edgeReconciliationService: EdgeReconciliationProcessor,
     graph: Graph,
     queue: Queue[EdgeReconciliationEvent]
 ) extends EdgeSynchronization:
@@ -109,11 +109,11 @@ final case class EdgeSynchronizationLive(
 
 object EdgeSynchronization:
 
-  val layer: URLayer[EdgeReconciliationConfig & Graph & EdgeReconciliationService, EdgeSynchronization] =
+  val layer: URLayer[EdgeReconciliationConfig & Graph & EdgeReconciliationProcessor, EdgeSynchronization] =
     ZLayer {
       for
         config <- ZIO.service[EdgeReconciliationConfig]
-        edgeReconciliationService <- ZIO.service[EdgeReconciliationService]
+        edgeReconciliationService <- ZIO.service[EdgeReconciliationProcessor]
         graph <- ZIO.service[Graph]
         queue <- Queue.unbounded[EdgeReconciliationEvent] // TODO: s/b bounded?
         live = EdgeSynchronizationLive(config, edgeReconciliationService, graph, queue)

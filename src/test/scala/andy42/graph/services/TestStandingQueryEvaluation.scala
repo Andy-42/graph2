@@ -5,9 +5,10 @@ import andy42.graph.model.EventTime
 import zio._
 
 trait TestStandingQueryEvaluation:
+  // Implicitly clears queue
   def graphChangedParameters: UIO[Chunk[(EventTime, Vector[GroupedGraphMutationOutput])]]
 
-final case class TestStandingQueryEvaluationService(queue: Queue[(EventTime, Vector[GroupedGraphMutationOutput])])
+final case class TestStandingQueryEvaluationLive(queue: Queue[(EventTime, Vector[GroupedGraphMutationOutput])])
     extends StandingQueryEvaluation
     with TestStandingQueryEvaluation:
 
@@ -21,5 +22,5 @@ object TestStandingQueryEvaluation:
   val layer: ULayer[StandingQueryEvaluation] =
     ZLayer {
       for queue <- Queue.unbounded[(EventTime, Vector[GroupedGraphMutationOutput])]
-      yield TestStandingQueryEvaluationService(queue)
+      yield TestStandingQueryEvaluationLive(queue)
     }

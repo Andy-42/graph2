@@ -4,8 +4,25 @@ import andy42.graph.services.CacheItem
 import andy42.graph.model.NodeHistory
 import org.msgpack.core.*
 import zio.*
+import scala.util.hashing.MurmurHash3
 
-type NodeId = Vector[Byte] // Any length, but an 8-byte UUID-like identifier is typical
+// TODO: Use newtype or other macro to avoid extra object allocation
+class NodeId(val id: Array[Byte]):
+
+  override def hashCode: Int = MurmurHash3.arrayHash(id)
+
+  override def equals(x: Any): Boolean = 
+    if !x.isInstanceOf[NodeId] then false
+    else id.sameElements(x.asInstanceOf[NodeId].id)
+
+  override def toString: String =
+    val sb = new StringBuilder(id.length * 2)
+    for (b <- id) sb.append(String.format("%02x", b))
+    sb.toString
+
+object NodeId:
+  def apply(id: Array[Byte]): NodeId = new NodeId(id) // TODO: Do a better job of immutability here
+  def apply(id: Vector[Byte]): NodeId = new NodeId(id.toArray)
 
 // The time an event occurs
 type EventTime = Long // Epoch Millis
@@ -37,7 +54,7 @@ sealed trait Node:
   def packedHistory: PackedNodeHistory
 
   def current: IO[UnpackFailure, NodeSnapshot]
-  
+
   def atTime(time: EventTime): IO[UnpackFailure, NodeSnapshot] =
     if time >= lastTime then current
     else
@@ -152,18 +169,20 @@ final class NodeImplementation(
 
     nextNodeState -> Some(eventsAtTime)
 
-  override def hashCode(): Int = super.hashCode()  
-  
+  // version, lastTime and lastSequence are redundant wrt the hash code
+  override def hashCode: Int =
+    id.hashCode * 41 + MurmurHash3.arrayHash(packedHistory)
+
   override def equals(other: Any): Boolean =
     if !other.isInstanceOf[NodeImplementation] then false
     else
       val otherNode = other.asInstanceOf[NodeImplementation]
-      
+
       id == otherNode.id &&
-        version == otherNode.version &&
-        lastTime == otherNode.lastTime &&
-        lastSequence == otherNode.lastSequence &&
-        packedHistory.sameElements(otherNode.packedHistory)
+      packedHistory.sameElements(otherNode.packedHistory)
+
+  override def toString: String =
+    s"Node(id=$id, packedHistory.hash=${MurmurHash3.arrayHash(packedHistory)}, version=$version, lastTime=$lastTime)"
 
 object Node:
 
@@ -183,8 +202,7 @@ object Node:
       packed: PackedNodeHistory | Null = null,
       current: NodeSnapshot | Null = null
   ): Node =
-    if history.isEmpty then
-      Node.empty(id)
+    if history.isEmpty then Node.empty(id)
     else
       new NodeImplementation(
         id = id,
@@ -194,7 +212,7 @@ object Node:
         reifiedCurrent = if current != null then current else CollapseNodeHistory(history),
         reifiedHistory = history,
         packedHistory = if packed != null then packed else history.toPacked
-    )
+      )
 
   def fromPackedHistory(
       id: NodeId,

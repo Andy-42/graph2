@@ -10,11 +10,6 @@ import andy42.graph.model.*
 
 object GraphSpec extends ZIOSpecDefault:
 
-  def genNodeId: NodeId =
-    val a = Array.ofDim[Byte](16)
-    Random.nextBytes(a)
-    a.toVector
-
   def testGraphDataFlow(
       id: NodeId,
       time: EventTime,
@@ -28,10 +23,11 @@ object GraphSpec extends ZIOSpecDefault:
 
       // Get mock services used for testing from GraphLive
       graphLive = graph.asInstanceOf[GraphLive]
-      rememberingNodeData = graphLive.nodeDataService.asInstanceOf[RememberingNodeDataService]
-      rememberingNodeCache = graphLive.cache.asInstanceOf[RememberingNodeCacheService]
+      testNodeRepository = graphLive.nodeDataService.asInstanceOf[TestNodeRepositoryLive]
+      testNodeCache = graphLive.cache.asInstanceOf[TestNodeCacheLive]
       testStandingQueryEvaluation = graphLive.standingQueryEvaluation.asInstanceOf[TestStandingQueryEvaluation]
       testEdgeSynchronization = graphLive.edgeSynchronization.asInstanceOf[TestEdgeSynchronization]
+      _ <- testNodeCache.clear() *> testNodeRepository.clear()
 
       // Observe graph state before the change
       inFlightBefore <- graphLive.inFlight.toList.commit
@@ -47,8 +43,8 @@ object GraphSpec extends ZIOSpecDefault:
       nodeCurrentAfter <- nodeFromGraphAfter.current
 
       // Services that are updated with the new node state
-      nodeFromData <- rememberingNodeData.get(id)
-      nodeFromCacheAfter <- rememberingNodeCache.get(id)
+      nodeFromData <- testNodeRepository.get(id)
+      nodeFromCacheAfter <- testNodeCache.get(id)
       // Services that get notified of changes to the node state
       standingQueryEvaluationParameters <- testStandingQueryEvaluation.graphChangedParameters
       edgeSynchronizationParameters <- testEdgeSynchronization.graphChangedParameters
@@ -69,33 +65,36 @@ object GraphSpec extends ZIOSpecDefault:
       assert(edgeSynchronizationParameters.toVector)(equalTo(expectedOutputEvents))
 
   val graphLayer: ULayer[Graph] =
-    (RememberingNodeData.layer ++
-      RememberingNodeCache.layer ++
+    (TestNodeRepository.layer ++
+      TestNodeCache.layer ++
       TestStandingQueryEvaluation.layer ++
       TestEdgeSynchronization.layer) >>> Graph.layer
 
+  val genNodeId: Gen[Any, NodeId] =
+    for id <- Gen.vectorOfN(16)(Gen.byte)
+    yield NodeId(id)
+
+  val fixedGenNodeId: Gen[Any, NodeId] =
+    Gen.const(NodeId(Vector.fill(16)(0.toByte)))
+
   override def spec =
     suite("Graph")(
-      test("Test1") {
+      test("Simplest possible test that tests all data flows") {
+        // check(genNodeId, Gen.long) { (id, time) =>
+        check(fixedGenNodeId, Gen.long) { (id, time) =>
 
-        // TODO: Make this into property based test
+          val inputMutation = Event.PropertyAdded("p", 42)
+          val expectedPropertyAddedEvents = Vector(inputMutation)
+          val expectedEventsAtTime = EventsAtTime(time = time, sequence = 0, events = expectedPropertyAddedEvents)
+          val expectedCurrent = NodeSnapshot(time = time, sequence = 0, properties = Map("p" -> 42), edges = Set.empty)
+          val expectedHistory = Vector(expectedEventsAtTime)
+          val expectedNode = Node.fromHistory(id, expectedHistory)
 
-        val id = genNodeId
-        val time: EventTime = Random.nextLong()
+          val expectedOutputEvents = Vector(
+            time -> Vector(GroupedGraphMutationOutput(expectedNode, expectedPropertyAddedEvents))
+          )
 
-        val inputMutation = Event.PropertyAdded("p", 42)
-
-        val expectedPropertyAddedEvents = Vector(inputMutation)
-        val expectedEventsAtTime = EventsAtTime(time = time, sequence = 0, events = expectedPropertyAddedEvents)
-
-        val expectedCurrent = NodeSnapshot(time = time, sequence = 0, properties = Map("p" -> 42), edges = Set.empty)
-        val expectedHistory = Vector(expectedEventsAtTime)
-        val expectedNode = Node.fromHistory(id, expectedHistory)
-
-        val expectedOutputEvents = Vector(
-          time -> Vector(GroupedGraphMutationOutput(expectedNode, expectedPropertyAddedEvents))
-        )
-
-        testGraphDataFlow(id, time, inputMutation, expectedNode, expectedCurrent, expectedOutputEvents)
+          testGraphDataFlow(id, time, inputMutation, expectedNode, expectedCurrent, expectedOutputEvents)
+        }
       }.provide(graphLayer)
     )

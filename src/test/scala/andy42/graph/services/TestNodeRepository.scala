@@ -5,20 +5,12 @@ import andy42.graph.model._
 import zio._
 import zio.stm.TMap
 
-final case class ForgetfulNodeDataService() extends NodeDataService:
+trait TestNodeRepository:
+  def clear(): UIO[Unit]
 
-  override def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
-    ZIO.succeed(Node.empty(id))
-
-  override def append(id: NodeId, eventsAtTime: EventsAtTime): IO[PersistenceFailure, Unit] =
-    ZIO.unit
-
-object ForgetfulNodeData:
-
-  val layer: ULayer[NodeDataService] = ZLayer.succeed(ForgetfulNodeDataService())
-
-final case class RememberingNodeDataService(cache: TMap[(NodeId, EventTime, Int), EventsAtTime])
-    extends NodeDataService:
+final case class TestNodeRepositoryLive(cache: TMap[(NodeId, EventTime, Int), EventsAtTime])
+    extends NodeRepository
+    with TestNodeRepository:
 
   override def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
     for
@@ -31,10 +23,12 @@ final case class RememberingNodeDataService(cache: TMap[(NodeId, EventTime, Int)
   override def append(id: NodeId, eventsAtTime: EventsAtTime): IO[PersistenceFailure, Unit] =
     cache.put((id, eventsAtTime.time, eventsAtTime.sequence), eventsAtTime).commit
 
-object RememberingNodeData:
+  override def clear(): UIO[Unit] = cache.removeIfDiscard((_, _) => true).commit
 
-  val layer: ULayer[NodeDataService] =
+object TestNodeRepository:
+
+  val layer: ULayer[NodeRepository] =
     ZLayer {
       for cache <- TMap.empty[(NodeId, EventTime, Int), EventsAtTime].commit
-      yield RememberingNodeDataService(cache)
+      yield TestNodeRepositoryLive(cache)
     }

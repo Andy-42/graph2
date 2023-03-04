@@ -89,7 +89,7 @@ final case class GroupedGraphMutationOutput(
 final case class GraphLive(
     inFlight: TSet[NodeId],
     cache: NodeCache,
-    nodeDataService: NodeDataService,
+    nodeDataService: NodeRepository,
     edgeSynchronization: EdgeSynchronization,
     standingQueryEvaluation: StandingQueryEvaluation
 ) extends Graph:
@@ -183,11 +183,11 @@ final case class GraphLive(
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
 object Graph:
-  val layer: URLayer[NodeCache & NodeDataService & EdgeSynchronization & StandingQueryEvaluation, Graph] =
+  val layer: URLayer[NodeCache & NodeRepository & EdgeSynchronization & StandingQueryEvaluation, Graph] =
     ZLayer {
       for
         nodeCache <- ZIO.service[NodeCache]
-        nodeDataService <- ZIO.service[NodeDataService]
+        nodeDataService <- ZIO.service[NodeRepository]
         edgeSynchronization <- ZIO.service[EdgeSynchronization]
         standingQueryEvaluation <- ZIO.service[StandingQueryEvaluation]
 

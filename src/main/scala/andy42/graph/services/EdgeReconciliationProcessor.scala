@@ -10,7 +10,7 @@ type WindowStart = Long // Epoch millis adjusted to start of window
 type WindowEnd = Long // Epoch millis adjusted to last period in window
 type MillisecondDuration = Long
 
-trait EdgeReconciliationService:
+trait EdgeReconciliationProcessor:
 
   def zero: EdgeReconciliationState
   
@@ -24,10 +24,10 @@ case class EdgeReconciliationState(
     edgeHashes: Array[EdgeHash]
 )
 
-case class EdgeReconciliationServiceLive(
+case class EdgeReconciliationProcessorLive(
     config: EdgeReconciliationConfig,
-    edgeReconciliationDataService: EdgeReconciliationDataService
-) extends EdgeReconciliationService:
+    edgeReconciliationDataService: EdgeReconciliationRepository
+) extends EdgeReconciliationProcessor:
 
   val windowSize: Long = config.windowSize.get(MILLIS)
   val windowExpiry: Long = config.windowExpiry.get(MILLIS)
@@ -69,7 +69,7 @@ case class EdgeReconciliationServiceLive(
             ZIO.logWarning("Edge reconciliation processed for an expired event; window is likely to be inconsistent")
             @@ eventTimeAnnotation (e.time) @@ eventWindowTimeAnnotation(e.time.toWindowStart)
               *> edgeReconciliationDataService.markWindow(
-                EdgeReconciliation.inconsistent(e.time.toWindowStart, windowSize)
+                EdgeReconciliationSnapshot.inconsistent(e.time.toWindowStart, windowSize)
               )
           } @@ expiryThresholdAnnotation(expiryThreshold) @@ windowSizeAnnotation(windowSize)
             *> ZIO.succeed(edgeReconciliationEvents.filter(!_.time.isExpired)) // Keep the events that are not expired
@@ -97,13 +97,13 @@ case class EdgeReconciliationServiceLive(
               ZIO.logInfo("Edge hash reconciled.")
               @@ windowStartAnnotation (i.indexToWindowStart)
                 *> edgeReconciliationDataService.markWindow(
-                  EdgeReconciliation.reconciled(i.indexToWindowStart, windowSize)
+                  EdgeReconciliationSnapshot.reconciled(i.indexToWindowStart, windowSize)
                 )
             else
               ZIO.logWarning("Edge hash failed to reconcile before window expiry; window is not consistent")
               @@ windowStartAnnotation (i.indexToWindowStart) @@ edgeHashAnnotation(edgeHash)
                 *> edgeReconciliationDataService.markWindow(
-                  EdgeReconciliation.inconsistent(i.indexToWindowStart, windowSize)
+                  EdgeReconciliationSnapshot.inconsistent(i.indexToWindowStart, windowSize)
                 )
           } @@ windowSizeAnnotation(windowSize) @@ expiryThresholdAnnotation(expiryThreshold)
             *> ZIO.succeed(
@@ -159,13 +159,13 @@ case class EdgeReconciliationServiceLive(
         edgeHashes = edgeHashes
       )
 
-end EdgeReconciliationServiceLive
+end EdgeReconciliationProcessorLive
 
-object EdgeReconciliationState:
-  val layer: RLayer[EdgeReconciliationConfig & EdgeReconciliationDataService, EdgeReconciliationService] =
+object EdgeReconciliation:
+  val layer: RLayer[EdgeReconciliationConfig & EdgeReconciliationRepository, EdgeReconciliationProcessor] =
     ZLayer {
       for
         config <- ZIO.service[EdgeReconciliationConfig]
-        dataService <- ZIO.service[EdgeReconciliationDataService]
-      yield EdgeReconciliationServiceLive(config, dataService)
+        dataService <- ZIO.service[EdgeReconciliationRepository]
+      yield EdgeReconciliationProcessorLive(config, dataService)
     }
