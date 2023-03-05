@@ -13,7 +13,7 @@ object GraphSpec extends ZIOSpecDefault:
   def testGraphDataFlow(
       id: NodeId,
       time: EventTime,
-      inputMutation: Event,
+      inputMutations: Vector[GraphMutationInput],
       expectedNode: Node,
       expectedCurrent: NodeSnapshot,
       expectedOutputEvents: Vector[(EventTime, Vector[GroupedGraphMutationOutput])]
@@ -34,8 +34,7 @@ object GraphSpec extends ZIOSpecDefault:
       nodeBefore <- graph.get(id)
 
       // Mutate the graph state
-      mutations = Vector(GraphMutationInput(id, inputMutation))
-      _ <- graph.append(time, mutations)
+      _ <- graph.append(time, inputMutations)
 
       // Observe the graph state after the change
       inFlightAfter <- graphLive.inFlight.toList.commit
@@ -74,27 +73,23 @@ object GraphSpec extends ZIOSpecDefault:
     for id <- Gen.vectorOfN(16)(Gen.byte)
     yield NodeId(id)
 
-  val fixedGenNodeId: Gen[Any, NodeId] =
-    Gen.const(NodeId(Vector.fill(16)(0.toByte)))
-
   override def spec =
     suite("Graph")(
       test("Simplest possible test that tests all data flows") {
-        // check(genNodeId, Gen.long) { (id, time) =>
-        check(fixedGenNodeId, Gen.long) { (id, time) =>
+        check(genNodeId, Gen.long, Gen.int, Gen.string) { (id, time, p1Value, e1Value) =>
 
-          val inputMutation = Event.PropertyAdded("p", 42)
-          val expectedPropertyAddedEvents = Vector(inputMutation)
-          val expectedEventsAtTime = EventsAtTime(time = time, sequence = 0, events = expectedPropertyAddedEvents)
-          val expectedCurrent = NodeSnapshot(time = time, sequence = 0, properties = Map("p" -> 42), edges = Set.empty)
+          val edge = NearEdge("e1", id, EdgeDirection.Outgoing)
+          val inputEvents = Vector(Event.PropertyAdded("p1", p1Value), Event.EdgeAdded(edge))
+          val inputMutations = inputEvents.map(event => GraphMutationInput(id, event))
+
+          val expectedEventsAtTime = EventsAtTime(time = time, sequence = 0, events = inputEvents)
+          val expectedCurrent =
+            NodeSnapshot(time = time, sequence = 0, properties = Map("p1" -> p1Value), edges = Set(edge))
           val expectedHistory = Vector(expectedEventsAtTime)
           val expectedNode = Node.fromHistory(id, expectedHistory)
+          val expectedMutationOutput = Vector(time -> Vector(GroupedGraphMutationOutput(expectedNode, inputEvents)))
 
-          val expectedOutputEvents = Vector(
-            time -> Vector(GroupedGraphMutationOutput(expectedNode, expectedPropertyAddedEvents))
-          )
-
-          testGraphDataFlow(id, time, inputMutation, expectedNode, expectedCurrent, expectedOutputEvents)
+          testGraphDataFlow(id, time, inputMutations, expectedNode, expectedCurrent, expectedMutationOutput)
         }
       }.provide(graphLayer)
     )
