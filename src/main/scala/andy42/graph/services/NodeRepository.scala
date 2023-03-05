@@ -91,7 +91,7 @@ final case class NodeRepositoryLive(ds: DataSource) extends NodeRepository:
 
   given Implicit[DataSource] = Implicit(ds)
 
-  given MappedEncoding[NodeId, Array[Byte]](_.id)
+  given MappedEncoding[NodeId, Array[Byte]](_.toArray)
   given MappedEncoding[Array[Byte], NodeId](NodeId(_))
 
   override def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =

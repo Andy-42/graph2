@@ -43,8 +43,7 @@ trait Edge extends Packable:
   override def pack(using packer: MessagePacker): Unit =
     packer
       .packString(k)
-      .packBinaryHeader(other.id.length)
-      .writePayload(other.id)
+      .addPayload(other.toArray) // Written without a header to save two bytes per NodeId
       .packInt(direction.ordinal)
 
 final case class NearEdge(k: String, other: NodeId, direction: EdgeDirection) extends Edge with Packable:
@@ -75,8 +74,8 @@ object Edge:
     UnpackSafely {
       for
         k <- ZIO.attempt(unpacker.unpackString())
-        length <- ZIO.attempt(unpacker.unpackBinaryHeader())
-        other <- ZIO.attempt(NodeId(unpacker.readPayload(length).toArray))
+        // The other NodeId is read/written without a length header to save two bytes
+        other <- ZIO.attempt(NodeId(unpacker.readPayload(16)))
         directionOrdinal <- ZIO.attempt(unpacker.unpackInt())
         direction <- ZIO
           .attempt(EdgeDirection.fromOrdinal(directionOrdinal))

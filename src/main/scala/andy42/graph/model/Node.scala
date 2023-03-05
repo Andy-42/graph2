@@ -1,28 +1,11 @@
 package andy42.graph.model
 
-import andy42.graph.services.CacheItem
 import andy42.graph.model.NodeHistory
+import andy42.graph.services.CacheItem
 import org.msgpack.core.*
 import zio.*
+
 import scala.util.hashing.MurmurHash3
-
-// TODO: Use newtype or other macro to avoid extra object allocation
-class NodeId(val id: Array[Byte]):
-
-  override def hashCode: Int = MurmurHash3.arrayHash(id)
-
-  override def equals(x: Any): Boolean = 
-    if !x.isInstanceOf[NodeId] then false
-    else id.sameElements(x.asInstanceOf[NodeId].id)
-
-  override def toString: String =
-    val sb = new StringBuilder(id.length * 2)
-    for (b <- id) sb.append(String.format("%02x", b))
-    sb.toString
-
-object NodeId:
-  def apply(id: Array[Byte]): NodeId = new NodeId(id) // TODO: Do a better job of immutability here
-  def apply(id: Vector[Byte]): NodeId = new NodeId(id.toArray)
 
 // The time an event occurs
 type EventTime = Long // Epoch Millis
