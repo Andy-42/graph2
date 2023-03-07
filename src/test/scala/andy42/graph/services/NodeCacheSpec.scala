@@ -9,6 +9,7 @@ import zio.test.*
 
 import java.time.temporal.ChronoUnit.MILLIS
 import andy42.graph.model.StartOfTime
+import andy42.graph.model.TestNode
 
 object NodeCacheSpec extends ZIOSpecDefault:
 
@@ -22,8 +23,6 @@ object NodeCacheSpec extends ZIOSpecDefault:
 
     def implementation: NodeCacheLive = cache.asInstanceOf[NodeCacheLive]
 
-  def node(id: Int): Node = Node.empty(NodeId(id))
-
   override def spec = suite("NodeCache")(
     test(
       "watermark moves forward and items are removed when size exceeds capacity"
@@ -35,12 +34,12 @@ object NodeCacheSpec extends ZIOSpecDefault:
         size0 <- cache.size
         watermark0 <- cache.watermark
 
-        _ <- cache.put(node(0))
+        _ <- cache.put(TestNode(0))
         size1 <- cache.size
         watermark1 <- cache.watermark
 
         _ <- TestClock.adjust(1.millisecond)
-        _ <- cache.put(node(1))
+        _ <- cache.put(TestNode(1))
         size2 <- cache.size
         watermark2 <- cache.watermark
 
@@ -55,7 +54,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
         watermarkAtTrim <- cache.watermark
         nextWatermark = cacheImplementation.moveWatermarkForward(now = nowAtTrim, watermark = watermarkAtTrim)
         _ <- TestClock.adjust(1.millisecond)
-        _ <- cache.put(node(2))
+        _ <- cache.put(TestNode(2))
         size3 <- cache.size
         watermark3 <- cache.watermark
 
@@ -82,13 +81,13 @@ object NodeCacheSpec extends ZIOSpecDefault:
         _ <- TestClock.adjust(1.millisecond) // Avoid warning
 
         fiber0 <- ZIO
-          .foreach(1 until n by 2)(i => cache.put(node(i)))
+          .foreach(1 until n by 2)(i => cache.put(TestNode(i)))
           .fork
         fiber1 <- ZIO
-          .foreach(0 until n by 2)(i => cache.put(node(i)))
+          .foreach(0 until n by 2)(i => cache.put(TestNode(i)))
           .fork
         fiber2 <- ZIO
-          .foreach(0 until n by 3)(i => cache.put(node(i)))
+          .foreach(0 until n by 3)(i => cache.put(TestNode(i)))
           .fork
 
         _ <- fiber0.join *> fiber1.join *> fiber2.join
@@ -111,7 +110,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
         cacheImplementation = cache.implementation
 
         _ <- ZIO.foreach(0 until n) { i =>
-          TestClock.adjust(1.millisecond) *> cache.put(node(i))
+          TestClock.adjust(1.millisecond) *> cache.put(TestNode(i))
         }
 
         watermark <- cache.watermark
@@ -142,7 +141,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
         cacheImplementation = cache.implementation
 
         _ <- ZIO.foreach(0 until n) { i =>
-          TestClock.adjust(1.millisecond) *> cache.put(node(i))
+          TestClock.adjust(1.millisecond) *> cache.put(TestNode(i))
         }
 
         watermark <- cache.watermark
@@ -178,12 +177,12 @@ object NodeCacheSpec extends ZIOSpecDefault:
         cache <- ZIO.service[NodeCache]
 
         // Fill cache just up to capacity
-        _ <- ZIO.foreach(0 until n)(i => cache.put(node(i)))
+        _ <- ZIO.foreach(0 until n)(i => cache.put(TestNode(i)))
         watermarkAtCapacity <- cache.watermark
         sizeAtCapacity <- cache.size
 
         // Add one more past capacity
-        _ <- cache.put(node(n + 1))
+        _ <- cache.put(TestNode(n + 1))
         watermarkPastCapacity <- cache.watermark
         sizePastCapacity <- cache.size
       yield assertTrue(now == 0L) &&
