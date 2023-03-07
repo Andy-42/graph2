@@ -32,9 +32,16 @@ final case class NodeCacheLive(
   override def get(id: NodeId): IO[UnpackFailure, Option[Node]] =
     for
       now <- Clock.currentTime(MILLIS)
-      optionCacheItem <- items
-        .updateWith(id)(_.map(_.copy(lastAccess = now)))
-        .commit
+
+      optionCacheItem <- items.get(id).commit
+
+      _ <- optionCacheItem.fold(ZIO.unit)(item =>
+        // A hot node item might be referenced many times in one millisecond, so only update if lastAccess would change
+        if item.lastAccess < now then
+          val e = items.put(id, item.copy(lastAccess = now)).commit
+          if config.forkOnUpdateAccessTime then e.fork else e // The safety of forking here is questionable
+        else ZIO.unit
+        )
 
       optionNode <- optionCacheItem.fold(ZIO.succeed(None)) { cacheItem =>
         if cacheItem.current != null then
@@ -85,6 +92,8 @@ final case class NodeCacheLive(
       _ <- trimIfOverCapacity(now) // TODO: fork
     yield ()
 
+  // TODO: Avoid a cascade of trims by capturing the watermark and comparing before trim  
+
   private def trimIfOverCapacity(now: AccessTime): UIO[Unit] =
     for
       optionOldest <- ZSTM
@@ -99,8 +108,8 @@ final case class NodeCacheLive(
   private def trim(now: AccessTime): USTM[Some[AccessTime]] =
     for
       currentWatermark <- watermark.get
-      nextWatermark = moveWatermarkForward(currentWatermark, now, config.fractionToRetainOnTrim)
-      _ <- items.removeIfDiscard((_, cacheItem) => cacheItem.lastAccess < nextWatermark)
+      nextWatermark = moveWatermarkForward(now = now, watermark = currentWatermark)
+      _ <- items.removeIfDiscard((_, cacheItem) => cacheItem.lastAccess <= nextWatermark)
       _ <- watermark.set(nextWatermark)
     yield Some(nextWatermark)
 
@@ -130,10 +139,11 @@ final case class NodeCacheLive(
     * @return
     *   A new value for purgeWatermark that can be used to retain only some fraction of the newest cache items.
     */
-  private def moveWatermarkForward(now: AccessTime, purgeWatermark: AccessTime, fractionToRetain: Double): AccessTime =
-    val intervals = now - purgeWatermark + 1
+  // visible for testing  
+  def moveWatermarkForward(now: AccessTime, watermark: AccessTime): AccessTime =
+    val intervals = now - watermark + 1
     val moveForwardBy = 1 max (intervals * config.fractionToRetainOnTrim).toInt
-    purgeWatermark + moveForwardBy
+    now min (watermark + moveForwardBy)
 
   override def startSnapshotTrimDaemon: UIO[Unit] =
     snapshotTrim
@@ -148,13 +158,13 @@ final case class NodeCacheLive(
     for
       now <- Clock.currentTime(MILLIS)
       retain <- snapshotTrimTransaction(now).commit
-      _ <- ZIO.logInfo("Node cache snapshot trim") @@ LogAnnotations.snapshotRetainWatermark(retain)
+      _ <- ZIO.logInfo(s"Node cache snapshot trim") @@ LogAnnotations.snapshotRetainWatermark(retain)
     yield ()
 
   private def snapshotTrimTransaction(now: AccessTime): USTM[AccessTime] =
     for
       currentWatermark <- watermark.get
-      snapshotWatermark = moveWatermarkForward(currentWatermark, now, config.fractionOfSnapshotsToRetainOnSnapshotPurge)
+      snapshotWatermark = moveWatermarkForward(currentWatermark, now)
       _ <- items.transformValues(cacheItem =>
         // Purge the current node snapshot if the last access was before the retain time
         if cacheItem.lastAccess >= snapshotWatermark || cacheItem.current == null then cacheItem
@@ -169,7 +179,7 @@ object NodeCache:
       for
         config <- ZIO.service[NodeCacheConfig]
         now <- Clock.currentTime(MILLIS)
-        oldest <- TRef.make(now - 1).commit
+        oldest <- TRef.make(now).commit
         items <- TMap.empty[NodeId, CacheItem].commit
         nodeCache = NodeCacheLive(config, oldest, items)
         _ <- nodeCache.startSnapshotTrimDaemon

@@ -1,12 +1,11 @@
 package andy42.graph.services
 
+import andy42.graph.model.*
 import zio.*
-import zio.test.{test, *}
 import zio.test.Assertion.*
+import zio.test._
 
 import java.util.UUID
-import scala.util.Random
-import andy42.graph.model.*
 
 object GraphSpec extends ZIOSpecDefault:
 

@@ -55,3 +55,8 @@ object NodeId:
 
   def apply(id: UUID): NodeId =
     NodeId(msb = id.getMostSignificantBits, lsb = id.getLeastSignificantBits)
+
+  // This is not a particularly useful id, and is intended for testing  
+  // Consider moving this out to test infrastructure
+  def apply(id: Int): NodeId =
+    NodeId(msb = 0, lsb = id.toLong)  
