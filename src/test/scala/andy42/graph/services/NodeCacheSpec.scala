@@ -20,6 +20,8 @@ object NodeCacheSpec extends ZIOSpecDefault:
     def watermark: UIO[AccessTime] = cache match
       case NodeCacheLive(_, watermark, _) => watermark.get.commit
 
+    def implementation: NodeCacheLive = cache.asInstanceOf[NodeCacheLive]
+
   def node(id: Int): Node = Node.empty(NodeId(id))
 
   override def spec = suite("NodeCache")(
@@ -28,7 +30,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
     ) {
       for
         cache <- ZIO.service[NodeCache]
-        cacheImplementation = cache.asInstanceOf[NodeCacheLive]
+        cacheImplementation = cache.implementation
 
         size0 <- cache.size
         watermark0 <- cache.watermark
@@ -45,10 +47,10 @@ object NodeCacheSpec extends ZIOSpecDefault:
         // After this put (but before trim):
         // watermark == 0
         // now == 2
-        // nextWatermark => 2
+        // Trim calculates moveWatermarkForward => 2
         //  intervals = now - watermark + 1 = 2 - 0 + 1 = 3
-        //  moveForwardBy = 1 max (3 * .75) = 2
-        //  moveWatermarkForward returns: 3 min (0 + 2) = 2
+        //  moveForwardBy = 1 max (3 * 0.5) = 1
+        //  nextWatermark => 3 min (0 + 1) = 1
         nowAtTrim <- Clock.currentTime(MILLIS)
         watermarkAtTrim <- cache.watermark
         nextWatermark = cacheImplementation.moveWatermarkForward(now = nowAtTrim, watermark = watermarkAtTrim)
@@ -58,17 +60,17 @@ object NodeCacheSpec extends ZIOSpecDefault:
         watermark3 <- cache.watermark
 
         actualSizes = (size0, size1, size2, size3)
-        expectedSizes = (0, 1, 2, 0)
+        expectedSizes = (0, 1, 2, 1)
 
         actualWatermarks = (watermark0, watermark1, watermark2, watermark3)
-        expectedWatermarks = (0L, 0L, 0L, 2L)
+        expectedWatermarks = (0L, 0L, 0L, 1L)
       yield
         assertTrue(nowAtTrim == 2 && watermarkAtTrim == 0 && nextWatermark == 2)
         assertTrue(actualSizes == expectedSizes) &&
         assertTrue(actualWatermarks == expectedWatermarks)
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 2, fractionToRetainOnTrim = 0.75, forkOnTrim = false)
+        NodeCacheConfig(capacity = 2, fractionToRetainOnTrim = 0.5, forkOnTrim = false)
       ) >>> NodeCache.layer
     ),
     test("puts from multiple concurrent fibers") {
@@ -106,7 +108,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
 
       for
         cache <- ZIO.service[NodeCache]
-        cacheImplementation = cache.asInstanceOf[NodeCacheLive]
+        cacheImplementation = cache.implementation
 
         _ <- ZIO.foreach(0 until n) { i =>
           TestClock.adjust(1.millisecond) *> cache.put(node(i))
@@ -137,7 +139,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
 
       for
         cache <- ZIO.service[NodeCache]
-        cacheImplementation = cache.asInstanceOf[NodeCacheLive]
+        cacheImplementation = cache.implementation
 
         _ <- ZIO.foreach(0 until n) { i =>
           TestClock.adjust(1.millisecond) *> cache.put(node(i))
