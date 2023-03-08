@@ -65,13 +65,13 @@ enum Event extends Packable:
 
 object Event extends Unpackable[Event]:
 
-  val nodeRemovedOrdinal = 0
-  val propertyAddedOrdinal = 1
-  val propertyRemovedOrdinal = 2
-  val edgeAddedOrdinal = 3
-  val edgeRemovedOrdinal = 4
-  val farEdgeAddedOrdinal = 5
-  val farEdgeRemovedOrdinal = 6
+  private val nodeRemovedOrdinal = 0
+  private val propertyAddedOrdinal = 1
+  private val propertyRemovedOrdinal = 2
+  private val edgeAddedOrdinal = 3
+  private val edgeRemovedOrdinal = 4
+  private val farEdgeAddedOrdinal = 5
+  private val farEdgeRemovedOrdinal = 6
 
   override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
     unpacker.unpackInt() match

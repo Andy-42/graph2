@@ -38,7 +38,7 @@ trait UncountedSeqPacker[T <: Packable]:
     a.foreach(_.pack)
     packer.toByteArray
 
-trait Unpackable[T: ClassTag]:
+trait Unpackable[T: ClassTag]: // IDEA generates a bogus "Traits cannot have type parameters with context bounds" here
   self: Unpackable[T] =>
     def unpacked(packed: Array[Byte]): IO[UnpackFailure, T] =
       given unpacker: MessageUnpacker = MessagePack.newDefaultUnpacker(packed)
