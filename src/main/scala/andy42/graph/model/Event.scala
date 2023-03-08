@@ -34,12 +34,10 @@ enum Event extends Packable:
     case _                                   => false
 
   override def pack(using packer: MessagePacker): Unit =
-    packer.packInt(ordinal)
-
     this match
       case NodeRemoved =>
         packer.packInt(Event.nodeRemovedOrdinal)
-
+        
       case PropertyAdded(k, value) =>
         packer.packInt(Event.propertyAddedOrdinal)
         packer.packString(k)
@@ -88,7 +86,7 @@ object Event extends Unpackable[Event]:
       case unexpectedEventType =>
         ZIO.fail(UnexpectedEventDiscriminator(unexpectedEventType))
 
-  def unpackPropertyAdded(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
+  private def unpackPropertyAdded(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
     UnpackSafely {
       for
         k <- ZIO.attempt(unpacker.unpackString())
@@ -96,16 +94,16 @@ object Event extends Unpackable[Event]:
       yield PropertyAdded(k, value)
     }
 
-  def unpackPropertyRemoved(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
+  private def unpackPropertyRemoved(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
     UnpackSafely {
       for k <- ZIO.attempt(unpacker.unpackString()) yield PropertyRemoved(k)
     }
 
-  def unpackEdgeAdded(isFar: Boolean)(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
+  private def unpackEdgeAdded(isFar: Boolean)(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
     for edge <- if isFar then FarEdge.unpack else NearEdge.unpack
     yield if isFar then FarEdgeAdded(edge) else EdgeAdded(edge)
 
-  def unpackEdgeRemoved(isFar: Boolean)(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
+  private def unpackEdgeRemoved(isFar: Boolean)(using unpacker: MessageUnpacker): IO[UnpackFailure, Event] =
     for edge <- if isFar then FarEdge.unpack else NearEdge.unpack
     yield if isFar then FarEdgeRemoved(edge) else EdgeRemoved(edge)
 

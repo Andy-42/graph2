@@ -39,7 +39,12 @@ trait UncountedSeqPacker[T <: Packable]:
     packer.toByteArray
 
 trait Unpackable[T: ClassTag]:
-  def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, T]
+  self: Unpackable[T] =>
+    def unpacked(packed: Array[Byte]): IO[UnpackFailure, T] =
+      given unpacker: MessageUnpacker = MessagePack.newDefaultUnpacker(packed)
+      unpack
+  
+    def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, T]
 
 object UnpackOperations:
 

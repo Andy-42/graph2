@@ -2,9 +2,8 @@ package andy42.graph.model
 
 import java.util.UUID
 
-/**
-  * A NodeId identifies a node in the graph.
-  * This is a UUID-like representation, and it is stored as two longs to avoid allocating another object (i.e., a byte array).
+/** A NodeId identifies a node in the graph. This is a UUID-like representation, and it is stored as two longs to avoid
+  * allocating another object (i.e., a byte array).
   */
 final case class NodeId(msb: Long, lsb: Long) extends Ordered[NodeId]:
 
@@ -17,16 +16,22 @@ final case class NodeId(msb: Long, lsb: Long) extends Ordered[NodeId]:
 
   def toArray: Array[Byte] =
     val r = Array.ofDim[Byte](16)
-
-    inline def extractTo(v: Long, offset: Int): Unit =
-      var i = 0
-      while i < 8 do
-        r(i + offset) = ((v >> (i * 8)) & 0xff).toByte
-        i += 1
-
-      extractTo(msb, 0)
-      extractTo(lsb, 8)
-
+    r(0) = ((msb >> 56) & 0xff).toByte
+    r(1) = ((msb >> 48) & 0xff).toByte
+    r(2) = ((msb >> 40) & 0xff).toByte
+    r(3) = ((msb >> 32) & 0xff).toByte
+    r(4) = ((msb >> 24) & 0xff).toByte
+    r(5) = ((msb >> 16) & 0xff).toByte
+    r(6) = ((msb >> 8) & 0xff).toByte
+    r(7) = ((msb >> 0) & 0xff).toByte
+    r(8) = ((lsb >> 56) & 0xff).toByte
+    r(9) = ((lsb >> 48) & 0xff).toByte
+    r(10) = ((lsb >> 40) & 0xff).toByte
+    r(11) = ((lsb >> 32) & 0xff).toByte
+    r(12) = ((lsb >> 24) & 0xff).toByte
+    r(13) = ((lsb >> 16) & 0xff).toByte
+    r(14) = ((lsb >> 8) & 0xff).toByte
+    r(15) = ((lsb >> 0) & 0xff).toByte
     r
 
   override def compare(that: NodeId): Int =
@@ -40,16 +45,27 @@ object NodeId:
   def apply(id: Array[Byte]): NodeId =
     require(id.length == 16)
 
-    inline def extractLong(start: Int, limit: Int): Long =
-      var r = 0L
-      var i = start
-      while i < limit do
-        r = (r << 8) | (id(i).toLong & 0xff)
-        i += 1
+    val msb =
+      ((id(0).toLong & 0xff) << 56) |
+        ((id(1).toLong & 0xff) << 48) |
+        ((id(2).toLong & 0xff) << 40) |
+        ((id(3).toLong & 0xff) << 32) |
+        ((id(4).toLong & 0xff) << 24) |
+        ((id(5).toLong & 0xff) << 16) |
+        ((id(6).toLong & 0xff) << 8) |
+        ((id(7).toLong & 0xff) << 0)
 
-      r
+    val lsb =
+      ((id(0 + 8).toLong & 0xff) << 56) |
+        ((id(1 + 8).toLong & 0xff) << 48) |
+        ((id(2 + 8).toLong & 0xff) << 40) |
+        ((id(3 + 8).toLong & 0xff) << 32) |
+        ((id(4 + 8).toLong & 0xff) << 24) |
+        ((id(5 + 8).toLong & 0xff) << 16) |
+        ((id(6 + 8).toLong & 0xff) << 8) |
+        ((id(7 + 8).toLong & 0xff) << 0)
 
-    NodeId(msb = extractLong(0, 8), lsb = extractLong(8, 16))
+    NodeId(msb, lsb)
 
   def apply(id: Vector[Byte]): NodeId = NodeId(id.toArray)
 

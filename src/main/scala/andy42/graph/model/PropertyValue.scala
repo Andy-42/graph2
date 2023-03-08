@@ -15,7 +15,7 @@ object PropertyValue extends Unpackable[PropertyValueType]:
   private def unpackScalar(using unpacker: MessageUnpacker): IO[UnpackFailure, ScalarType] =
     UnpackSafely {
       unpacker.getNextFormat.getValueType match
-        case ValueType.NIL     => ZIO.unit
+        case ValueType.NIL     => ZIO.attempt(unpacker.unpackNil())
         case ValueType.BOOLEAN => ZIO.attempt(unpacker.unpackBoolean())
         case ValueType.INTEGER => ZIO.attempt(unpacker.unpackLong())
         case ValueType.FLOAT   => ZIO.attempt(unpacker.unpackDouble())
@@ -34,7 +34,7 @@ object PropertyValue extends Unpackable[PropertyValueType]:
   override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, PropertyValueType] =
     UnpackSafely {
       unpacker.getNextFormat.getValueType match
-        case ValueType.NIL       => ZIO.unit
+        case ValueType.NIL       => ZIO.attempt(unpacker.unpackNil())
         case ValueType.BOOLEAN   => ZIO.attempt(unpacker.unpackBoolean())
         case ValueType.INTEGER   => ZIO.attempt(unpacker.unpackLong())
         case ValueType.FLOAT     => ZIO.attempt(unpacker.unpackDouble())

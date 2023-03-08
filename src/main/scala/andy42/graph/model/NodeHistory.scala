@@ -10,9 +10,8 @@ type NodeHistory = Vector[EventsAtTime]
 
 extension (nodeHistory: NodeHistory)
 
-  def pack(using packer: MessagePacker): MessagePacker =
+  def pack(using packer: MessagePacker): Unit =
     nodeHistory.foreach(_.pack)
-    packer
 
   def toPacked: Array[Byte] =
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()

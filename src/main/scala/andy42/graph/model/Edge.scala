@@ -61,12 +61,12 @@ final case class FarEdge(k: String, other: NodeId, direction: EdgeDirection) ext
 object NearEdge extends Unpackable[Edge]:
 
   override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, Edge] =
-    Edge.unpack(isFar = true)
+    Edge.unpack(isFar = false)
 
 object FarEdge extends Unpackable[Edge]:
 
   override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, Edge] =
-    Edge.unpack(isFar = false)
+    Edge.unpack(isFar = true)
 
 object Edge:
 
