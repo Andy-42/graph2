@@ -6,12 +6,14 @@ import zio.*
 import java.time.Instant
 
 
-type ScalarType = Unit | Boolean | Int | Long | // Integral types will be promoted to Long
+type ScalarType = Unit | Boolean | 
+  Int | Long | // Integral types will be promoted to Long
   Float | Double | // Floating point types will be promoted to Double
   String | BinaryValue | Instant
 
 final case class BinaryValue(value: Vector[Byte])
 
+// The structured types can only contain scalar types (i.e., no recursive structured types)
 final case class PropertyArrayValue(value: Vector[ScalarType])
 final case class PropertyMapValue(value: Map[String, ScalarType])
 

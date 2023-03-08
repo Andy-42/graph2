@@ -8,7 +8,7 @@ import zio.test.TestAspect.timed
 
 object EventPackSpec extends ZIOSpecDefault:
 
-  def spec = suite("Event Packing/Unpacking")(
+  def spec = suite("Domain model packing/unpacking")(
     test("Events can be round-tripped through packed form")(
       check(Generators.genEvent)((originalEvent: Event) =>
         val packed = originalEvent.toPacked

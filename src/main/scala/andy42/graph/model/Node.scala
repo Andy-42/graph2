@@ -12,7 +12,7 @@ type EventTime = Long // Epoch Millis
 val StartOfTime: EventTime = Long.MinValue
 val EndOfTime: EventTime = Long.MaxValue
 
-type Sequence = Int // Break ties when multiple groups of events are processed in the same EventTime
+type Sequence = Int // Break ties when multiple groups of events are processed for the same EventTime
 
 final case class NodeSnapshot(time: EventTime, sequence: Int, properties: PropertySnapshot, edges: EdgeSnapshot)
 

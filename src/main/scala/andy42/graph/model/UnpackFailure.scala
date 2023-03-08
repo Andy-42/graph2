@@ -25,7 +25,7 @@ final case class UnexpectedScalarValueType(valueType: ValueType) extends UnpackF
   */
 object UnpackSafely:
 
-  val refine: PartialFunction[UnpackFailure | Throwable, UnpackFailure] =
+  private val refine: PartialFunction[UnpackFailure | Throwable, UnpackFailure] =
     case unpackFailure: UnpackFailure => unpackFailure
     case ioe: IOException             => DecodingFailure(ioe)
 

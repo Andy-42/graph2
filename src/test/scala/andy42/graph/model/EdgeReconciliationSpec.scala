@@ -7,7 +7,7 @@ import zio.test.Assertion.*
 object EdgeReconciliationSpec extends ZIOSpecDefault:
 
   val nodeIdGen: Gen[Sized, NodeId] = 
-    for id <- Gen.vectorOfN(16)(Gen.byte)
+    for id <- Gen.vectorOfN(NodeId.byteLength)(Gen.byte)
     yield NodeId(id.toArray)
 
   val edgeDirectionGen: Gen[Sized, EdgeDirection] =

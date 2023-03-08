@@ -18,9 +18,9 @@ final case class EdgeReconciliationSnapshot private (
 )
 
 object EdgeReconciliationSnapshot:
-  val Reconciled: Byte = 1.toByte
-  val Inconsistent: Byte = 2.toByte
-  val Unknown: Byte = 3.toByte
+  private val Reconciled: Byte = 1.toByte
+  private val Inconsistent: Byte = 2.toByte
+  private val Unknown: Byte = 3.toByte
 
   // All pairs of half-edges were determined to be reconciled for this window
   def reconciled(windowStart: Long, windowSize: Long): EdgeReconciliationSnapshot =
@@ -40,11 +40,11 @@ final case class EdgeReconciliationRepositoryLive(ds: DataSource) extends EdgeRe
   val ctx: PostgresZioJdbcContext[Literal] = PostgresZioJdbcContext(Literal)
   import ctx.*
 
-  inline def edgeReconciliationTable: Quoted[EntityQuery[EdgeReconciliationSnapshot]] = quote { 
+  private inline def edgeReconciliationTable: Quoted[EntityQuery[EdgeReconciliationSnapshot]] = quote { 
     query[EdgeReconciliationSnapshot] 
   }
 
-  inline def quotedMarkWindow(edgeReconciliation: EdgeReconciliationSnapshot): Quoted[Insert[EdgeReconciliationSnapshot]] = quote {
+  private inline def quotedMarkWindow(edgeReconciliation: EdgeReconciliationSnapshot): Quoted[Insert[EdgeReconciliationSnapshot]] = quote {
     edgeReconciliationTable
       .insertValue(lift(edgeReconciliation))
       .onConflictUpdate(_.windowStart)(
@@ -57,7 +57,7 @@ final case class EdgeReconciliationRepositoryLive(ds: DataSource) extends EdgeRe
 
   override def markWindow(edgeReconciliation: EdgeReconciliationSnapshot): UIO[Unit] =
     run(quotedMarkWindow(edgeReconciliation)).implicitly
-      .retry(Schedule.recurs(5)) // TODO: Configure retry policy - either exponential or fibbonacci
+      .retry(Schedule.recurs(5)) // TODO: Configure retry policy - either exponential or fibonacci
       // TODO: Check that exactly one row is changed, otherwise log error
       // TODO: Log if retries fails
       .foldZIO(_ => ZIO.unit, _ => ZIO.unit) // TODO: Is this the best way to consume errors

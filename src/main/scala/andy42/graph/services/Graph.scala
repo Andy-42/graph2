@@ -62,7 +62,7 @@ trait Graph:
     * in the scope of this method, then it could create the potential for deadlock. The edge reconciliation scheme
     * provides an auditing mechanism to ensure that all edges occur in balanced pairs.
     *
-    * All the processing done is lock free, and there is no possiblity of deadlock.
+    * All the processing done is lock free, and there is no possibility of deadlock.
     *
     * @param time
     *   The time that the mutations occurred.
@@ -116,11 +116,11 @@ final case class GraphLive(
       _ <- if node.hasEmptyHistory then ZIO.unit else cache.put(node)
     yield node
 
-  def groupChangesByNodeId(changes: Vector[GraphMutationInput]): Vector[GroupedGraphMutationInput] =
+  private def groupChangesByNodeId(changes: Vector[GraphMutationInput]): Vector[GroupedGraphMutationInput] =
     for id <- changes.map(_.id).distinct
     yield GroupedGraphMutationInput(
       id = id,
-      events = changes.collect { case input @ GraphMutationInput(id, _) =>
+      events = changes.collect { case input @ GraphMutationInput(id, _) => // TODO: Is this being compiled correctly?
         input.event
       }
     )
@@ -137,7 +137,7 @@ final case class GraphLive(
         _ <- edgeSynchronization.graphChanged(time, output)
       yield ()
 
-  def processChangesForOneNode(
+  private def processChangesForOneNode(
       time: EventTime,
       changes: GroupedGraphMutationInput
   ): IO[UnpackFailure | PersistenceFailure, GroupedGraphMutationOutput] =

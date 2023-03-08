@@ -130,12 +130,9 @@ final case class NodeCacheLive(
     *
     * @param now
     *   The current clock time.
-    * @param purgeWatermark
+    * @param watermark
     *   The current oldest access time for any item in the cache. All items in the cache will have an access time that
     *   is greater than or equal to the purgeWatermark.
-    * @param fractionToRetain
-    *   When trimming the cache, we retain only those items that have an access time that are in the fraction of items
-    *   at the end of the internal between `now` and `purgeWatermark`.
     * @return
     *   A new value for purgeWatermark that can be used to retain only some fraction of the newest cache items.
     */

@@ -75,7 +75,7 @@ object Edge:
       for
         k <- ZIO.attempt(unpacker.unpackString())
         // The other NodeId is read/written without a length header to save two bytes
-        other <- ZIO.attempt(NodeId(unpacker.readPayload(16)))
+        other <- ZIO.attempt(NodeId(unpacker.readPayload(NodeId.byteLength)))
         directionOrdinal <- ZIO.attempt(unpacker.unpackInt())
         direction <- ZIO
           .attempt(EdgeDirection.fromOrdinal(directionOrdinal))
@@ -102,4 +102,4 @@ enum EdgeDirection:
 type EdgeSnapshot = Set[Edge] // Collapsed properties at some point in time
 
 object EdgeSnapshot:
-  val empty = Set.empty[Edge]
+  val empty: EdgeSnapshot = Set.empty[Edge]

@@ -15,7 +15,7 @@ final case class NodeId(msb: Long, lsb: Long) extends Ordered[NodeId]:
     (x >> 32).toInt ^ x.toInt
 
   def toArray: Array[Byte] =
-    val r = Array.ofDim[Byte](16)
+    val r = Array.ofDim[Byte](NodeId.byteLength)
     r(0) = ((msb >> 56) & 0xff).toByte
     r(1) = ((msb >> 48) & 0xff).toByte
     r(2) = ((msb >> 40) & 0xff).toByte
@@ -42,8 +42,11 @@ final case class NodeId(msb: Long, lsb: Long) extends Ordered[NodeId]:
     else 0
 
 object NodeId:
+  
+  val byteLength: Int = 16
+  
   def apply(id: Array[Byte]): NodeId =
-    require(id.length == 16)
+    require(id.length == NodeId.byteLength)
 
     val msb =
       ((id(0).toLong & 0xff) << 56) |

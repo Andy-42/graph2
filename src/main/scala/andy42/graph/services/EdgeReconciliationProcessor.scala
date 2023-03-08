@@ -33,8 +33,8 @@ case class EdgeReconciliationProcessorLive(
   val windowExpiry: Long = config.windowExpiry.get(MILLIS)
 
   extension (time: EventTime)
-    def toWindowStart = time - (time % windowSize)
-    def toWindowEnd = time.toWindowStart + windowSize - 1
+    def toWindowStart: EventTime = time - (time % windowSize)
+    def toWindowEnd: EventTime = time.toWindowStart + windowSize - 1
 
   override def zero: EdgeReconciliationState =
     EdgeReconciliationState(

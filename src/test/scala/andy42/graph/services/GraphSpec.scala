@@ -69,15 +69,15 @@ object GraphSpec extends ZIOSpecDefault:
       TestEdgeSynchronization.layer) >>> Graph.layer
 
   val genNodeId: Gen[Any, NodeId] =
-    for id <- Gen.vectorOfN(16)(Gen.byte)
+    for id <- Gen.vectorOfN(NodeId.byteLength)(Gen.byte)
     yield NodeId(id)
 
-  override def spec =
+  override def spec: Spec[Any, Any] =
     suite("Graph")(
       test("Simplest possible test that tests all data flows") {
-        check(genNodeId, Gen.long, Gen.int, Gen.string) { (id, time, p1Value, e1Value) =>
+        check(genNodeId, Gen.long, Gen.int) { (id, time, p1Value) =>
 
-          val edge = NearEdge("e1", id, EdgeDirection.Outgoing)
+          val edge = NearEdge("e1", id, EdgeDirection.Outgoing) // Reflexive - points back to originating node
           val inputEvents = Vector(Event.PropertyAdded("p1", p1Value), Event.EdgeAdded(edge))
           val inputMutations = inputEvents.map(event => GraphMutationInput(id, event))
 

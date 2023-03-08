@@ -9,7 +9,7 @@ object Generators:
 
   val genNodeId: Gen[Any, NodeId] =
     Gen.fromRandom(random =>
-      for byteChunk <- random.nextBytes(16)
+      for byteChunk <- random.nextBytes(NodeId.byteLength)
       yield NodeId(byteChunk.toVector)
     )
 

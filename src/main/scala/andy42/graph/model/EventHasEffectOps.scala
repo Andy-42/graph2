@@ -16,7 +16,7 @@ object EventHasEffectOps:
 
   /**
     * Determine if an Event would have any effect if applied to a Node's history
-    * given the collapesed node snapshot calculated for that point in time.
+    * given the collapsed node snapshot calculated for that point in time.
     */  
   def hasEffect(event: Event, nodeSnapshot: NodeSnapshot): Boolean =
     event match

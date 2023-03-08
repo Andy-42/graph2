@@ -79,14 +79,14 @@ final case class NodeRepositoryLive(ds: DataSource) extends NodeRepository:
 
   inline def graph: EntityQuery[GraphEventsAtTime] = query[GraphEventsAtTime]
 
-  inline def quotedGet(id: NodeId): Query[GraphEventsAtTime] =
+  private inline def quotedGet(id: NodeId): Query[GraphEventsAtTime] =
     graph
       .filter(_.id == lift(id))
       .sortBy(graphEventsAtTime => (graphEventsAtTime.time, graphEventsAtTime.sequence))(
         Ord(Ord.asc, Ord.asc)
       )
 
-  inline def quotedAppend(graphEventsAtTime: GraphEventsAtTime): Insert[GraphEventsAtTime] =
+  private inline def quotedAppend(graphEventsAtTime: GraphEventsAtTime): Insert[GraphEventsAtTime] =
     graph.insertValue(lift(graphEventsAtTime))
 
   given Implicit[DataSource] = Implicit(ds)

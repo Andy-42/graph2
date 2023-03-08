@@ -24,7 +24,7 @@ import java.io.IOException
   */
 final case class EventsAtTime(
     time: EventTime,
-    sequence: Int,
+    sequence: Sequence,
     events: Vector[Event]
 ) extends Packable:
   require(events.nonEmpty)
