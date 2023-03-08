@@ -74,7 +74,7 @@ object GraphSpec extends ZIOSpecDefault:
 
   override def spec: Spec[Any, Any] =
     suite("Graph")(
-      test("Simplest possible test that tests all data flows") {
+      test("Simplest possible test that touches all data flows") {
         check(genNodeId, Gen.long, Gen.int) { (id, time, p1Value) =>
 
           val edge = NearEdge("e1", id, EdgeDirection.Outgoing) // Reflexive - points back to originating node

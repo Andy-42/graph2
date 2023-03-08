@@ -10,7 +10,7 @@ final case class NodeCacheConfig(
     fractionToRetainOnTrim: Float =
       0.9, // Balance more frequent trims against retaining a useful amount of information in the cache
 
-    snapshotPurgeFrequency: Duration = 5.seconds,
+    currentSnapshotTrimFrequency: Duration = Duration.Zero, // Zero turns off current snapshot purging
     fractionOfSnapshotsToRetainOnSnapshotPurge: Float = 0.1,
     forkOnUpdateAccessTime: Boolean = false, // Might be a useful optimization, but not clear that this is kosher
     forkOnTrim: Boolean = true // TODO: positive; should always have this on, but false is useful for testing

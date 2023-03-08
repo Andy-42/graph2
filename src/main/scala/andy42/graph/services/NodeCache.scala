@@ -10,7 +10,7 @@ trait NodeCache:
   def get(id: NodeId): IO[UnpackFailure, Option[Node]]
   def put(node: Node): IO[UnpackFailure, Unit]
 
-  def startSnapshotTrimDaemon: UIO[Unit]
+  def startCurrentSnapshotTrimDaemon: UIO[Unit]
 
 type AccessTime = Long // epoch millis
 
@@ -101,7 +101,7 @@ final case class NodeCacheLive(
         .commit
 
       _ <- optionOldest.fold(ZIO.unit)(oldest =>
-        ZIO.logInfo("Node cache trimmed") @@ LogAnnotations.cacheItemRetainWatermark(oldest)
+        ZIO.logInfo("Node cache trimmed") @@ LogAnnotations.cacheItemRetainWatermark(oldest) @@ LogAnnotations.now(now)
       )
     yield ()
 
@@ -142,23 +142,25 @@ final case class NodeCacheLive(
     val moveForwardBy = 1 max (intervals * config.fractionToRetainOnTrim).toInt
     now min (watermark + moveForwardBy)
 
-  override def startSnapshotTrimDaemon: UIO[Unit] =
-    snapshotTrim
-      .repeat(Schedule.spaced(config.snapshotPurgeFrequency))
-      .catchAllCause { cause =>
-        val operation = "node cache snapshot trim"
-        ZIO.logCause(s"Unexpected failure in: $operation", cause) @@ LogAnnotations.operationAnnotation(operation)
-      }
-      .forkDaemon *> ZIO.unit
+  override def startCurrentSnapshotTrimDaemon: UIO[Unit] =
+    if config.currentSnapshotTrimFrequency == Duration.Zero then ZIO.unit // Don't run the daemon at all
+    else
+      currentSnapshotTrim
+        .repeat(Schedule.spaced(config.currentSnapshotTrimFrequency))
+        .catchAllCause { cause =>
+          val operation = "node cache snapshot trim"
+          ZIO.logCause(s"Unexpected failure in: $operation", cause) @@ LogAnnotations.operationAnnotation(operation)
+        }
+        .forkDaemon *> ZIO.unit
 
-  private def snapshotTrim: UIO[Unit] =
+  private def currentSnapshotTrim: UIO[Unit] =
     for
       now <- Clock.currentTime(MILLIS)
-      retain <- snapshotTrimTransaction(now).commit
-      _ <- ZIO.logInfo(s"Node cache snapshot trim") @@ LogAnnotations.snapshotRetainWatermark(retain)
+      retain <- currentSnapshotTrimTransaction(now).commit
+      _ <- ZIO.logInfo(s"Node cache snapshot trim") @@ LogAnnotations.snapshotRetainWatermark(retain) @@ LogAnnotations.now(now)
     yield ()
 
-  private def snapshotTrimTransaction(now: AccessTime): USTM[AccessTime] =
+  private def currentSnapshotTrimTransaction(now: AccessTime): USTM[AccessTime] =
     for
       currentWatermark <- watermark.get
       snapshotWatermark = moveWatermarkForward(currentWatermark, now)
@@ -179,6 +181,6 @@ object NodeCache:
         oldest <- TRef.make(now).commit
         items <- TMap.empty[NodeId, CacheItem].commit
         nodeCache = NodeCacheLive(config, oldest, items)
-        _ <- nodeCache.startSnapshotTrimDaemon
+        _ <- nodeCache.startCurrentSnapshotTrimDaemon
       yield nodeCache
     }

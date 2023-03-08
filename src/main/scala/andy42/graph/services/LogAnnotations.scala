@@ -13,6 +13,9 @@ object LogAnnotations:
   private def formatNodeId(id: NodeId): String = id.toString
   private def formatEvent(event: Event): String = event.getClass.getSimpleName
 
+  val now: LogAnnotation[EventTime] =
+    LogAnnotation[EventTime]("now", (_,x) => x, _.toString)
+
   // Edge Reconciliation
   val expiryThresholdAnnotation: LogAnnotation[WindowStart] =
     LogAnnotation[WindowStart]("expiryThreshold", (_, x) => x, _.toString)
