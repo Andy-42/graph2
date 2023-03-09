@@ -58,7 +58,7 @@ case class EdgeReconciliationProcessorLive(
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent],
       expiryThreshold: WindowStart
   ): UIO[Chunk[EdgeReconciliationEvent]] =
-    import LogAnnotations._
+    import LogAnnotations.*
 
     // An event is expired if the last period in the window is expired
     extension (time: EventTime) def isExpired: Boolean = time.toWindowEnd < expiryThreshold
@@ -80,7 +80,7 @@ case class EdgeReconciliationProcessorLive(
       state: EdgeReconciliationState,
       expiryThreshold: WindowStart
   ): UIO[EdgeReconciliationState] =
-    import LogAnnotations._
+    import LogAnnotations.*
 
     extension (i: Int)
       def indexToWindowStart: WindowStart = i * windowSize + state.firstWindowStart

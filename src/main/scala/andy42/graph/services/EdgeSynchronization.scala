@@ -72,7 +72,7 @@ final case class EdgeSynchronizationLive(
     * fail, and thereby cause an inconsistency in the graph (i.e., a missing half-edge).
     */
   private def appendFarEdgeEvent(id: NodeId, other: NodeId, time: EventTime, event: Event): UIO[Unit] =
-    import LogAnnotations._
+    import LogAnnotations.*
     graph
       .append(
         time,

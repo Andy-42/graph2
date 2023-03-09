@@ -41,7 +41,7 @@ final case class NodeCacheLive(
           val e = items.put(id, item.copy(lastAccess = now)).commit
           if config.forkOnUpdateAccessTime then e.fork else e // The safety of forking here is questionable
         else ZIO.unit
-        )
+      )
 
       optionNode <- optionCacheItem.fold(ZIO.succeed(None)) { cacheItem =>
         if cacheItem.current != null then
@@ -89,10 +89,11 @@ final case class NodeCacheLive(
         )
         .commit
 
-      _ <- trimIfOverCapacity(now) // TODO: fork
+      _ <- trimIfOverCapacity(now) // TODO: fork - use the config!
     yield ()
 
-  // TODO: Avoid a cascade of trims by capturing the watermark and comparing before trim  
+  // TODO: Avoid a cascade of trims by capturing the watermark and comparing before trim
+  // TODO: Consider including before/after size in log annotations
 
   private def trimIfOverCapacity(now: AccessTime): UIO[Unit] =
     for
@@ -100,6 +101,7 @@ final case class NodeCacheLive(
         .ifSTM(items.size.map(_ > config.capacity))(trim(now), ZSTM.succeed(None))
         .commit
 
+      // TODO: Revisit naming around watermark
       _ <- optionOldest.fold(ZIO.unit)(oldest =>
         ZIO.logInfo("Node cache trimmed") @@ LogAnnotations.cacheItemRetainWatermark(oldest) @@ LogAnnotations.now(now)
       )
@@ -136,7 +138,7 @@ final case class NodeCacheLive(
     * @return
     *   A new value for purgeWatermark that can be used to retain only some fraction of the newest cache items.
     */
-  // visible for testing  
+  // visible for testing
   def moveWatermarkForward(now: AccessTime, watermark: AccessTime): AccessTime =
     val intervals = now - watermark + 1
     val moveForwardBy = 1 max (intervals * config.fractionToRetainOnTrim).toInt
@@ -157,7 +159,8 @@ final case class NodeCacheLive(
     for
       now <- Clock.currentTime(MILLIS)
       retain <- currentSnapshotTrimTransaction(now).commit
-      _ <- ZIO.logInfo(s"Node cache snapshot trim") @@ LogAnnotations.snapshotRetainWatermark(retain) @@ LogAnnotations.now(now)
+      _ <- ZIO.logInfo(s"Node cache snapshot trim") @@
+        LogAnnotations.snapshotRetainWatermark(retain) @@ LogAnnotations.now(now)
     yield ()
 
   private def currentSnapshotTrimTransaction(now: AccessTime): USTM[AccessTime] =

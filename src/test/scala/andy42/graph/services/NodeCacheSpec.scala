@@ -24,9 +24,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
     def implementation: NodeCacheLive = cache.asInstanceOf[NodeCacheLive]
 
   override def spec = suite("NodeCache")(
-    test(
-      "watermark moves forward and items are removed when size exceeds capacity"
-    ) {
+    test("watermark moves forward and items are removed when size exceeds capacity") {
       for
         cache <- ZIO.service[NodeCache]
         cacheImplementation = cache.implementation
@@ -113,9 +111,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
         NodeCacheConfig(capacity = 10000, fractionToRetainOnTrim = 0.75, forkOnTrim = false)
       ) >>> NodeCache.layer
     ),
-    test(
-      "watermark is moved forward by intervals proportional to configuration"
-    ) {
+    test("watermark is moved forward by intervals proportional to configuration") {
       val n = 100
       val fractionToRetainOnTrim = 0.5
 
@@ -146,9 +142,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
         NodeCacheConfig(capacity = 100, fractionToRetainOnTrim = 0.5)
       ) >>> NodeCache.layer
     ),
-    test(
-      "watermark will be moved forward by at least one millisecond if there is room"
-    ) {
+    test("watermark will be moved forward by at least one millisecond if there is room") {
       val n = 100
       val fractionToRetainOnTrim = 0.0
 
@@ -179,9 +173,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
         NodeCacheConfig(capacity = 100, fractionToRetainOnTrim = 0)
       ) >>> NodeCache.layer
     ),
-    test(
-      "watermark will never be moved past now"
-    ) {
+    test("watermark will never be moved past now") {
       val n = 100
       val fractionToRetainOnTrim = 0.0 //
 

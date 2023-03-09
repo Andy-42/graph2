@@ -2,7 +2,7 @@ package andy42.graph.services
 
 import andy42.graph.model.EventTime
 
-import zio._
+import zio.*
 
 trait TestEdgeSynchronization:
   // Implicitly clears

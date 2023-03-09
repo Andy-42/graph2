@@ -4,7 +4,7 @@ import andy42.graph.model.Node
 import andy42.graph.model.NodeId
 import andy42.graph.model.UnpackFailure
 import zio.IO
-import zio._
+import zio.*
 import zio.stm.TMap
 
 trait TestNodeCache:

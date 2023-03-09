@@ -1,8 +1,8 @@
 package andy42.graph.services
 
-import andy42.graph.model._
+import andy42.graph.model.*
 
-import zio._
+import zio.*
 import zio.stm.TMap
 
 trait TestNodeRepository:
