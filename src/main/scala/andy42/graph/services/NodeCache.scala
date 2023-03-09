@@ -93,27 +93,51 @@ final case class NodeCacheLive(
     yield ()
 
   // TODO: Avoid a cascade of trims by capturing the watermark and comparing before trim
-  // TODO: Consider including before/after size in log annotations
 
   private def trimIfOverCapacity(now: AccessTime): UIO[Unit] =
     for
-      optionOldest <- ZSTM
+      optionTrimOutcome <- ZSTM
         .ifSTM(items.size.map(_ > config.capacity))(trim(now), ZSTM.succeed(None))
         .commit
 
-      // TODO: Revisit naming around watermark
-      _ <- optionOldest.fold(ZIO.unit)(oldest =>
-        ZIO.logInfo("Node cache trimmed") @@ LogAnnotations.cacheItemRetainWatermark(oldest) @@ LogAnnotations.now(now)
+      _ <- optionTrimOutcome.fold(ZIO.unit)(trimOutcome =>
+        ZIO.logInfo("Node cache trimmed") @@
+          LogAnnotations.now(now) @@
+          LogAnnotations.capacity(config.capacity) @@
+          LogAnnotations.previousWatermark(trimOutcome.previousWatermark) @@
+          LogAnnotations.nextWatermark(trimOutcome.nextWatermark) @@
+          LogAnnotations.previousSize(trimOutcome.previousSize) @@
+          LogAnnotations.nextSize(trimOutcome.nextSize)
       )
     yield ()
 
-  private def trim(now: AccessTime): USTM[Some[AccessTime]] =
+  case class TrimOutcome(
+      previousWatermark: AccessTime,
+      nextWatermark: AccessTime,
+      previousSize: Int,
+      nextSize: Int
+  )
+
+  private def trim(now: AccessTime): USTM[Some[TrimOutcome]] =
     for
+      currentSize <- items.size
       currentWatermark <- watermark.get
-      nextWatermark = moveWatermarkForward(now = now, watermark = currentWatermark, retainFraction = config.fractionToRetainOnNodeCacheTrim)
+      nextWatermark = moveWatermarkForward(
+        now = now,
+        watermark = currentWatermark,
+        retainFraction = config.fractionToRetainOnNodeCacheTrim
+      )
       _ <- items.removeIfDiscard((_, cacheItem) => cacheItem.lastAccess <= nextWatermark)
+      nextSize = items.size
       _ <- watermark.set(nextWatermark)
-    yield Some(nextWatermark)
+    yield Some(
+      TrimOutcome(
+        previousWatermark = currentWatermark,
+        nextWatermark = nextWatermark,
+        previousSize = currentSize,
+        nextSize = currentSize
+      )
+    )
 
   /** Calculate a new watermark that retains some fraction of the most current cache items.
     *
@@ -158,21 +182,40 @@ final case class NodeCacheLive(
   private def currentSnapshotTrim: UIO[Unit] =
     for
       now <- Clock.currentTime(MILLIS)
-      retain <- currentSnapshotTrimTransaction(now).commit
+      outcome <- currentSnapshotTrimTransaction(now).commit
       _ <- ZIO.logInfo(s"Node cache snapshot trim") @@
-        LogAnnotations.snapshotRetainWatermark(retain) @@ LogAnnotations.now(now)
+        LogAnnotations.now(now) @@
+        LogAnnotations.previousWatermark(outcome.previousWatermark) @@
+        LogAnnotations.nextWatermark(outcome.nextWatermark) @@
+        LogAnnotations.trimCount(outcome.trimCount)
     yield ()
 
-  private def currentSnapshotTrimTransaction(now: AccessTime): USTM[AccessTime] =
+  case class CurrentSnapshotTrimOutcome(previousWatermark: AccessTime, nextWatermark: AccessTime, trimCount: Int)
+
+  private def currentSnapshotTrimTransaction(now: AccessTime): USTM[CurrentSnapshotTrimOutcome] =
+    def shouldTrimCurrentSnapshot(cacheItem: CacheItem, nextWatermark: AccessTime): Boolean =
+      cacheItem.lastAccess <= nextWatermark || cacheItem.current == null
+
     for
       currentWatermark <- watermark.get
-      snapshotWatermark = moveWatermarkForward(now = now, watermark = currentWatermark, retainFraction = config.fractionOfSnapshotsToRetainOnSnapshotTrim)
+      nextWatermark = moveWatermarkForward(
+        now = now,
+        watermark = currentWatermark,
+        retainFraction = config.fractionOfSnapshotsToRetainOnSnapshotTrim
+      )
+      trimCount <- items.fold(0) { case (count, (_, cacheItem)) =>
+        if shouldTrimCurrentSnapshot(cacheItem, nextWatermark) then count + 1 else count
+      }
       _ <- items.transformValues(cacheItem =>
         // Purge the current node snapshot if the last access was before the retain time
-        if cacheItem.lastAccess >= snapshotWatermark || cacheItem.current == null then cacheItem
+        if shouldTrimCurrentSnapshot(cacheItem, nextWatermark) then cacheItem
         else cacheItem.copy(current = null)
       )
-    yield snapshotWatermark
+    yield CurrentSnapshotTrimOutcome(
+      previousWatermark = currentWatermark,
+      nextWatermark = nextWatermark,
+      trimCount = trimCount
+    )
 
 object NodeCache:
 

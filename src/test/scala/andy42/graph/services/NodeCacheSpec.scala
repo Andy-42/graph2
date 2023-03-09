@@ -71,10 +71,14 @@ object NodeCacheSpec extends ZIOSpecDefault:
         logOutput <- ZTestLogger.logOutput
         actualLogMessages = LogOutputExtract.messages(logOutput)
         expectedLogMessages = Chunk("Node cache trimmed")
-        actualNowAnnotations = LogOutputExtract.nowAnnotations(logOutput)
+        actualNowAnnotations = LogOutputExtract.now(logOutput)
         expectedNowAnnotations = Chunk(Some("2"))
-        actualCacheItemRetainWatermarkAnnotations = LogOutputExtract.cacheItemRetainWatermark(logOutput)
-        expectedCacheItemRetainWatermarkAnnotations = Chunk(Some("1"))
+        actualCapacityAnnotations = LogOutputExtract.capacity(logOutput)
+        expectedCapacityAnnotations = Chunk(Some("2"))
+        actualPreviousWatermarkAnnotations = LogOutputExtract.previousWatermark(logOutput)
+        expectedPreviousWatermarkAnnotations = Chunk(Some("0"))
+        actualNextWatermarkAnnotations = LogOutputExtract.nextWatermark(logOutput)
+        expectedNextWatermarkAnnotations = Chunk(Some("1"))
       yield assertTrue(
         nowAtTrim == 1,
         watermarkAtTrim == 0,
@@ -83,7 +87,9 @@ object NodeCacheSpec extends ZIOSpecDefault:
         actualWatermarks == expectedWatermarks,
         actualLogMessages == expectedLogMessages,
         actualNowAnnotations == expectedNowAnnotations,
-        actualCacheItemRetainWatermarkAnnotations == expectedCacheItemRetainWatermarkAnnotations
+        actualCapacityAnnotations == expectedCapacityAnnotations,
+        actualPreviousWatermarkAnnotations == expectedPreviousWatermarkAnnotations,
+        actualNextWatermarkAnnotations == expectedNextWatermarkAnnotations
       )
     }.provide(
       ZLayer.succeed(
@@ -188,7 +194,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
     ),
     test("watermark will never be moved past now") {
       val n = 100
-      val fractionToRetainOnTrim = 0.0
+      val fractionToRetainOnTrim = 0.5
 
       for
         _ <- TestClock.adjust(0.millis)
@@ -209,10 +215,14 @@ object NodeCacheSpec extends ZIOSpecDefault:
         logOutput <- ZTestLogger.logOutput
         actualLogMessages = LogOutputExtract.messages(logOutput)
         expectedLogMessages = Chunk("Node cache trimmed")
-        actualNowAnnotations = LogOutputExtract.nowAnnotations(logOutput)
+        actualNowAnnotations = LogOutputExtract.now(logOutput)
         expectedNowAnnotations = Chunk(Some("0"))
-        actualCacheItemRetainWatermarkAnnotations = LogOutputExtract.cacheItemRetainWatermark(logOutput)
-        expectedCacheItemRetainWatermarkAnnotations = Chunk(Some("0"))
+        actualCapacityAnnotations = LogOutputExtract.capacity(logOutput)
+        expectedCapacityAnnotations = Chunk(Some("100"))
+        actualPreviousWatermarkAnnotations = LogOutputExtract.previousWatermark(logOutput)
+        expectedPreviousWatermarkAnnotations = Chunk(Some("0"))
+        actualNextWatermarkAnnotations = LogOutputExtract.nextWatermark(logOutput)
+        expectedNextWatermarkAnnotations = Chunk(Some("0"))
       yield assertTrue(
         now == 0L,
         watermarkAtCapacity == 0L,
@@ -221,11 +231,13 @@ object NodeCacheSpec extends ZIOSpecDefault:
         sizePastCapacity == 0,
         actualLogMessages == expectedLogMessages,
         actualNowAnnotations == expectedNowAnnotations,
-        actualCacheItemRetainWatermarkAnnotations == expectedCacheItemRetainWatermarkAnnotations
+        actualCapacityAnnotations == expectedCapacityAnnotations,
+        actualPreviousWatermarkAnnotations == expectedPreviousWatermarkAnnotations,
+        actualNextWatermarkAnnotations == expectedNextWatermarkAnnotations
       )
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 100, fractionToRetainOnNodeCacheTrim = 0.0)
+        NodeCacheConfig(capacity = 100, fractionToRetainOnNodeCacheTrim = 0.5)
       ) >>> NodeCache.layer
     )
   ).provideLayer(ZTestLogger.default) @@ timed
