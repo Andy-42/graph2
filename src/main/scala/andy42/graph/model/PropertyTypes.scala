@@ -6,10 +6,7 @@ import zio.*
 import java.time.Instant
 
 
-type ScalarType = Unit | Boolean | 
-  Int | Long | // Integral types will be promoted to Long
-  Float | Double | // Floating point types will be promoted to Double
-  String | BinaryValue | Instant
+type ScalarType = Unit | Boolean | Long | Double | String | BinaryValue | Instant
 
 final case class BinaryValue(value: Vector[Byte])
 

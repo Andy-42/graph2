@@ -38,8 +38,6 @@ object Generators:
       case (edge: FarEdge, false)  => Event.FarEdgeRemoved(edge)
     }
 
-  // TODO: We accept narrower types (int, float) and promote to (long, double)
-  // Don't support round tripping of those types
   val genNilProperty: Gen[Any, Unit] = Gen.const(())
   val genBooleanProperty: Gen[Any, Boolean] = Gen.boolean
   val genIntegerProperty: Gen[Any, Long] = Gen.long
