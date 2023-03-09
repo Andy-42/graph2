@@ -2,9 +2,9 @@ package andy42.graph.model
 
 import andy42.graph.model.EventPackSpec.test
 import zio.*
-import zio.test.*
 import zio.test.Assertion.*
 import zio.test.TestAspect.timed
+import zio.test.*
 
 object EventPackSpec extends ZIOSpecDefault:
 

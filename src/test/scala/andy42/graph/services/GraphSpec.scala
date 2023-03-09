@@ -3,6 +3,7 @@ package andy42.graph.services
 import andy42.graph.model.*
 import zio.*
 import zio.test.Assertion.*
+import zio.test.TestAspect.timed
 import zio.test._
 
 import java.util.UUID
@@ -91,4 +92,4 @@ object GraphSpec extends ZIOSpecDefault:
           testGraphDataFlow(id, time, inputMutations, expectedNode, expectedCurrent, expectedMutationOutput)
         }
       }.provide(graphLayer)
-    )
+    ) @@ timed

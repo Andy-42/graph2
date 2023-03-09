@@ -1,8 +1,9 @@
 package andy42.graph.model
 
 import zio.*
-import zio.test.*
 import zio.test.Assertion.*
+import zio.test.TestAspect.timed
+import zio.test.*
 
 object EdgeReconciliationSpec extends ZIOSpecDefault:
 
@@ -51,4 +52,4 @@ object EdgeReconciliationSpec extends ZIOSpecDefault:
         assertTrue(reconciliation == 0L)
       }
     }
-  )
+  ) @@ timed
