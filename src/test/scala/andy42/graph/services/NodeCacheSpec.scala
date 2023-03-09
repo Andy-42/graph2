@@ -25,6 +25,8 @@ object NodeCacheSpec extends ZIOSpecDefault:
 
   override def spec = suite("NodeCache")(
     test("watermark moves forward and items are removed when size exceeds capacity") {
+      val fractionToRetainOnNodeCacheTrim = 0.5
+
       for
         cache <- ZIO.service[NodeCache]
         cacheImplementation = cache.implementation
@@ -50,7 +52,11 @@ object NodeCacheSpec extends ZIOSpecDefault:
         //  nextWatermark => 3 min (0 + 1) = 1
         nowAtTrim <- Clock.currentTime(MILLIS)
         watermarkAtTrim <- cache.watermark
-        nextWatermark = cacheImplementation.moveWatermarkForward(now = nowAtTrim, watermark = watermarkAtTrim)
+        nextWatermark = cacheImplementation.moveWatermarkForward(
+          now = nowAtTrim,
+          watermark = watermarkAtTrim,
+          retainFraction = fractionToRetainOnNodeCacheTrim
+        )
         _ <- TestClock.adjust(1.millisecond)
         _ <- cache.put(TestNode(2))
         size3 <- cache.size
@@ -81,7 +87,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
       )
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 2, fractionToRetainOnTrim = 0.5, forkOnTrim = false)
+        NodeCacheConfig(capacity = 2, fractionToRetainOnNodeCacheTrim = 0.5, forkOnTrim = false)
       ) >>> NodeCache.layer
     ),
     test("puts from multiple concurrent fibers") {
@@ -108,7 +114,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
       yield assertTrue(actualSize == n)
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 10000, fractionToRetainOnTrim = 0.75, forkOnTrim = false)
+        NodeCacheConfig(capacity = 10000, fractionToRetainOnNodeCacheTrim = 0.75, forkOnTrim = false)
       ) >>> NodeCache.layer
     ),
     test("watermark is moved forward by intervals proportional to configuration") {
@@ -128,8 +134,11 @@ object NodeCacheSpec extends ZIOSpecDefault:
 
         intervals = now - watermark
         moveForwardBy = (intervals * fractionToRetainOnTrim).toInt
-
-        nextWatermark = cacheImplementation.moveWatermarkForward(now = now, watermark = watermark)
+        nextWatermark = cacheImplementation.moveWatermarkForward(
+          now = now,
+          watermark = watermark,
+          retainFraction = fractionToRetainOnTrim
+        )
       yield assertTrue(
         watermark == 0L,
         now == 100L,
@@ -139,7 +148,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
       )
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 100, fractionToRetainOnTrim = 0.5)
+        NodeCacheConfig(capacity = 100, fractionToRetainOnNodeCacheTrim = 0.5)
       ) >>> NodeCache.layer
     ),
     test("watermark will be moved forward by at least one millisecond if there is room") {
@@ -160,7 +169,11 @@ object NodeCacheSpec extends ZIOSpecDefault:
         intervals = now - watermark + 1
         moveForwardBy = (intervals * fractionToRetainOnTrim).toLong
 
-        nextWatermark = cacheImplementation.moveWatermarkForward(now = now, watermark = watermark)
+        nextWatermark = cacheImplementation.moveWatermarkForward(
+          now = now,
+          watermark = watermark,
+          retainFraction = fractionToRetainOnTrim
+        )
       yield assertTrue(
         watermark == 0L,
         now == 100L,
@@ -170,12 +183,12 @@ object NodeCacheSpec extends ZIOSpecDefault:
       )
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 100, fractionToRetainOnTrim = 0)
+        NodeCacheConfig(capacity = 100, fractionToRetainOnNodeCacheTrim = 0)
       ) >>> NodeCache.layer
     ),
     test("watermark will never be moved past now") {
       val n = 100
-      val fractionToRetainOnTrim = 0.0 //
+      val fractionToRetainOnTrim = 0.0
 
       for
         _ <- TestClock.adjust(0.millis)
@@ -212,7 +225,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
       )
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 100, fractionToRetainOnTrim = 0.0)
+        NodeCacheConfig(capacity = 100, fractionToRetainOnNodeCacheTrim = 0.0)
       ) >>> NodeCache.layer
     )
   ).provideLayer(ZTestLogger.default) @@ timed

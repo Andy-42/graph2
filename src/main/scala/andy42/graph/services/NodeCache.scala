@@ -110,7 +110,7 @@ final case class NodeCacheLive(
   private def trim(now: AccessTime): USTM[Some[AccessTime]] =
     for
       currentWatermark <- watermark.get
-      nextWatermark = moveWatermarkForward(now = now, watermark = currentWatermark)
+      nextWatermark = moveWatermarkForward(now = now, watermark = currentWatermark, retainFraction = config.fractionToRetainOnNodeCacheTrim)
       _ <- items.removeIfDiscard((_, cacheItem) => cacheItem.lastAccess <= nextWatermark)
       _ <- watermark.set(nextWatermark)
     yield Some(nextWatermark)
@@ -139,9 +139,9 @@ final case class NodeCacheLive(
     *   A new value for purgeWatermark that can be used to retain only some fraction of the newest cache items.
     */
   // visible for testing
-  def moveWatermarkForward(now: AccessTime, watermark: AccessTime): AccessTime =
+  def moveWatermarkForward(now: AccessTime, watermark: AccessTime, retainFraction: Double): AccessTime =
     val intervals = now - watermark + 1
-    val moveForwardBy = 1 max (intervals * config.fractionToRetainOnTrim).toInt
+    val moveForwardBy = 1 max (intervals * retainFraction).toInt
     now min (watermark + moveForwardBy)
 
   override def startCurrentSnapshotTrimDaemon: UIO[Unit] =
@@ -166,7 +166,7 @@ final case class NodeCacheLive(
   private def currentSnapshotTrimTransaction(now: AccessTime): USTM[AccessTime] =
     for
       currentWatermark <- watermark.get
-      snapshotWatermark = moveWatermarkForward(currentWatermark, now)
+      snapshotWatermark = moveWatermarkForward(now = now, watermark = currentWatermark, retainFraction = config.fractionOfSnapshotsToRetainOnSnapshotTrim)
       _ <- items.transformValues(cacheItem =>
         // Purge the current node snapshot if the last access was before the retain time
         if cacheItem.lastAccess >= snapshotWatermark || cacheItem.current == null then cacheItem

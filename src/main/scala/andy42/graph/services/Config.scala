@@ -7,11 +7,14 @@ import zio.config.magnolia.descriptor
 
 final case class NodeCacheConfig(
     capacity: Int, // TODO: must be positive
-    fractionToRetainOnTrim: Float =
+    
+    fractionToRetainOnNodeCacheTrim: Double =
       0.9, // Balance more frequent trims against retaining a useful amount of information in the cache
 
     currentSnapshotTrimFrequency: Duration = Duration.Zero, // Zero turns off current snapshot purging
-    fractionOfSnapshotsToRetainOnSnapshotPurge: Float = 0.1,
+    fractionOfSnapshotsToRetainOnSnapshotTrim: Double = 
+      0.1, // Don't want to keep snapshots around for long to prevent them becoming tenured in the old heap generation
+
     forkOnUpdateAccessTime: Boolean = false, // Might be a useful optimization, but not clear that this is kosher
     forkOnTrim: Boolean = true // TODO: positive; should always have this on, but false is useful for testing
 )
