@@ -2,17 +2,17 @@ name := "graph2"
 
 version := "0.1"
 
-scalaVersion := "3.2.1"
+scalaVersion := "3.2.2"
 
-val zioV = "2.0.6"
-val zioConfigMagnoliaV = "3.0.7"
-val zioLoggingV = "2.1.8"
-val quillV = "4.6.0"
+val zioV = "2.0.10"
+val zioConfigRefinedV = "4.0.0-RC13"
+val zioLoggingV = "2.1.10"
+val quillV = "4.6.0.1"
 val msgPackV = "0.9.3"
 
 libraryDependencies ++= Seq(
   "dev.zio" %% "zio" % zioV,
-  "dev.zio" %% "zio-config-magnolia" % zioConfigMagnoliaV,
+  "dev.zio" %% "zio-config-refined" % zioConfigRefinedV,
   "dev.zio" %% "zio-logging" % zioLoggingV,
   "io.getquill" %% "quill-jdbc-zio" % quillV,
   "org.msgpack" % "msgpack-core" % msgPackV,
