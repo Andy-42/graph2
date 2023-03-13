@@ -18,7 +18,7 @@ trait EdgeSynchronization:
     * possible. Since the we only have eventual consistency, the EdgeSynchronization implementation should monitor (and
     * perhaps repair) edge consistency.
     */
-  def graphChanged(time: EventTime, changes: Vector[GroupedGraphMutationOutput]): UIO[Unit]
+  def graphChanged(time: EventTime, changes: Vector[NodeMutationOutput]): UIO[Unit]
 
   def startReconciliation: UIO[Unit]
 
@@ -29,6 +29,24 @@ final case class EdgeReconciliationEvent(
 ):
   def edgeHash: Long = edge.hash(id)
 
+extension (mutations: Vector[NodeMutationOutput])
+  def extractOtherIdFromNearEdgeEvents: Vector[NodeId] =
+    for
+      groupedGraphMutationOutput <- mutations
+      other <- groupedGraphMutationOutput.events collect {
+        case Event.EdgeAdded(edge: NearEdge)   => edge.other
+        case Event.EdgeRemoved(edge: NearEdge) => edge.other
+      }
+    yield other
+
+extension (mutations: NodeMutationInput)
+  def extractOtherIdsNodeFromFarEdgeEvents: Vector[NodeId] =
+    for other <- mutations.events collect {
+        case Event.FarEdgeAdded(edge)   => edge.other
+        case Event.FarEdgeRemoved(edge) => edge.other
+      }
+    yield other
+
 final case class EdgeSynchronizationLive(
     config: EdgeReconciliationConfig,
     edgeReconciliationService: EdgeReconciliationProcessor,
@@ -36,21 +54,29 @@ final case class EdgeSynchronizationLive(
     queue: Queue[EdgeReconciliationEvent]
 ) extends EdgeSynchronization:
 
-  def graphChanged(time: EventTime, changes: Vector[GroupedGraphMutationOutput]): UIO[Unit] =
+  def graphChanged(time: EventTime, nodeMutations: Vector[NodeMutationOutput]): UIO[Unit] =
+
+    def gatherReversedEdgeEventsForOtherNode(other: NodeId): NodeMutationInput =
+      NodeMutationInput(
+        id = other,
+        events = for
+          groupedGraphMutationOutput <- nodeMutations
+          id = groupedGraphMutationOutput.node.id
+          reversedEdgeEvent <- groupedGraphMutationOutput.events collect {
+            case Event.EdgeAdded(edge: NearEdge)   => Event.FarEdgeAdded(edge.reverse(id))
+            case Event.EdgeRemoved(edge: NearEdge) => Event.FarEdgeRemoved(edge.reverse(id))
+          }
+        yield reversedEdgeEvent
+      )
+
     for
-      // Propagate the corresponding (near) half-edge to the other (far) node
-      _ <- ZIO.foreach(changes) { mutationsForOneNode =>
-        val id = mutationsForOneNode.node.id
-        ZIO.foreach(mutationsForOneNode.events) {
-          case Event.EdgeAdded(edge) => appendFarEdgeEvent(id, edge.other, time, Event.FarEdgeAdded(edge.reverse(id)))
-          case Event.EdgeRemoved(edge) => appendFarEdgeEvent(id, edge.other, time, Event.FarEdgeRemoved(edge.reverse(id)))
-          case _ => ZIO.unit
-        }
+      _ <- ZIO.foreach(nodeMutations.extractOtherIdFromNearEdgeEvents.toSet) { other =>
+        appendFarEdgeEventsFor(id = other, time = time, events = gatherReversedEdgeEventsForOtherNode(other))
       }
 
-      _ <- ZIO.foreach(changes) { mutationsForOneNode =>
-        val id = mutationsForOneNode.node.id
-        val edgeReconciliationEvents = mutationsForOneNode.events.collect {
+      _ <- ZIO.foreach(nodeMutations) { nodeMutationOutput =>
+        val id = nodeMutationOutput.node.id
+        val edgeReconciliationEvents = nodeMutationOutput.events.collect {
           case Event.EdgeAdded(edge)      => EdgeReconciliationEvent(id, time, edge)
           case Event.EdgeRemoved(edge)    => EdgeReconciliationEvent(id, time, edge)
           case Event.FarEdgeAdded(edge)   => EdgeReconciliationEvent(id, time, edge)
@@ -70,21 +96,24 @@ final case class EdgeSynchronizationLive(
     * Appending the reversed edge to the far node is necessarily done outside of holding the node permit to avoid a
     * communications deadlock. In this implementation, appending the reverse edge is done on a daemon fiber that may
     * fail, and thereby cause an inconsistency in the graph (i.e., a missing half-edge).
+    *
+    * The Graph.append method will not run SQE if all the events being appended are far edges since that processing will
+    * always have been done in the contents of the original append.
     */
-  private def appendFarEdgeEvent(id: NodeId, other: NodeId, time: EventTime, event: Event): UIO[Unit] =
+  private def appendFarEdgeEventsFor(
+      id: NodeId,
+      time: EventTime,
+      events: NodeMutationInput
+  ): UIO[Unit] =
     import LogAnnotations.*
     graph
-      .append(
-        time,
-        Vector(GraphMutationInput(id, event))
-      ) // TODO: This may do redundant SQE evaluation - can SQE be bypassed?
+      .appendFarEdgeEvents(time, events)
       .catchAllCause(cause =>
         ZIO.logCause("Unexpected failure appending far edge event", cause)
-        @@ operationAnnotation ("append far edge event")
+        @@ operationAnnotation ("append far edge events")
         @@ timeAnnotation (time)
         @@ nearNodeIdAnnotation (id)
-        @@ farNodeIdAnnotation (other)
-        @@ eventAnnotation (event)
+        @@ farNodeIdsAnnotation (events.extractOtherIdsNodeFromFarEdgeEvents)
       )
       .forkDaemon *> ZIO.unit
 

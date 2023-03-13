@@ -13,10 +13,10 @@ object GraphSpec extends ZIOSpecDefault:
   def testGraphDataFlow(
       id: NodeId,
       time: EventTime,
-      inputMutations: Vector[GraphMutationInput],
+      inputMutations: Vector[NodeMutationInput],
       expectedNode: Node,
       expectedCurrent: NodeSnapshot,
-      expectedOutputEvents: Vector[(EventTime, Vector[GroupedGraphMutationOutput])]
+      expectedOutputEvents: Vector[(EventTime, Vector[NodeMutationOutput])]
   ): ZIO[Graph, Any, TestResult] =
     for
       graph <- ZIO.service[Graph]
@@ -80,14 +80,14 @@ object GraphSpec extends ZIOSpecDefault:
 
           val edge = NearEdge("e1", id, EdgeDirection.Outgoing) // Reflexive - points back to originating node
           val inputEvents = Vector(Event.PropertyAdded("p1", p1Value), Event.EdgeAdded(edge))
-          val inputMutations = inputEvents.map(event => GraphMutationInput(id, event))
+          val inputMutations = Vector(NodeMutationInput(id, inputEvents))
 
           val expectedEventsAtTime = EventsAtTime(time = time, sequence = 0, events = inputEvents)
           val expectedCurrent =
             NodeSnapshot(time = time, sequence = 0, properties = Map("p1" -> p1Value), edges = Set(edge))
           val expectedHistory = Vector(expectedEventsAtTime)
           val expectedNode = Node.fromHistory(id, expectedHistory)
-          val expectedMutationOutput = Vector(time -> Vector(GroupedGraphMutationOutput(expectedNode, inputEvents)))
+          val expectedMutationOutput = Vector(time -> Vector(NodeMutationOutput(expectedNode, inputEvents)))
 
           testGraphDataFlow(id, time, inputMutations, expectedNode, expectedCurrent, expectedMutationOutput)
         }

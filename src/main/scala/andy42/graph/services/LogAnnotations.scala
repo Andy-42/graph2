@@ -10,7 +10,6 @@ import zio.logging.LogAnnotation
 
 object LogAnnotations:
 
-  private def formatNodeId(id: NodeId): String = id.toString
   private def formatEvent(event: Event): String = event.getClass.getSimpleName
 
 
@@ -27,11 +26,11 @@ object LogAnnotations:
     LogAnnotation[WindowStart]("windowStart", (_, x) => x, _.toString)
   val edgeHashAnnotation: LogAnnotation[EdgeHash] = LogAnnotation[EdgeHash]("edgeHash", (_, x) => x, _.toString)
 
-  val operationAnnotation: LogAnnotation[String] = LogAnnotation[String]("operation", (_, x) => x, _.toString) //
+  val operationAnnotation: LogAnnotation[String] = LogAnnotation[String]("operation", (_, x) => x, _.toString)
 
-  val nearNodeIdAnnotation: LogAnnotation[NodeId] = LogAnnotation[NodeId]("nearNodeId", (_, x) => x, formatNodeId)
-  val farNodeIdAnnotation: LogAnnotation[NodeId] = LogAnnotation[NodeId]("farNodeId", (_, x) => x, formatNodeId)
-  val eventAnnotation: LogAnnotation[Event] = LogAnnotation[Event]("event", (_, x) => x, formatEvent)
+  val nearNodeIdAnnotation: LogAnnotation[NodeId] = LogAnnotation[NodeId]("nearNodeId", (_, x) => x, _.toString)
+  val farNodeIdsAnnotation: LogAnnotation[Vector[NodeId]] = 
+    LogAnnotation[Vector[NodeId]]("farNodeIds", (a, b) => a ++ b, _.map(_.toString).mkString(","))
   val timeAnnotation: LogAnnotation[EventTime] = LogAnnotation[EventTime]("time", (_, x) => x, _.toString)
 
   // NodeCache

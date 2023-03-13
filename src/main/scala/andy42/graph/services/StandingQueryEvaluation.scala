@@ -17,7 +17,7 @@ trait StandingQueryEvaluation:
     */
   def graphChanged(
       time: EventTime,
-      changes: Vector[GroupedGraphMutationOutput]
+      changes: Vector[NodeMutationOutput]
   ): IO[UnpackFailure | PersistenceFailure, Unit]
 
   // TODO: How to get the output stream?
@@ -36,7 +36,7 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
     */
   override def graphChanged(
       time: EventTime,
-      mutations: Vector[GroupedGraphMutationOutput]
+      mutations: Vector[NodeMutationOutput]
   ): IO[UnpackFailure | PersistenceFailure, Unit] =
     // TODO: Config, no match on only far edge events.
 
@@ -54,13 +54,13 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
     */
   private def allAffectedNodes(
       time: EventTime,
-      mutations: Vector[GroupedGraphMutationOutput]
+      mutations: Vector[NodeMutationOutput]
   ): IO[UnpackFailure | PersistenceFailure, Vector[Node]] =
 
     def farEdgeEvents: Vector[(NodeId, Event)] =
       for
         mutation <- mutations
-        GroupedGraphMutationOutput(node, events) = mutation
+        NodeMutationOutput(node, events) = mutation
         referencedNodeAndFarEdgeEvent <- events.collect {
           case event: Event.EdgeAdded   => event.edge.other -> Event.FarEdgeAdded(event.edge.reverse(node.id))
           case event: Event.EdgeRemoved => event.edge.other -> Event.FarEdgeRemoved(event.edge.reverse(node.id))

@@ -6,21 +6,21 @@ import zio.*
 
 trait TestStandingQueryEvaluation:
   // Implicitly clears queue
-  def graphChangedParameters: UIO[Chunk[(EventTime, Vector[GroupedGraphMutationOutput])]]
+  def graphChangedParameters: UIO[Chunk[(EventTime, Vector[NodeMutationOutput])]]
 
-final case class TestStandingQueryEvaluationLive(queue: Queue[(EventTime, Vector[GroupedGraphMutationOutput])])
+final case class TestStandingQueryEvaluationLive(queue: Queue[(EventTime, Vector[NodeMutationOutput])])
     extends StandingQueryEvaluation
     with TestStandingQueryEvaluation:
 
-  override def graphChangedParameters: UIO[Chunk[(EventTime, Vector[GroupedGraphMutationOutput])]] =
+  override def graphChangedParameters: UIO[Chunk[(EventTime, Vector[NodeMutationOutput])]] =
     queue.takeAll
 
-  override def graphChanged(time: EventTime, changes: Vector[GroupedGraphMutationOutput]): UIO[Unit] =
+  override def graphChanged(time: EventTime, changes: Vector[NodeMutationOutput]): UIO[Unit] =
     queue.offer(time -> changes) *> ZIO.unit
 
 object TestStandingQueryEvaluation:
   val layer: ULayer[StandingQueryEvaluation] =
     ZLayer {
-      for queue <- Queue.unbounded[(EventTime, Vector[GroupedGraphMutationOutput])]
+      for queue <- Queue.unbounded[(EventTime, Vector[NodeMutationOutput])]
       yield TestStandingQueryEvaluationLive(queue)
     }

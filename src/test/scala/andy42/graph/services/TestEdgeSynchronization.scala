@@ -6,16 +6,16 @@ import zio.*
 
 trait TestEdgeSynchronization:
   // Implicitly clears
-  def graphChangedParameters: UIO[Chunk[(EventTime, Vector[GroupedGraphMutationOutput])]]
+  def graphChangedParameters: UIO[Chunk[(EventTime, Vector[NodeMutationOutput])]]
 
-final case class TestEdgeSynchronizationLive(queue: Queue[(EventTime, Vector[GroupedGraphMutationOutput])])
+final case class TestEdgeSynchronizationLive(queue: Queue[(EventTime, Vector[NodeMutationOutput])])
     extends EdgeSynchronization
     with TestEdgeSynchronization:
 
-  def graphChangedParameters: UIO[Chunk[(EventTime, Vector[GroupedGraphMutationOutput])]] =
+  def graphChangedParameters: UIO[Chunk[(EventTime, Vector[NodeMutationOutput])]] =
     queue.takeAll
 
-  def graphChanged(time: EventTime, changes: Vector[GroupedGraphMutationOutput]): UIO[Unit] =
+  def graphChanged(time: EventTime, changes: Vector[NodeMutationOutput]): UIO[Unit] =
     queue.offer(time -> changes) *> ZIO.unit
 
   def startReconciliation: UIO[Unit] = ZIO.unit
@@ -23,6 +23,6 @@ final case class TestEdgeSynchronizationLive(queue: Queue[(EventTime, Vector[Gro
 object TestEdgeSynchronization:
   val layer: ULayer[EdgeSynchronization] =
     ZLayer {
-      for queue <- Queue.unbounded[(EventTime, Vector[GroupedGraphMutationOutput])]
+      for queue <- Queue.unbounded[(EventTime, Vector[NodeMutationOutput])]
       yield TestEdgeSynchronizationLive(queue)
     }

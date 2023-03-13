@@ -29,8 +29,8 @@ extension (history: NodeHistory)
     } > n
 
 extension (edge: Edge)
-  // def isFarEdge: Boolean = ??? // TODO: Near/far is not preserved in snapshot
-  // def isNearEdge: Boolean = ???
+  def isFarEdge: Boolean = edge.isInstanceOf[FarEdge]
+  def isNearEdge: Boolean = edge.isInstanceOf[NearEdge]
 
   def isDirected: Boolean = edge.direction == EdgeDirection.Incoming || edge.direction == EdgeDirection.Outgoing
   def isDirectedOut: Boolean = edge.direction == EdgeDirection.Outgoing

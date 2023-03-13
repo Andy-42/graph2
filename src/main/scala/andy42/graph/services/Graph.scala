@@ -69,22 +69,19 @@ trait Graph:
     * @param mutations
     *   The events to be applied to the graph state.
     */
-  def append(time: EventTime, mutations: Vector[GraphMutationInput]): IO[UnpackFailure | PersistenceFailure, Unit]
+  def append(
+      time: EventTime,
+      mutations: Vector[NodeMutationInput]
+  ): IO[UnpackFailure | PersistenceFailure, Unit]
 
-final case class GraphMutationInput(
-    id: NodeId,
-    event: Event
-)
+  def appendFarEdgeEvents(
+      time: EventTime,
+      mutation: NodeMutationInput
+  ): IO[UnpackFailure | PersistenceFailure, Unit]
 
-final case class GroupedGraphMutationInput(
-    id: NodeId,
-    events: Vector[Event]
-)
+final case class NodeMutationInput(id: NodeId, events: Vector[Event])
 
-final case class GroupedGraphMutationOutput(
-    node: Node,
-    events: Vector[Event]
-)
+final case class NodeMutationOutput(node: Node, events: Vector[Event])
 
 final case class GraphLive(
     inFlight: TSet[NodeId],
@@ -116,35 +113,38 @@ final case class GraphLive(
       _ <- if node.hasEmptyHistory then ZIO.unit else cache.put(node)
     yield node
 
-  private def groupChangesByNodeId(changes: Vector[GraphMutationInput]): Vector[GroupedGraphMutationInput] =
-    for id <- changes.map(_.id).distinct
-    yield GroupedGraphMutationInput(
-      id = id,
-      events = changes.collect { case input @ GraphMutationInput(id, _) => // TODO: Is this being compiled correctly?
-        input.event
-      }
-    )
-
   override def append(
       time: EventTime,
-      changes: Vector[GraphMutationInput]
+      changes: Vector[NodeMutationInput]
   ): IO[UnpackFailure | PersistenceFailure, Unit] =
-    if changes.isEmpty then ZIO.unit
-    else
-      for
-        output <- ZIO.foreachPar(groupChangesByNodeId(changes))(processChangesForOneNode(time, _))
-        _ <- standingQueryEvaluation.graphChanged(time, output)
-        _ <- edgeSynchronization.graphChanged(time, output)
-      yield ()
+    require(changes.forall(_.events.forall(!_.isFarEdgeEvent)))
+
+    for
+      output <- ZIO.foreachPar(changes)(processChangesForOneNode(time, _))
+      _ <- standingQueryEvaluation.graphChanged(time, output)
+      _ <- edgeSynchronization.graphChanged(time, output) // add near edge events into reconciliation; append far edge mutations
+    yield ()
+
+  override def appendFarEdgeEvents(
+      time: EventTime,
+      mutation: NodeMutationInput
+  ): IO[UnpackFailure | PersistenceFailure, Unit] =
+    require(mutation.events.forall(_.isFarEdgeEvent))
+
+    for
+      output <- processChangesForOneNode(time, mutation)
+      // SQE is not run since those events are processed by SQE in the original append
+      _ <- edgeSynchronization.graphChanged(time, Vector(output)) // add far edge events into reconciliation
+    yield ()
 
   private def processChangesForOneNode(
       time: EventTime,
-      changes: GroupedGraphMutationInput
-  ): IO[UnpackFailure | PersistenceFailure, GroupedGraphMutationOutput] =
+      changes: NodeMutationInput
+  ): IO[UnpackFailure | PersistenceFailure, NodeMutationOutput] =
     val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(changes.events)
 
     for node <- applyEventsToPersistentStoreAndCache(changes.id, time, deduplicatedEvents)
-    yield GroupedGraphMutationOutput(node, deduplicatedEvents)
+    yield NodeMutationOutput(node, deduplicatedEvents)
 
   private def applyEventsToPersistentStoreAndCache(
       id: NodeId,
