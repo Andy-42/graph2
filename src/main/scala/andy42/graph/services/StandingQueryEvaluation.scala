@@ -5,6 +5,8 @@ import zio.*
 import zio.stm.STM
 import zio.stm.TQueue
 
+import andy42.graph.model.NodeIO
+
 /** Observe a node that is changed.
   */
 trait StandingQueryEvaluation:
@@ -18,7 +20,7 @@ trait StandingQueryEvaluation:
   def graphChanged(
       time: EventTime,
       changes: Vector[NodeMutationOutput]
-  ): IO[UnpackFailure | PersistenceFailure, Unit]
+  ): NodeIO[Unit]
 
   // TODO: How to get the output stream?
 
@@ -37,7 +39,7 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
   override def graphChanged(
       time: EventTime,
       mutations: Vector[NodeMutationOutput]
-  ): IO[UnpackFailure | PersistenceFailure, Unit] =
+  ): NodeIO[Unit] =
     // TODO: Config, no match on only far edge events.
 
     for
@@ -55,7 +57,7 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
   private def allAffectedNodes(
       time: EventTime,
       mutations: Vector[NodeMutationOutput]
-  ): IO[UnpackFailure | PersistenceFailure, Vector[Node]] =
+  ): NodeIO[Vector[Node]] =
 
     def farEdgeEvents: Vector[(NodeId, Event)] =
       for
@@ -77,7 +79,7 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
       !mutations.exists(_.node.id == id)
     }
 
-    def appendFarEdgeEvents(node: Node): IO[UnpackFailure | PersistenceFailure, Node] =
+    def appendFarEdgeEvents(node: Node): NodeIO[Node] =
       farEdgeEventsGroupedById
         .get(node.id)
         .fold(ZIO.succeed(node))(events => node.append(time, events))
@@ -90,7 +92,7 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
   private def matchAgainstStandingQueries(
     time: EventTime,
     changedNodes: Vector[Node]
-  ): IO[UnpackFailure | PersistenceFailure, Unit] = ???
+  ): NodeIO[Unit] = ???
   // for each node in changedNodes and each standing query, match the subgraph against the standing query
   // The keys in the initial changedNode are the ones that are matched.
   // As matching proceeds, accumulate all the nodes visited in a cache

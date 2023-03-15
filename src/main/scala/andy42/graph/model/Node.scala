@@ -1,6 +1,7 @@
 package andy42.graph.model
 
 import andy42.graph.model.NodeHistory
+import andy42.graph.services.PersistenceFailure
 import andy42.graph.services.CacheItem
 import org.msgpack.core.*
 import zio.*
@@ -25,6 +26,8 @@ object NodeSnapshot:
   * form since unpacking requires testing that whether there is more packed data to consume.
   */
 type PackedNodeHistory = Packed
+
+type NodeIO[T] = IO[UnpackFailure | PersistenceFailure, T]
 
 sealed trait Node:
   val id: NodeId

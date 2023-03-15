@@ -44,7 +44,7 @@ trait Graph:
     *
     * The returned node will contain the full history of the node.
     */
-  def get(id: NodeId): IO[UnpackFailure | PersistenceFailure, Node]
+  def get(id: NodeId): NodeIO[Node]
 
   /** Append events to the Graph history. On a successful return:
     *   - The events will have been appended to the Node history and committed to the persistent store, and
@@ -72,12 +72,12 @@ trait Graph:
   def append(
       time: EventTime,
       mutations: Vector[NodeMutationInput]
-  ): IO[UnpackFailure | PersistenceFailure, Unit]
+  ): NodeIO[Unit]
 
   def appendFarEdgeEvents(
       time: EventTime,
       mutation: NodeMutationInput
-  ): IO[UnpackFailure | PersistenceFailure, Unit]
+  ): NodeIO[Unit]
 
 final case class NodeMutationInput(id: NodeId, events: Vector[Event])
 
@@ -93,7 +93,7 @@ final case class GraphLive(
 
   override def get(
       id: NodeId
-  ): IO[UnpackFailure | PersistenceFailure, Node] =
+  ): NodeIO[Node] =
     ZIO.scoped {
       for
         _ <- withNodePermit(id)
@@ -101,7 +101,7 @@ final case class GraphLive(
       yield node
     }
 
-  private def getWithPermitHeld(id: NodeId): IO[UnpackFailure | PersistenceFailure, Node] =
+  private def getWithPermitHeld(id: NodeId): NodeIO[Node] =
     for
       optionNode <- cache.get(id)
       node <- optionNode.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
@@ -116,7 +116,7 @@ final case class GraphLive(
   override def append(
       time: EventTime,
       changes: Vector[NodeMutationInput]
-  ): IO[UnpackFailure | PersistenceFailure, Unit] =
+  ): NodeIO[Unit] =
     require(changes.forall(_.events.forall(!_.isFarEdgeEvent)))
 
     for
@@ -128,7 +128,7 @@ final case class GraphLive(
   override def appendFarEdgeEvents(
       time: EventTime,
       mutation: NodeMutationInput
-  ): IO[UnpackFailure | PersistenceFailure, Unit] =
+  ): NodeIO[Unit] =
     require(mutation.events.forall(_.isFarEdgeEvent))
 
     for
@@ -140,7 +140,7 @@ final case class GraphLive(
   private def processChangesForOneNode(
       time: EventTime,
       changes: NodeMutationInput
-  ): IO[UnpackFailure | PersistenceFailure, NodeMutationOutput] =
+  ): NodeIO[NodeMutationOutput] =
     val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(changes.events)
 
     for node <- applyEventsToPersistentStoreAndCache(changes.id, time, deduplicatedEvents)
@@ -150,7 +150,7 @@ final case class GraphLive(
       id: NodeId,
       time: EventTime,
       events: Vector[Event]
-  ): IO[UnpackFailure | PersistenceFailure, Node] =
+  ): NodeIO[Node] =
     ZIO.scoped {
       for
         _ <- withNodePermit(id)
