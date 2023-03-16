@@ -6,8 +6,7 @@ import zio.*
 trait NodeSpecEvaluator:
   def matches(id: NodeId, nodeSpec: NodeSpec): NodeIO[Boolean]
 
-case class NodeSpecEvaluatorLive(dataViewCache: MatcherDataViewCache)
-    extends NodeSpecEvaluator:
+case class NodeSpecEvaluatorLive(dataViewCache: MatcherDataViewCache) extends NodeSpecEvaluator:
 
   override def matches(id: NodeId, nodeSpec: NodeSpec): NodeIO[Boolean] =
     ZIO.forall(nodeSpec.predicates)(evaluatePredicate(id, _))

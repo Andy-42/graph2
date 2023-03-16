@@ -29,7 +29,6 @@ case class MatcherDataViewCacheLive(
   private def releaseSnapshotCachePermit(id: => SnapshotCacheKey): UIO[Unit] =
     snapshotCacheInFlight.delete(id).commit
 
-  // TODO: Could have separate permit schemes for history and snapshotstd
   private def withSnapshotCachePermit(id: => SnapshotCacheKey): ZIO[Scope, Nothing, SnapshotCacheKey] =
     ZIO.acquireRelease(acquireSnapshotCachePermit(id))(releaseSnapshotCachePermit(_))
 
