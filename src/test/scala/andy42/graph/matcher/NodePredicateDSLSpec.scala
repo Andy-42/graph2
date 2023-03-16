@@ -4,35 +4,50 @@ import zio.*
 import zio.test.Assertion.*
 import zio.test.TestAspect.timed
 import zio.test.*
+import andy42.graph.matcher.node
+import andy42.graph.matcher.NodePredicates.*
+import andy42.graph.matcher.SomeOtherPredicateIdeas.*
 
 object NodePredicateDSLSpec extends ZIOSpecDefault:
 
-  import NodePredicates.*
-
-  def propertyCurrentlySetButNotAtEventTime(k: String): NodeSpec =
-    node("Property is currently set, but is not set at the event time") {
-      usingNodeCurrent
-      hasProperty(k)
-      usingEventTime
-      doesNotHaveProperty(k)
-    }
-
-  import SomeOtherPredicateIdeas.*
-
-  def propertySetMoreThanNTimes(k: String, n: Int) =
-    node("Has property set more than n times") {
-      historyFilter(hasPropertySetMoreThanNTimes(k, n))
-    }
-
-
   def spec: Spec[Sized, Nothing] = suite("NodePredicateDSL")(
-    test(""){
+    test("A node predicate that changes the snapshot selector") {
 
-        val spec = propertyCurrentlySetButNotAtEventTime("myProperty")
+      val description = "Property is currently set, but is not set at the event time"
+      val spec =
+        node(description) {
+          usingNodeCurrent
+          hasProperty("p")
+          usingEventTime
+          doesNotHaveProperty("p")
+        }
 
-        assertTrue(
-            spec.description == "Property is currently set, but is not set at the event time",
-            spec.predicates.length == 2
-        )
+      assertTrue(
+        spec.description == description,
+        spec.predicates.length == 2,
+        spec.predicates(0) match {
+          case NodePredicate.SnapshotPredicate(SnapshotSelector.NodeCurrent, _) => true
+          case _                                                                => false
+        },
+        spec.predicates(1) match {
+          case NodePredicate.SnapshotPredicate(SnapshotSelector.EventTime, _) => true
+          case _                                                              => false
+        }
+      )
+    },
+    test("A node predicate that uses history filter") {
+      val description = "Has property set more than n times"
+      val spec = node(description) {
+        historyFilter(hasPropertySetMoreThanNTimes("k", 42))
+      }
+
+      assertTrue(
+        spec.description == description,
+        spec.predicates.length == 1,
+        spec.predicates(0) match {
+          case NodePredicate.HistoryPredicate(_) => true
+          case _                                 => false
+        }
+      )
     }
-  )  
+  )

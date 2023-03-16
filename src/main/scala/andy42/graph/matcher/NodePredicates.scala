@@ -23,10 +23,10 @@ object NodePredicates:
   // Convenience implementations for common operations
 
   def hasProperty(k: String): NodeLocalSpec = summon[NodeLocalSpecBuilder]
-    .snapshotFilter(_.properties.contains("p"))
+    .snapshotFilter(_.properties.contains(k))
 
   def doesNotHaveProperty(k: String): NodeLocalSpec = summon[NodeLocalSpecBuilder]
-    .snapshotFilter(!_.properties.contains("p"))
+    .snapshotFilter(!_.properties.contains(k))
 
 object UtilitiesForOtherPredicates:
 
