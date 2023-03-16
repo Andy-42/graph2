@@ -29,4 +29,3 @@ def node(description: String)(body: NodeLocalSpecBuilder ?=> NodeLocalSpec): Nod
   given builder: NodeLocalSpecBuilder = NodeLocalSpecBuilder()
   body
   NodeSpec(description, builder.build)
-
