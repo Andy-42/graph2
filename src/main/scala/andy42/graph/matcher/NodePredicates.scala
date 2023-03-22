@@ -2,33 +2,60 @@ package andy42.graph.matcher
 
 import andy42.graph.model.*
 
+import andy42.graph.matcher.{NodePredicate, SnapshotSelector}
+case class SnapshotQueryElement(spec: String, selector: SnapshotSelector, f: NodeSnapshot => Boolean)
+case class HistoryQueryElement(spec: String, f: NodeHistory => Boolean)
+
 object NodePredicates:
 
-  // These select the ambient NodeSnapshot alignment with time, but do not add a predicate
+  // These select the ambient NodeSnapshot alignment with time, but do not add a predicate to the builder
 
-  def usingEventTime: NodeLocalSpec = summon[NodeLocalSpecBuilder].snapshotSelector = SnapshotSelector.EventTime
+  def usingEventTime: NodeLocalSpecBuilder ?=> Unit =
+    summon[NodeLocalSpecBuilder].snapshotSelector = SnapshotSelector.EventTime
 
-  def usingNodeCurrent: NodeLocalSpec = summon[NodeLocalSpecBuilder].snapshotSelector = SnapshotSelector.NodeCurrent
+  def usingNodeCurrent: NodeLocalSpecBuilder ?=> Unit =
+    summon[NodeLocalSpecBuilder].snapshotSelector = SnapshotSelector.NodeCurrent
 
-  def usingAtTime(time: EventTime): NodeLocalSpec = summon[NodeLocalSpecBuilder].snapshotSelector =
-    SnapshotSelector.AtTime(time)
+  def usingAtTime(time: EventTime): NodeLocalSpecBuilder ?=> Unit =
+    summon[NodeLocalSpecBuilder].snapshotSelector = SnapshotSelector.AtTime(time)
 
   // These predicates let you supply your own implementation
-  def snapshotFilter(p: NodeSnapshot => Boolean): NodeLocalSpec = summon[NodeLocalSpecBuilder]
-    .snapshotFilter(p)
 
-  def historyFilter(p: NodeHistory => Boolean): NodeLocalSpec = summon[NodeLocalSpecBuilder]
-    .historyFilter(p)
+  def snapshotFilter(spec: String, p: NodeSnapshot => Boolean): NodeLocalSpecBuilder ?=> Unit =
+    val builder = summon[NodeLocalSpecBuilder]
+    val selector = builder.snapshotSelector
+    builder.stage(
+      NodePredicate.Snapshot(
+        selector = selector,
+        spec = selector.makeSpec(spec),
+        f = p
+      )
+    )
+
+  def historyFilter(spec: String, p: NodeHistory => Boolean): NodeLocalSpecBuilder ?=> Unit =
+    summon[NodeLocalSpecBuilder]
+      .stage(NodePredicate.History(spec = s"history => $spec", f = p))
 
   // Convenience implementations for common operations
 
-  def hasProperty(k: String): NodeLocalSpec = summon[NodeLocalSpecBuilder]
-    .snapshotFilter(_.properties.contains(k))
+  def hasProperty(k: String): NodeLocalSpecBuilder ?=> Unit =
+    snapshotFilter(
+      s"hasProperty($k)", 
+      (ns: NodeSnapshot) => ns.properties.contains(k)
+    )
 
-  def doesNotHaveProperty(k: String): NodeLocalSpec = summon[NodeLocalSpecBuilder]
-    .snapshotFilter(!_.properties.contains(k))
+  def doesNotHaveProperty(k: String): NodeLocalSpecBuilder ?=> Unit =
+    snapshotFilter(
+      s"doesNotHaveProperty($k)", 
+      (ns: NodeSnapshot) => !ns.properties.contains(k)
+    )
 
-object UtilitiesForOtherPredicates:
+
+// These are some examples of functions that can be used with historyFilter or snapshot filter
+// (with the addition of a spec string) to produce a NodePredicate
+
+object SomeOtherPredicateIdeas:
+  import NodePredicates.{snapshotFilter, historyFilter}
 
   def matchesPropertyAdded(k: String): Event => Boolean =
     (event: Event) =>
@@ -37,26 +64,16 @@ object UtilitiesForOtherPredicates:
         case _                         => false
       }
 
-  // Haven't done any Edge predicates yet
-  extension (edge: Edge)
-    def isFarEdge: Boolean = edge.isInstanceOf[FarEdge]
-    def isNearEdge: Boolean = edge.isInstanceOf[NearEdge]
+  def hasPropertySetAtAnyPointInHistory(k: String): NodeLocalSpecBuilder ?=> Unit =
+    historyFilter(
+      s"hasPropertySetAtAnyPointInHistory($k)", 
+      (ns: NodeHistory) => ns.exists(_.events.exists(matchesPropertyAdded(k)))
+    )
 
-    def isDirected: Boolean = edge.direction == EdgeDirection.Incoming || edge.direction == EdgeDirection.Outgoing
-    def isDirectedOut: Boolean = edge.direction == EdgeDirection.Outgoing
-    def isDirectedIn: Boolean = edge.direction == EdgeDirection.Incoming
-    def isUnDirected: Boolean = !isDirected
-
-    def isReflexive(id: NodeId): Boolean = id == edge.other
-
-object SomeOtherPredicateIdeas:
-  import UtilitiesForOtherPredicates.*
-
-  def hasPropertySetAtAnyPointInHistory(k: String): NodeHistory => Boolean =
-    _.exists(_.events.exists(matchesPropertyAdded(k)))
-
-  def hasPropertySetMoreThanNTimes(k: String, n: Int): NodeHistory => Boolean =
-    (nodeHistory: NodeHistory) =>
-      nodeHistory.foldLeft(0) { case (z, eventsAtTime) =>
+  def hasPropertySetMoreThanNTimes(k: String, n: Int): NodeLocalSpecBuilder ?=> Unit =
+    historyFilter(
+      s"hasPropertySetMoreThanNTimes($k,$n)",
+      (ns: NodeHistory) => ns.foldLeft(0) { case (z, eventsAtTime) =>
         z + eventsAtTime.events.count(matchesPropertyAdded(k))
       } > n
+    )

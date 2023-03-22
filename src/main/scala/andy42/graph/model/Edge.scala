@@ -69,6 +69,9 @@ object FarEdge extends Unpackable[Edge]:
     Edge.unpack(isFar = true)
 
 object Edge:
+  
+  def apply(k: String, other: NodeId, direction: EdgeDirection): Edge =
+    NearEdge(k, other, direction)
 
   def unpack(isFar: Boolean)(using unpacker: MessageUnpacker): IO[UnpackFailure, Edge] =
     UnpackSafely {

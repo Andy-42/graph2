@@ -6,6 +6,7 @@ import andy42.graph.model.*
 import zio.stm.*
 import zio.*
 
+import andy42.graph.matcher.SnapshotSelector
 trait MatcherDataViewCache:
   def getSnapshot(id: NodeId, selector: SnapshotSelector): NodeIO[NodeSnapshot]
   def getHistory(id: NodeId): NodeIO[NodeHistory]

@@ -1,5 +1,8 @@
 package andy42.graph.model
 
+import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets.UTF_8
+import java.security.MessageDigest
 import java.util.UUID
 
 /** A NodeId identifies a node in the graph. This is a UUID-like representation, and it is stored as two longs to avoid
@@ -42,9 +45,9 @@ final case class NodeId(msb: Long, lsb: Long) extends Ordered[NodeId]:
     else 0
 
 object NodeId:
-  
+
   val byteLength: Int = 16
-  
+
   def apply(id: Array[Byte]): NodeId =
     require(id.length == NodeId.byteLength)
 
@@ -74,3 +77,41 @@ object NodeId:
 
   def apply(id: UUID): NodeId =
     NodeId(msb = id.getMostSignificantBits, lsb = id.getLeastSignificantBits)
+
+  def fromNamedProduct(salt: String)(p: Product): NodeId =
+    val digest: MessageDigest = MessageDigest.getInstance("MD5")
+    digest.update(bytesFor(salt))
+    p.productIterator.foreach(x => digest.update(bytesFor(x)))
+    NodeId(digest.digest)
+
+  def fromProduct(p: Product): NodeId =
+    val digest: MessageDigest = MessageDigest.getInstance("MD5")
+    p.productIterator.foreach(x => digest.update(bytesFor(x)))
+    NodeId(digest.digest)
+
+  def fromNamedValues(salt: String)(values: Any*): NodeId =
+    val digest: MessageDigest = MessageDigest.getInstance("MD5")
+    digest.update(bytesFor(salt))
+    values.foreach(x => digest.update(bytesFor(x)))
+    NodeId(digest.digest)
+
+  def fromValue(values: Any*): NodeId =
+    val digest: MessageDigest = MessageDigest.getInstance("MD5")
+    values.foreach(x => digest.update(bytesFor(x)))
+    NodeId(digest.digest)
+  
+  private def bytesFor(x: Any): ByteBuffer =
+    x match {
+      case x: Boolean => ByteBuffer.allocate(1).put(if x then 1.toByte else 0.toByte)
+      
+      case x: Byte    => ByteBuffer.allocate(1).put(x)
+      case x: Short   => ByteBuffer.allocate(java.lang.Short.BYTES).putShort(x)
+      case x: Int     => ByteBuffer.allocate(java.lang.Integer.BYTES).putInt(x)
+      case x: Long    => ByteBuffer.allocate(java.lang.Long.BYTES).putLong(x)
+      case x: Float   => ByteBuffer.allocate(java.lang.Float.BYTES).putFloat(x)
+      case x: Double  => ByteBuffer.allocate(java.lang.Double.BYTES).putDouble(x)
+
+      case x: String => ByteBuffer.wrap(x.getBytes(UTF_8))
+
+      case x => ByteBuffer.allocate(java.lang.Integer.BYTES).putInt(x.##)
+    }

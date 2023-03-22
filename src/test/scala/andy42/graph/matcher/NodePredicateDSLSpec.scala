@@ -7,14 +7,16 @@ import zio.test.*
 import andy42.graph.matcher.node
 import andy42.graph.matcher.NodePredicates.*
 import andy42.graph.matcher.SomeOtherPredicateIdeas.*
+import scala.util.hashing.MurmurHash3.stringHash
 
+import andy42.graph.matcher.{NodeSpec, NodePredicate, SnapshotSelector}
 object NodePredicateDSLSpec extends ZIOSpecDefault:
 
   def spec: Spec[Sized, Nothing] = suite("NodePredicateDSL")(
     test("A node predicate that changes the snapshot selector") {
 
       val description = "Property is currently set, but is not set at the event time"
-      val spec =
+      val spec: NodeSpec =
         node(description) {
           usingNodeCurrent
           hasProperty("p")
@@ -24,30 +26,36 @@ object NodePredicateDSLSpec extends ZIOSpecDefault:
 
       assertTrue(
         spec.description == description,
+        spec.spec == "nodes: snapshot @ node current => hasProperty(p), snapshot @ event time => doesNotHaveProperty(p)",
+        spec.fingerprint == stringHash(spec.spec),
         spec.predicates.length == 2,
-        spec.predicates(0) match {
-          case NodePredicate.SnapshotPredicate(SnapshotSelector.NodeCurrent, _) => true
-          case _                                                                => false
-        },
-        spec.predicates(1) match {
-          case NodePredicate.SnapshotPredicate(SnapshotSelector.EventTime, _) => true
-          case _                                                              => false
-        }
+        spec.predicates(0).spec == "snapshot @ node current => hasProperty(p)",
+        spec.predicates(0).fingerprint == stringHash(spec.predicates(0).spec),
+        spec.predicates(0).isInstanceOf[NodePredicate.Snapshot],
+        spec.predicates(0).asInstanceOf[NodePredicate.Snapshot].selector == SnapshotSelector.NodeCurrent,
+        spec.predicates(1).spec == "snapshot @ event time => doesNotHaveProperty(p)",
+        spec.predicates(1).fingerprint == stringHash(spec.predicates(1).spec),
+        spec.predicates(1).isInstanceOf[NodePredicate.Snapshot],
+        spec.predicates(1).asInstanceOf[NodePredicate.Snapshot].selector == SnapshotSelector.EventTime
       )
     },
     test("A node predicate that uses history filter") {
+      import SomeOtherPredicateIdeas.*
+
       val description = "Has property set more than n times"
-      val spec = node(description) {
-        historyFilter(hasPropertySetMoreThanNTimes("k", 42))
+      val spec: NodeSpec = node(description) {
+        hasPropertySetMoreThanNTimes("k", 42)
       }
 
       assertTrue(
         spec.description == description,
+        spec.spec == "nodes: history => hasPropertySetMoreThanNTimes(k,42)",
+        spec.fingerprint == stringHash(spec.spec),
         spec.predicates.length == 1,
-        spec.predicates(0) match {
-          case NodePredicate.HistoryPredicate(_) => true
-          case _                                 => false
-        }
+        spec.predicates(0).spec == "history => hasPropertySetMoreThanNTimes(k,42)",
+        spec.predicates(0).fingerprint == stringHash(spec.predicates(0).spec),
+        spec.predicates(0).isInstanceOf[NodePredicate.History],
+        spec.predicates(0).fingerprint == stringHash(spec.predicates(0).spec)
       )
     }
-  )
+  ) @@ timed
