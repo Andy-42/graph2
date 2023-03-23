@@ -1,32 +1,15 @@
 package andy42.graph.sample.aptdetection
 
 import andy42.graph.model.*
+import andy42.graph.sample.IngestableJson
 import andy42.graph.services.*
 import zio.*
 import zio.json.*
 import zio.stream.{ZPipeline, ZStream}
+import zio.test.*
+import zio.test.TestAspect
 
 import java.nio.file.{Files, Paths}
-
-trait IngestableJson:
-  def eventTime: EventTime
-  def produceEvents: Vector[NodeMutationInput]
-
-object IngestableJson:
-  def ingestFromFile[T <: IngestableJson](path: String)(using
-      decoder: JsonDecoder[T]
-  ): ZIO[Graph, Throwable | UnpackFailure | PersistenceFailure, Unit] =
-    for
-      graph <- ZIO.service[Graph]
-      _ <- ZStream
-        .fromPath(Paths.get(path))
-        .via(ZPipeline.utf8Decode >>> ZPipeline.splitLines)
-        .map(_.fromJson[T])
-        .collect { case Right(endpoint) => endpoint } // FIXME: Discarding endpoint decode failures
-        .map(endpoint => graph.append(endpoint.eventTime, endpoint.produceEvents))
-        .runDrain
-    yield ()
-    
 
 case class Endpoint(
     pid: Int,
@@ -91,23 +74,91 @@ case class Network(
     dst_ip: String, // IPv4
     dst_port: Int, // uint16
     proto: String, // enum
-    detail: String, // nullable
+    detail: String | Null, // nullable
     time: Long, // epoch millis presumably
     sequence: String // appears to be integer
-)
+) extends IngestableJson:
+  override def eventTime: EventTime = time
+
+  override def produceEvents: Vector[NodeMutationInput] =
+    val srcId = NodeId.fromNamedValues("Source")(src_ip, src_port)
+    val dstId = NodeId.fromNamedValues("Destination")(dst_ip, dst_port)
+    val eventId = NodeId.fromNamedProduct("NetTraffic")(this)
+
+    // CREATE (src)-[:NET_TRAFFIC]->(event)-[:NET_TRAFFIC]->(dst)
+
+    Vector(
+      NodeMutationInput(
+        id = srcId,
+        events = Vector(
+          Event.PropertyAdded("ip", s"$src_ip:$src_port"),
+          Event.PropertyAdded("IP", ()),
+          Event.EdgeAdded(Edge("NET_TRAFFIC", eventId, EdgeDirection.Outgoing))
+        )
+      ),
+      NodeMutationInput(
+        id = eventId,
+        events = Vector(
+          Event.PropertyAdded("proto", proto),
+          Event.PropertyAdded("time", time),
+          Event.PropertyAdded("detail", detail),
+          Event.PropertyAdded("NetTraffic", ()),
+          Event.EdgeAdded(Edge("NET_TRAFFIC", dstId, EdgeDirection.Outgoing))
+        )
+      ),
+      NodeMutationInput(
+        id = dstId,
+        events = Vector(
+          Event.PropertyAdded("ip", s"$dst_ip:$dst_port"),
+          Event.PropertyAdded("IP", ())
+        )
+      )
+    )
 
 object Network:
   implicit val decoder: JsonDecoder[Network] = DeriveJsonDecoder.gen[Network]
 
-object SampleDataDecoder extends ZIOAppDefault:
+object SampleDataDecoder extends ZIOSpecDefault:
 
-  override def run: ZIO[Any, Throwable, Unit] =
+  val graphLayer: ULayer[Graph] =
+    (TestNodeRepository.layer ++
+      TestNodeCache.layer ++
+      TestStandingQueryEvaluation.layer ++
+      TestEdgeSynchronization.layer) >>> Graph.layer
 
-    val graphLayer: ULayer[Graph] =
-      (TestNodeRepository.layer ++
-        TestNodeCache.layer ++
-        TestStandingQueryEvaluation.layer ++
-        TestEdgeSynchronization.layer) >>> Graph.layer
-
-    given JsonDecoder[Endpoint] = Endpoint.decoder
-    IngestableJson.ingestFromFile[Endpoint]("sample-persistent-api-threat/endpoint.json").provide(graphLayer)
+  given JsonDecoder[Endpoint] = Endpoint.decoder
+  val endpointPath = "sample-persistent-api-threat/endpoint.json"
+  given JsonDecoder[Network] = Network.decoder
+  val networkPath = "sample-persistent-api-threat/network.json"
+  
+  val sampleEndpointId = NodeId.fromNamedValues("Process")(3428)
+  val sampleNetworkId = NodeId.fromNamedValues("Source")("10.1.2.195", 59487)
+  
+  
+  override def spec =
+    suite("Basic test of ingestion")(
+      test("???") {
+        for
+          graph <- ZIO.service[Graph]
+          graphLive = graph.asInstanceOf[GraphLive]
+          
+          _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)
+          _ <- IngestableJson.ingestFromFile[Network](networkPath)
+          
+          sampleEndpoint <- graphLive.nodeDataService.get(sampleEndpointId)
+          sampleNetwork <- graphLive.nodeDataService.get(sampleNetworkId)
+          
+          sampleEndpointHistory <- sampleEndpoint.history
+          sampleNetworkHistory <- sampleNetwork.history
+          
+          sampleEndpointCurrent <- sampleEndpoint.current
+          sampleNetworkCurrent <- sampleNetwork.current
+          
+          _ = println
+          
+        yield assertTrue(
+          sampleEndpoint != null,
+          sampleNetwork != null
+        )
+      }.provide(graphLayer.fresh)
+    ) @@ TestAspect.timed
