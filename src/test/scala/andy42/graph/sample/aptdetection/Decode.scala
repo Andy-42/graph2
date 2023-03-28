@@ -127,9 +127,12 @@ object SampleDataDecoder extends ZIOSpecDefault:
       TestEdgeSynchronization.layer) >>> Graph.layer
 
   given JsonDecoder[Endpoint] = Endpoint.decoder
-  val endpointPath = "sample-persistent-api-threat/endpoint.json"
   given JsonDecoder[Network] = Network.decoder
-  val networkPath = "sample-persistent-api-threat/network.json"
+
+  // Currently using only the first 1000 lines of the original file to limit test runtime
+  val filePrefix = "src/test/scala/andy42/graph/sample/aptdetection"
+  val endpointPath = s"$filePrefix/endpoint-first-1000.json"
+  val networkPath = s"$filePrefix/network-first-1000.json"
   
   val sampleEndpointId = NodeId.fromNamedValues("Process")(3428)
   val sampleNetworkId = NodeId.fromNamedValues("Source")("10.1.2.195", 59487)
@@ -137,26 +140,19 @@ object SampleDataDecoder extends ZIOSpecDefault:
   
   override def spec =
     suite("Basic test of ingestion")(
-      test("???") {
+      test("Ingest (part of) the data from the Quine APT Detection example") {
         for
           graph <- ZIO.service[Graph]
           graphLive = graph.asInstanceOf[GraphLive]
           
-          _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)
-          _ <- IngestableJson.ingestFromFile[Network](networkPath)
+          _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)(parallelism = 4)
+          _ <- IngestableJson.ingestFromFile[Network](networkPath)(parallelism = 4)
           
           sampleEndpoint <- graphLive.nodeDataService.get(sampleEndpointId)
           sampleNetwork <- graphLive.nodeDataService.get(sampleNetworkId)
           
-          sampleEndpointHistory <- sampleEndpoint.history
-          sampleNetworkHistory <- sampleNetwork.history
-          
-          sampleEndpointCurrent <- sampleEndpoint.current
-          sampleNetworkCurrent <- sampleNetwork.current
-          
-          _ = println
-          
         yield assertTrue(
+          // TODO: Should do more in depth analysis that the data was ingested as expected
           sampleEndpoint != null,
           sampleNetwork != null
         )

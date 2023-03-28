@@ -13,19 +13,17 @@ trait IngestableJson:
   def produceEvents: Vector[NodeMutationInput]
 
 object IngestableJson:
-  
-  def ingestFromFile[T <: IngestableJson](path: String)(using
-                                                        decoder: JsonDecoder[T]
+
+  def ingestFromFile[T <: IngestableJson](path: String)(parallelism: Int)(using
+      decoder: JsonDecoder[T]
   ): ZIO[Graph, Throwable | UnpackFailure | PersistenceFailure, Unit] =
     for
       graph <- ZIO.service[Graph]
       _ <- ZStream
         .fromPath(Paths.get(path))
         .via(ZPipeline.utf8Decode >>> ZPipeline.splitLines)
-        .take(100)
         .map(_.fromJson[T])
         .collect { case Right(endpoint) => endpoint } // FIXME: Discarding endpoint decode failures
-        .mapZIO(endpoint => graph.append(endpoint.eventTime, endpoint.produceEvents))
+        .mapZIOPar(parallelism)(endpoint => graph.append(endpoint.eventTime, endpoint.produceEvents))
         .runDrain
     yield ()
-    
