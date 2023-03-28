@@ -1,101 +1,58 @@
 package andy42.graph.matcher
 
-import andy42.graph.model.EdgeDirection
-import scala.util.hashing.MurmurHash3
-import andy42.graph.model.NodeId
-import scala.util.matching.Regex
 import scala.collection.mutable.ListBuffer
+import andy42.graph.model.*
+import scala.util.hashing.MurmurHash3.unorderedHash
 
-import andy42.graph.matcher.NodeSpecId
-case class EdgeSpec(description: String, predicates: Vector[EdgePredicate])
-
-trait EdgePredicate:
-  val description: String
-  val fingerprint: Int
-
-case class EdgeDirectionPredicate(description: String, f: EdgeDirection => Boolean, fingerprint: Int) extends EdgePredicate
-
-object EdgeDirectionPredicate:
-
-  def apply(description: String, f: EdgeDirection => Boolean): EdgeDirectionPredicate =
-    EdgeDirectionPredicate(
-      description = description,
-      fingerprint = MurmurHash3.productHash(("edge direction predicate", description)),
-      f = f
-    )
-
-  val isDirected = EdgeDirectionPredicate(
-    description = "is directed",
-    f = (ed: EdgeDirection) => ed != EdgeDirection.Undirected
-  )
-
-  val isDirectedOut = EdgeDirectionPredicate(
-    description = "is directed out",
-    f = (ed: EdgeDirection) => ed == EdgeDirection.Outgoing
-  )
-
-  val isDirectedIn = EdgeDirectionPredicate(
-    description = "is directed in",
-    (ed: EdgeDirection) => ed == EdgeDirection.Incoming
-  )
-
-  val isUnDirected = EdgeDirectionPredicate(
-    description = "is undirected",
-    (ed: EdgeDirection) => ed == EdgeDirection.Undirected
-  )
-
-  val any = EdgeDirectionPredicate(
-    description = "any direction",
-    f = (_: EdgeDirection) => true
-  )
-
+case class EdgeDirectionPredicate(
+    override val spec: String, 
+    f: EdgeDirection => Boolean) extends QueryElement
 
 case class EdgeKeyPredicate(
-    override val description: String,
-    override val fingerprint: Int,
+    override val spec: String,
     f: String => Boolean // Match the edge key
-) extends EdgePredicate
+) extends QueryElement
 
-object EdgeKeyPredicate:
+/** Predicates that constrain the relationships between two nodes.
+  *
+  * TODO: This doesn't support comparing the relationships beween two nodes, as in the time comparisons between two
+  * nodes, as in the APT Detection example:
+  * {{{
+  *        MATCH (p1)-[:EVENT]->(e1)-[:EVENT]->(f)<-[:EVENT]-(e2)<-[:EVENT]-(p2),
+  *          (f)<-[:EVENT]-(e3)<-[:EVENT]-(p2)-[:EVENT]->(e4)-[:EVENT]->(ip)
+  *        WHERE id(f) = $that.data.fileId
+  *          AND e1.type = "WRITE"
+  *          AND e2.type = "READ"
+  *          AND e3.type = "DELETE"
+  *          AND e4.type = "SEND"
+  *          AND e1.time < e2.time
+  *          AND e2.time < e3.time
+  *          AND e2.time < e4.time
+  * }}}
+  */
+case class EdgeSpec(
+    ordinal: Int = 0,
+    node1: NodePredicate,
+    node2: NodePredicate,
+    directionPredicate: EdgeDirectionPredicate,
+    edgeKeyPredicate: Option[EdgeKeyPredicate]
+) extends QueryElement:
 
-  def apply(description: String, f: String => Boolean): EdgeKeyPredicate =
-    EdgeKeyPredicate(
-      description = description,
-      fingerprint = MurmurHash3.productHash(("key predicate", description)),
-      f = f
-    )
+  override def spec: String = s"edge: ${node1.fingerprint} ${directionPredicate.spec} ${node2.fingerprint}" +
+    s"${edgeKeyPredicate.fold("")(p => s" key: ${p.spec}")}"
 
-  val any: EdgeKeyPredicate =
-    EdgeKeyPredicate(description = "any", f = (_: String) => true)
+case class EdgeSpecs(
+    edgeSpecs: Vector[EdgeSpec]
+) extends QueryElement:
+  override def spec: String = s"edges: ${edgeSpecs.map(_.spec).mkString(", ")}"
 
-  def is(s: String): EdgeKeyPredicate =
-    EdgeKeyPredicate(description = "is", f = (k: String) => k == s)
-
-  def oneOf(ss: Set[String]): EdgeKeyPredicate =
-    EdgeKeyPredicate(description = s"one of {${ss.toVector.sorted.mkString(",")}}", f = (k: String) => ss.contains(k))
-
-  def matches(regex: Regex): EdgeKeyPredicate =
-    EdgeKeyPredicate(description = s"matches ${regex.pattern}", f = (k: String) => regex.matches(k))
-
-  // TODO: Want isReflexive, but need to do that on EdgePredicate since you need to compare IDs  
-
-//case class EdgePredicate(
-//    nearNode: NodeSpecId,
-//    farNode: NodeSpecId,
-//    direction: EdgeDirectionPredicate,
-//    key: EdgeKeyPredicate
-//)
-
-
-case class EdgeSpecBuilder(
-    predicates: ListBuffer[EdgePredicate] = ListBuffer.empty
+case class EdgeSpecsBuilder(
+    predicates: ListBuffer[EdgeSpec] = ListBuffer.empty
 ):
-  def build: Vector[EdgePredicate] = predicates.toVector
-  def stage(predicate: EdgePredicate): Unit = predicates.append(predicate)
+  def build: Vector[EdgeSpec] = predicates.toVector
+  def stage(edgeSpec: EdgeSpec): Unit = predicates.append(edgeSpec)
 
-type EdgeSpecX = EdgeSpecBuilder ?=> Unit // TODO: Rename
-
-def edge(description: String)(body: EdgeSpecBuilder ?=> EdgePredicate): EdgeSpec =
-  given builder: EdgeSpecBuilder = EdgeSpecBuilder()
+def edges(description: String)(body: EdgeSpecsBuilder ?=> Unit): EdgeSpecs =
+  given builder: EdgeSpecsBuilder = EdgeSpecsBuilder()
   body
-  EdgeSpec(description = description, predicates = builder.build)
+  EdgeSpecs(edgeSpecs = builder.build)

@@ -2,7 +2,6 @@ package andy42.graph.matcher
 
 import andy42.graph.model.*
 
-import andy42.graph.matcher.{NodePredicate, SnapshotSelector}
 case class SnapshotQueryElement(spec: String, selector: SnapshotSelector, f: NodeSnapshot => Boolean)
 case class HistoryQueryElement(spec: String, f: NodeHistory => Boolean)
 
@@ -40,8 +39,8 @@ object NodePredicates:
 
   def hasProperty(k: String): NodeLocalSpecBuilder ?=> Unit =
     snapshotFilter(
-      s"hasProperty($k)", 
-      (ns: NodeSnapshot) => ns.properties.contains(k)
+      spec = s"hasProperty($k)", 
+      p = (ns: NodeSnapshot) => ns.properties.contains(k)
     )
 
   def doesNotHaveProperty(k: String): NodeLocalSpecBuilder ?=> Unit =
@@ -66,14 +65,14 @@ object SomeOtherPredicateIdeas:
 
   def hasPropertySetAtAnyPointInHistory(k: String): NodeLocalSpecBuilder ?=> Unit =
     historyFilter(
-      s"hasPropertySetAtAnyPointInHistory($k)", 
-      (ns: NodeHistory) => ns.exists(_.events.exists(matchesPropertyAdded(k)))
+      spec = s"hasPropertySetAtAnyPointInHistory($k)", 
+      p = (ns: NodeHistory) => ns.exists(_.events.exists(matchesPropertyAdded(k)))
     )
 
   def hasPropertySetMoreThanNTimes(k: String, n: Int): NodeLocalSpecBuilder ?=> Unit =
     historyFilter(
-      s"hasPropertySetMoreThanNTimes($k,$n)",
-      (ns: NodeHistory) => ns.foldLeft(0) { case (z, eventsAtTime) =>
+      spec = s"hasPropertySetMoreThanNTimes($k,$n)",
+      p = (ns: NodeHistory) => ns.foldLeft(0) { case (z, eventsAtTime) =>
         z + eventsAtTime.events.count(matchesPropertyAdded(k))
       } > n
     )

@@ -15,9 +15,8 @@ object NodePredicateDSLSpec extends ZIOSpecDefault:
   def spec: Spec[Sized, Nothing] = suite("NodePredicateDSL")(
     test("A node predicate that changes the snapshot selector") {
 
-      val description = "Property is currently set, but is not set at the event time"
       val spec: NodeSpec =
-        node(description) {
+        node {
           usingNodeCurrent
           hasProperty("p")
           usingEventTime
@@ -25,8 +24,7 @@ object NodePredicateDSLSpec extends ZIOSpecDefault:
         }
 
       assertTrue(
-        spec.description == description,
-        spec.spec == "nodes: snapshot @ node current => hasProperty(p), snapshot @ event time => doesNotHaveProperty(p)",
+        spec.spec == "node: snapshot @ node current => hasProperty(p), snapshot @ event time => doesNotHaveProperty(p)",
         spec.fingerprint == stringHash(spec.spec),
         spec.predicates.length == 2,
         spec.predicates(0).spec == "snapshot @ node current => hasProperty(p)",
@@ -42,14 +40,13 @@ object NodePredicateDSLSpec extends ZIOSpecDefault:
     test("A node predicate that uses history filter") {
       import SomeOtherPredicateIdeas.*
 
-      val description = "Has property set more than n times"
-      val spec: NodeSpec = node(description) {
-        hasPropertySetMoreThanNTimes("k", 42)
-      }
+      val spec: NodeSpec =
+        node {
+          hasPropertySetMoreThanNTimes("k", 42)
+        }
 
       assertTrue(
-        spec.description == description,
-        spec.spec == "nodes: history => hasPropertySetMoreThanNTimes(k,42)",
+        spec.spec == "node: history => hasPropertySetMoreThanNTimes(k,42)",
         spec.fingerprint == stringHash(spec.spec),
         spec.predicates.length == 1,
         spec.predicates(0).spec == "history => hasPropertySetMoreThanNTimes(k,42)",
