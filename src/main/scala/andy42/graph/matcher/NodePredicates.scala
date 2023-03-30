@@ -2,9 +2,6 @@ package andy42.graph.matcher
 
 import andy42.graph.model.*
 
-case class SnapshotQueryElement(spec: String, selector: SnapshotSelector, f: NodeSnapshot => Boolean)
-case class HistoryQueryElement(spec: String, f: NodeHistory => Boolean)
-
 object NodePredicates:
 
   // These select the ambient NodeSnapshot alignment with time, but do not add a predicate to the builder
@@ -43,6 +40,18 @@ object NodePredicates:
       p = (ns: NodeSnapshot) => ns.properties.contains(k)
     )
 
+  def hasProperty(k: String, v: PropertyValueType): NodeLocalSpecBuilder ?=> Unit =
+    snapshotFilter(
+      spec = s"hasPropertyWithValue($k,$v)",
+      p = (ns: NodeSnapshot) => ns.properties.get(k) == Some(v)
+    )
+
+  def labeled(k: String): NodeLocalSpecBuilder ?=> Unit =
+    snapshotFilter(
+      spec = s"labeled($k)",
+      p = (ns: NodeSnapshot) => ns.properties.get(k) == Some(())
+    )
+
   def doesNotHaveProperty(k: String): NodeLocalSpecBuilder ?=> Unit =
     snapshotFilter(
       s"doesNotHaveProperty($k)", 
@@ -56,7 +65,7 @@ object NodePredicates:
 object SomeOtherPredicateIdeas:
   import NodePredicates.{snapshotFilter, historyFilter}
 
-  def matchesPropertyAdded(k: String): Event => Boolean =
+  private def matchesPropertyAdded(k: String): Event => Boolean =
     (event: Event) =>
       event match {
         case Event.PropertyAdded(k, _) => true

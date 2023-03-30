@@ -10,13 +10,14 @@ import andy42.graph.matcher.SomeOtherPredicateIdeas.*
 import scala.util.hashing.MurmurHash3.stringHash
 
 import andy42.graph.matcher.{NodeSpec, NodePredicate, SnapshotSelector}
-object NodePredicateDSLSpec extends ZIOSpecDefault:
+
+object NodeSpecSpec extends ZIOSpecDefault:
 
   def spec: Spec[Sized, Nothing] = suite("NodePredicateDSL")(
     test("A node predicate that changes the snapshot selector") {
 
       val spec: NodeSpec =
-        node {
+        node("") {
           usingNodeCurrent
           hasProperty("p")
           usingEventTime
@@ -41,7 +42,7 @@ object NodePredicateDSLSpec extends ZIOSpecDefault:
       import SomeOtherPredicateIdeas.*
 
       val spec: NodeSpec =
-        node {
+        node("") {
           hasPropertySetMoreThanNTimes("k", 42)
         }
 

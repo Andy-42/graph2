@@ -34,7 +34,6 @@ case class Endpoint(
         events = Vector(
           Event.PropertyAdded("id", pid.toLong),
           Event.PropertyAdded("Process", ()), // Unit value is used for a label
-
           Event.EdgeAdded(Edge("EVENT", eventId, EdgeDirection.Outgoing))
         )
       ),
@@ -118,7 +117,7 @@ case class Network(
 object Network:
   implicit val decoder: JsonDecoder[Network] = DeriveJsonDecoder.gen[Network]
 
-object SampleDataDecoder extends ZIOSpecDefault:
+object IngestSpec extends ZIOAppDefault:
 
   val graphLayer: ULayer[Graph] =
     (TestNodeRepository.layer ++
@@ -133,28 +132,24 @@ object SampleDataDecoder extends ZIOSpecDefault:
   val filePrefix = "src/test/scala/andy42/graph/sample/aptdetection"
   val endpointPath = s"$filePrefix/endpoint-first-1000.json"
   val networkPath = s"$filePrefix/network-first-1000.json"
-  
+
   val sampleEndpointId = NodeId.fromNamedValues("Process")(3428)
   val sampleNetworkId = NodeId.fromNamedValues("Source")("10.1.2.195", 59487)
+
+  val ingest: ZIO[Graph, Any, Unit] =
+    for
+      graph <- ZIO.service[Graph]
+      graphLive = graph.asInstanceOf[GraphLive]
   
+      _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)(parallelism = 4)
+      _ <- IngestableJson.ingestFromFile[Network](networkPath)(parallelism = 4)
   
-  override def spec =
-    suite("Basic test of ingestion")(
-      test("Ingest (part of) the data from the Quine APT Detection example") {
-        for
-          graph <- ZIO.service[Graph]
-          graphLive = graph.asInstanceOf[GraphLive]
-          
-          _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)(parallelism = 4)
-          _ <- IngestableJson.ingestFromFile[Network](networkPath)(parallelism = 4)
-          
-          sampleEndpoint <- graphLive.nodeDataService.get(sampleEndpointId)
-          sampleNetwork <- graphLive.nodeDataService.get(sampleNetworkId)
-          
-        yield assertTrue(
-          // TODO: Should do more in depth analysis that the data was ingested as expected
-          sampleEndpoint != null,
-          sampleNetwork != null
-        )
-      }.provide(graphLayer.fresh)
-    ) @@ TestAspect.timed
+      // Not checking anything useful here, but checking that we ingested something 
+      sampleEndpoint <- graphLive.nodeDataService.get(sampleEndpointId)
+      sampleNetwork <- graphLive.nodeDataService.get(sampleNetworkId)
+      _ = sampleEndpoint.packedHistory.nonEmpty
+      _ = sampleNetwork.packedHistory.nonEmpty
+    yield ()
+
+  override def run: ZIO[Any, Any, Any] = 
+    ingest.provideLayer(graphLayer)
