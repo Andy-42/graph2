@@ -69,6 +69,7 @@ flowchart TD
     p2 --> |EVENT| e3
     p2 --> |EVENT| e4
     e4 --> |EVENT| ip
+  
 ```
 
 Currently, the only part of this that can't be represented in the existing scheme are the
@@ -83,6 +84,7 @@ time predicates:
 This will need to be handled by another layer that is evaluated over a complete matched node set.
 Also, the comparison logic here looks questionable - shouldn't this use `<=` since these events
 could conceivably happen in rapid succession and could happen in within the time resolution of 1 ms.
+
 
 # Edge predicate re-write
 

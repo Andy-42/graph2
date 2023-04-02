@@ -1,25 +1,19 @@
 package andy42.graph.matcher
 
-import andy42.graph.services.Graph
-
 import andy42.graph.model.*
-import zio.stm.*
+import andy42.graph.services.Graph
 import zio.*
+import zio.stm.*
 
-import andy42.graph.matcher.SnapshotSelector
 trait MatcherDataViewCache:
-  def getSnapshot(id: NodeId, selector: SnapshotSelector): NodeIO[NodeSnapshot]
-  def getHistory(id: NodeId): NodeIO[NodeHistory]
+  def getSnapshot(id: NodeId, time: EventTime): NodeIO[NodeSnapshot]
 
-type SnapshotCacheKey = (NodeId, SnapshotSelector)
+type SnapshotCacheKey = (NodeId, EventTime)
 
 case class MatcherDataViewCacheLive(
     nodeCache: MatcherNodeCache,
     snapshotCache: TMap[SnapshotCacheKey, NodeSnapshot],
-    historyCache: TMap[NodeId, NodeHistory],
-    snapshotCacheInFlight: TSet[SnapshotCacheKey],
-    historyCacheInFlight: TSet[NodeId],
-    eventTime: EventTime
+    snapshotCacheInFlight: TSet[SnapshotCacheKey]
 ) extends MatcherDataViewCache {
 
   private def acquireSnapshotCachePermit(id: => SnapshotCacheKey): UIO[SnapshotCacheKey] =
@@ -33,75 +27,34 @@ case class MatcherDataViewCacheLive(
   private def withSnapshotCachePermit(id: => SnapshotCacheKey): ZIO[Scope, Nothing, SnapshotCacheKey] =
     ZIO.acquireRelease(acquireSnapshotCachePermit(id))(releaseSnapshotCachePermit(_))
 
-  private def acquireHistoryCachePermit(id: => NodeId): UIO[NodeId] =
-    STM
-      .ifSTM(historyCacheInFlight.contains(id))(STM.retry, historyCacheInFlight.put(id).map(_ => id))
-      .commit
-
-  private def releaseHistoryCachePermit(id: => NodeId): UIO[Unit] =
-    historyCacheInFlight.delete(id).commit
-
-  // TODO: Could have separate permit schemes for history and snapshotstd
-  private def withHistoryCachePermit(id: => NodeId): ZIO[Scope, Nothing, NodeId] =
-    ZIO.acquireRelease(acquireHistoryCachePermit(id))(releaseHistoryCachePermit(_))
-
-  private def getFromNodeCacheAndCacheSnapshot(id: NodeId, selector: SnapshotSelector): NodeIO[NodeSnapshot] =
+  private def getFromNodeCacheAndCacheSnapshot(id: NodeId, time: EventTime): NodeIO[NodeSnapshot] =
     for
       node <- nodeCache.get(id)
-      snapshot <- selector match {
-        case SnapshotSelector.NodeCurrent  => node.current
-        case SnapshotSelector.EventTime    => node.atTime(eventTime)
-        case SnapshotSelector.AtTime(time) => node.atTime(time)
-      }
-      _ <- snapshotCache.put((id, selector), snapshot).commit
+      snapshot <- node.atTime(time)
+      _ <- snapshotCache.put((id, time), snapshot).commit
     yield snapshot
-
-  private def getHistoryFromNodeCacheAndCacheHistory(id: NodeId): NodeIO[NodeHistory] =
-    for
-      node <- nodeCache.get(id)
-      history <- node.history
-      _ <- historyCache.put(id, history).commit
-    yield history
 
   override def getSnapshot(
       id: NodeId,
-      selector: SnapshotSelector
+      time: EventTime
   ): NodeIO[NodeSnapshot] =
     ZIO.scoped {
-      val key = (id, selector)
+      val key = (id, time)
       for
         _ <- withSnapshotCachePermit(key)
-
         optionSnapshot <- snapshotCache.get(key).commit
-        snapshot <- optionSnapshot.fold(getFromNodeCacheAndCacheSnapshot(id, selector))(ZIO.succeed)
+        snapshot <- optionSnapshot.fold(getFromNodeCacheAndCacheSnapshot(id, time))(ZIO.succeed)
       yield snapshot
-    }
-
-  override def getHistory(
-      id: NodeId
-  ): NodeIO[NodeHistory] =
-    ZIO.scoped {
-      for
-        _ <- withHistoryCachePermit(id)
-
-        optionHistory <- historyCache.get(id).commit
-        history <- optionHistory.fold(getHistoryFromNodeCacheAndCacheHistory(id))(ZIO.succeed)
-      yield history
     }
 }
 
 object MatcherDataViewCache:
-  def make(nodeCache: MatcherNodeCache, eventTime: EventTime): UIO[MatcherDataViewCache] =
+  def make(nodeCache: MatcherNodeCache): UIO[MatcherDataViewCache] =
     for
       snapshotCache <- TMap.empty[SnapshotCacheKey, NodeSnapshot].commit
-      historyCache <- TMap.empty[NodeId, NodeHistory].commit
       snapshotCacheInFlight <- TSet.empty[SnapshotCacheKey].commit
-      historyCacheInFlight <- TSet.empty[NodeId].commit
     yield MatcherDataViewCacheLive(
       nodeCache = nodeCache,
       snapshotCache = snapshotCache,
-      historyCache = historyCache,
-      snapshotCacheInFlight = snapshotCacheInFlight,
-      historyCacheInFlight = historyCacheInFlight,
-      eventTime = eventTime
+      snapshotCacheInFlight = snapshotCacheInFlight
     )

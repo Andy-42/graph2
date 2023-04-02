@@ -2,59 +2,24 @@ package andy42.graph.matcher
 
 import andy42.graph.model.EdgeDirection
 
-import scala.util.hashing.MurmurHash3
-import andy42.graph.model.NodeId
-
-import scala.annotation.targetName
 import scala.util.matching.Regex
-import scala.collection.mutable.ListBuffer
 
-case class EdgeSpecs(
-                      edgeSpecs: Vector[EdgeDirectionPredicate]
-                    ) extends QueryElement:
-  override def spec: String = s"edges: ${edgeSpecs.map(_.spec).mkString(", ")}"
+/** Create a new edge specification.
+  */
+object EdgeSpecs:
 
-case class EdgeDirectionPredicate(
-    node1: NodeSpec,
-    node2: NodeSpec,
-    directionSpec: String,
-    f: EdgeDirection => Boolean,
-    edgeKeyPredicates: Vector[EdgeKeyPredicate] = Vector.empty
-) extends QueryElement:
+  def directedEdge(from: NodeSpec, to: NodeSpec): EdgeSpec =
+    EdgeSpec(from, to, (ed: EdgeDirection) => ed != EdgeDirection.Outgoing)
 
-  override def spec: String =
-    s"${node1.fingerprint} $directionSpec ${node2.fingerprint}" +
-      s"key: ${edgeKeyPredicates.map(_.spec).mkString(", ")}"
+/** These extensions add an edge predicate to an EdgeSpec.
+  */
+extension (edgeSpec: EdgeSpec)
 
-  def edgeKeyIs(s: String): EdgeDirectionPredicate =
-    copy(edgeKeyPredicates =
-      edgeKeyPredicates :+
-        EdgeKeyPredicate(
-          spec = "is",
-          f = (k: String) => k == s
-        )
-    )
+  def edgeKeyIs(s: String): EdgeSpec =
+    edgeSpec.withKeyPredicate((k: String) => k == s)
 
-  def edgeKeyIsOneOf(ss: Set[String]): EdgeDirectionPredicate =
-    copy(edgeKeyPredicates =
-      edgeKeyPredicates :+
-        EdgeKeyPredicate(
-          spec = s"one of {${ss.toVector.sorted.mkString(",")}}",
-          f = (k: String) => ss.contains(k)
-        )
-    )
+  def edgeKeyIsOneOf(ss: Set[String]): EdgeSpec =
+    edgeSpec.withKeyPredicate((k: String) => ss.contains(k))
 
-  def edgeKeyMatches(regex: Regex): EdgeDirectionPredicate =
-    copy(edgeKeyPredicates =
-      edgeKeyPredicates :+
-        EdgeKeyPredicate(
-          spec = s"matches ${regex.pattern}",
-          f = (k: String) => regex.matches(k)
-        )
-    )
-
-case class EdgeKeyPredicate(
-    override val spec: String,
-    f: String => Boolean // Match the edge key
-) extends QueryElement
-
+  def edgeKeyMatches(regex: Regex): EdgeSpec =
+    edgeSpec.withKeyPredicate((k: String) => regex.matches(k))
