@@ -10,7 +10,6 @@ that only the `endpoint.json` data is relevant to this example.
 - Added `EndpointEvent` label on those nodes (might not be necessary, revisit this)
 - TODO: Use a different key on the events - reduces number of nodes to be matched
 
-
 Here is the original standing query from the Quine APT Detection example:
 ```yaml
 standingQueries:
@@ -50,41 +49,37 @@ standingQueries:
 Here is an graphical representation of this query:
 ```mermaid
 flowchart TD
-    p1[p1 label:Process] %% Added: Process label constraint
-    p2[p2 label:Process] %% Added: Process label constraint
-    e1[e1 type:WRITE\nlabel:EndpointEvent] %% Added: EndpointEvent label constraint
-    e2[e2 type:READ\nlabel:EndpointEvent] %% Added: EndpointEvent label constraint
-    e3[e3 type:DELETE\nlabel:EndpointEvent] %% Added: EndpointEvent label constraint
-    e4[e4 type:SEND\nlabel:EndpointEvent] %% Added: EndpointEvent label constraint
-    
-    f[f] %% TODO: For output, expecting this node must have `time` and `data` properties
-    ip[ip] %% TODO: For output, expecting this node to have an object property
-
-    p1 --> |EVENT| e1
-    e1 --> |EVENT| f
-    e2 --> |EVENT| f
-    p2 --> |EVENT| e2
-
-    e3 --> |EVENT| f
-    p2 --> |EVENT| e3
-    p2 --> |EVENT| e4
-    e4 --> |EVENT| ip
-  
+subgraph Subgraph["APT Detection: write.time <= read.time <= delete.time <= sendTime"]
+ip[Target of a SEND event\nproperty: object]
+e1[Event 1\nproperty: type = WRITE\nlabel: EndpointEvent]
+f[File\nproperty: time\nproperty: data]
+e4[Event 4\nproperty: type = SEND\nlabel: EndpointEvent]
+e3[Event 3\nproperty: type = DELETE\nlabel: EndpointEvent]
+p2[Process 2]
+e2[Event 2\nproperty: type = READ\nlabel: EndpointEvent]
+p1[Process 1]
+p1 --> |EVENT| e1
+e1 --> |EVENT| f
+p2 --> |EVENT| e2
+e2 --> |EVENT| f
+p2 --> |EVENT| e3
+e3 --> |EVENT| f
+p2 --> |EVENT| e4
+e4 --> |EVENT| ip
+end
 ```
 
-Currently, the only part of this that can't be represented in the existing scheme are the
-time predicates:
+This also adds property existence qualifiers on the the 
+*Target of a SEND event* and *File* nodes. These properties
+are known to be used for output (i.e., for analysis of graph matches)
+so we include predicates for them to make this clearer.
+happen in within the time resolution of 1 ms.
 
-```yaml
-            AND e1.time < e2.time
-            AND e2.time < e3.time
-            AND e2.time < e4.time
-```
-
-This will need to be handled by another layer that is evaluated over a complete matched node set.
-Also, the comparison logic here looks questionable - shouldn't this use `<=` since these events
-could conceivably happen in rapid succession and could happen in within the time resolution of 1 ms.
-
+The time comparisons are represented as a post-filter expression
+(which is included in the subgraph description).
+This mechanism allows for general filter predicates to be constructed
+on subgraph that has been fully matched on the node and
+edge predicates.
 
 # Edge predicate re-write
 

@@ -4,12 +4,9 @@ import andy42.graph.matcher
 import andy42.graph.model.*
 import zio.ZIO
 
-type NodePredicate = NodeSnapshot ?=> Boolean
-type EdgeDirectionPredicate = EdgeDirection => Boolean
-type EdgeKeyPredicate = String => Boolean
-
-trait SnapshotProvider:
-  def get(node: NodeSpec): NodeIO[NodeSnapshot]
+trait NodePredicate:
+  def p: NodeSnapshot ?=> Boolean
+  def mermaid: String
 
 /** A specification for the node. This spec constrains using the properties and edges of the node itself, without
   * traversing edges or referencing the the contents of any other node.
@@ -19,39 +16,79 @@ trait SnapshotProvider:
   */
 case class NodeSpec(
     name: String,
-    predicates: Vector[NodePredicate]
+    description: String,
+    predicates: Vector[NodePredicate] = Vector.empty
 ):
+  def withNodePredicate(nodePredicate: NodePredicate): NodeSpec =
+    copy(predicates = predicates :+ nodePredicate)
+  
   /* An unconstrained node has no predicates specified. An unconstrained node for every possible NodeId is always
    * considered to exist in the graph, which is significant in optimizing standing query evaluation. */
   def isUnconstrained: Boolean = predicates.isEmpty
 
-  def matches(id: NodeId, time: EventTime): MatcherDataViewCache ?=> NodeIO[Boolean] =
-    if (isUnconstrained) ZIO.succeed(true)
-    else
-      for snapshot <- summon[matcher.MatcherDataViewCache].getSnapshot(id, time)
-      yield {
-        given NodeSnapshot = snapshot
-        predicates.forall((predicate: NodePredicate) => predicate)
-      }
+  val allPredicatesMatch: NodeSnapshot ?=> Boolean = predicates.forall(_.p)
 
-def node(name: String)(predicates: NodePredicate*): NodeSpec =
-  NodeSpec(name = name, predicates = predicates.toVector)
+  def matches(node: Node, time: EventTime): NodeIO[Boolean] =
+    if isUnconstrained then ZIO.succeed(true)
+    else
+      for snapshot <- node.atTime(time)
+      yield allPredicatesMatch(using snapshot)
+
+  def matches(id: NodeId, time: EventTime): MatcherDataViewCache ?=> NodeIO[Boolean] =
+    if isUnconstrained then ZIO.succeed(true)
+    else
+      for snapshot <- summon[MatcherDataViewCache].getSnapshot(id, time)
+      yield allPredicatesMatch(using snapshot)
+
+  def predicatesMermaid: String = predicates.map("\\n" + _.mermaid).mkString
+  def mermaid: String = s"$name[$description$predicatesMermaid]"
+
+def node(name: String, description: String): NodeSpec =
+  NodeSpec(name = name, description = description)
+
+trait EdgeKeyPredicate:
+  def p(k: String): Boolean
+  def mermaid: String
 
 case class EdgeSpec(
-    node1: NodeSpec,
-    node2: NodeSpec,
-    edgeDirection: EdgeDirectionPredicate,
+    direction: EdgeDirectionPredicate,
     edgeKey: Vector[EdgeKeyPredicate] = Vector.empty
 ):
   def withKeyPredicate(p: EdgeKeyPredicate): EdgeSpec =
     copy(edgeKey = edgeKey :+ p)
 
-case class SubgraphSpec(
-    edges: Vector[EdgeSpec],
-    filter: Option[SnapshotProvider ?=> NodeIO[Boolean]] = None
-):
-  def where(f: => SnapshotProvider ?=> NodeIO[Boolean]): SubgraphSpec =
-    copy(filter = Some(f))
+  def reverse: EdgeSpec =
+    copy(direction = direction.reverse)
 
-def subgraph(edgeSpecs: EdgeSpec*): SubgraphSpec =
-  SubgraphSpec(edges = edgeSpecs.toVector)
+  def keySpec = edgeKey.map(_.mermaid).mkString("\n")
+  def mermaid = s"${direction.from.name} ${direction.mermaid} |$keySpec| ${direction.to.name}"
+
+trait SubgraphPostFilter:
+  def p: SnapshotProvider ?=> NodeIO[Boolean]
+  def description: String
+
+case class SubgraphSpec(
+    name: String,
+    edges: Vector[EdgeSpec],
+    filter: Option[SubgraphPostFilter] = None
+):
+  def where(filter: SubgraphPostFilter): SubgraphSpec =
+    copy(filter = Some(filter))
+
+  val nodeMermaid =
+    edges.flatMap { case edge: EdgeSpec => Vector(edge.direction.from, edge.direction.to) }
+      .map(spec => spec.name -> spec).toMap.values
+      .map(_.mermaid)
+      .mkString("\n")
+
+  
+  val filterMermaid = name + filter.fold("")(filter => ": " + filter.description)
+  def subgraphStart = s"subgraph Subgraph[\"$filterMermaid\"]" 
+  def subgraphEnd = "end"
+  
+  
+  def edgeMermaid: String = edges.map(_.mermaid).mkString("\n")
+  def mermaid: String = s"flowchart TD\n$subgraphStart\n$nodeMermaid\n$edgeMermaid\n$subgraphEnd"
+
+def subgraph(name: String)(edgeSpecs: EdgeSpec*): SubgraphSpec =
+  SubgraphSpec(name = name, edges = edgeSpecs.toVector)

@@ -2,19 +2,24 @@ package andy42.graph.matcher
 
 import andy42.graph.model.*
 
-/**
- * Predicates that can be used within a NodeSpec to constrain the node matching.
- */
-object NodePredicates:
+case class NodeHasPropertyPredicate(k: String) extends NodePredicate:
+  override def p: NodeSnapshot ?=> Boolean = summon[NodeSnapshot].properties.contains(k)
+  override def mermaid: String = s"property: $k"
 
-  def hasProperty(k: String): NodeSnapshot ?=> NodePredicate =
-    summon[NodeSnapshot].properties.contains(k)
+case class NodeHasPropertyWithValue(k: String, v: PropertyValueType) extends NodePredicate:
+  override def p: NodeSnapshot ?=> Boolean = summon[NodeSnapshot].properties.get(k) == Some(v)
+  override def mermaid: String = s"property: $k = $v"
 
-  def hasProperty(k: String, v: PropertyValueType): NodeSnapshot ?=> NodePredicate =
-    summon[NodeSnapshot].properties.get(k).contains(v)
-
-  def isLabeled(k: String): NodeSnapshot ?=> NodePredicate =
-    summon[NodeSnapshot].properties.get(k).contains(())
-
-  def doesNotHaveProperty(k: String): NodeSnapshot ?=> NodePredicate =
-    !summon[NodeSnapshot].properties.contains(k)
+case class IsLabeled(label: String) extends NodePredicate:
+  override def p: NodeSnapshot ?=> Boolean = summon[NodeSnapshot].properties.get(label) == Some(())
+  override def mermaid: String = s"label: $label"
+  
+extension (nodeSpec: NodeSpec)
+  def hasProperty(k: String): NodeSpec =
+    nodeSpec.withNodePredicate(NodeHasPropertyPredicate(k))
+    
+  def hasProperty(k: String, v: PropertyValueType): NodeSpec =
+    nodeSpec.withNodePredicate(NodeHasPropertyWithValue(k, v))
+    
+  def isLabeled(label: String): NodeSpec =
+    nodeSpec.withNodePredicate(IsLabeled(label))  
