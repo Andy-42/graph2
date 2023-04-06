@@ -50,9 +50,9 @@ Here is an graphical representation of this query:
 ```mermaid
 flowchart TD
 subgraph Subgraph["APT Detection: write.time <= read.time <= delete.time <= sendTime"]
-ip[Target of a SEND event\nproperty: object]
+ip[Target of a SEND event]
 e1[Event 1\nproperty: type = WRITE\nlabel: EndpointEvent]
-f[File\nproperty: time\nproperty: data]
+f[File]
 e4[Event 4\nproperty: type = SEND\nlabel: EndpointEvent]
 e3[Event 3\nproperty: type = DELETE\nlabel: EndpointEvent]
 p2[Process 2]

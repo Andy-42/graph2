@@ -11,7 +11,7 @@ object StandingQuery extends App:
   val p2 = node("p2", "Process 2")
 
   val f = node("f", "File")
-    .hasProperty("time").hasProperty("data") // required for output
+    //.hasProperty("time").hasProperty("data") // required for output
 
   val writeEvent = node("e1", "Event 1")
     .hasProperty("type", "WRITE")
@@ -27,7 +27,7 @@ object StandingQuery extends App:
     .isLabeled("EndpointEvent")
 
   val ip = node("ip", "Target of a SEND event")
-    .hasProperty("object") // required for output
+    //.hasProperty("object") // required for output
 
   import EdgeSpecs.directedEdge
 

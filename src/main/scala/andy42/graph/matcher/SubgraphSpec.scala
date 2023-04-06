@@ -19,6 +19,8 @@ case class NodeSpec(
     description: String,
     predicates: Vector[NodePredicate] = Vector.empty
 ):
+  require(name.nonEmpty)
+  
   def withNodePredicate(nodePredicate: NodePredicate): NodeSpec =
     copy(predicates = predicates :+ nodePredicate)
   
