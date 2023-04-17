@@ -1,6 +1,6 @@
 package andy42.graph.services
 
-import andy42.graph.matcher.NodeMatches
+import andy42.graph.matcher.MatchingNodes
 import andy42.graph.model.EventTime
 import zio.*
 import zio.stream.ZStream

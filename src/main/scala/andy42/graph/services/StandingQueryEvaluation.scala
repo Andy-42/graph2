@@ -1,12 +1,10 @@
 package andy42.graph.services
 
-import andy42.graph.matcher.{Matcher, NodeMatches, SubgraphSpec}
+import andy42.graph.matcher.{Matcher, MatchingNodes, SubgraphSpec}
 import andy42.graph.model.*
 import zio.*
-import zio.stm.{STM, TQueue}
-import zio.stream.{UStream, ZStream}
 
-case class SubgraphMatch(time: EventTime, subgraphSpec: SubgraphSpec, nodeMatches: List[NodeMatches])
+case class SubgraphMatch(time: EventTime, subgraphSpec: SubgraphSpec, nodeMatches: List[MatchingNodes])
 
 /** Observe a node that is changed.
   */
@@ -22,8 +20,7 @@ trait StandingQueryEvaluation:
       time: EventTime,
       changes: Vector[NodeMutationOutput]
   ): NodeIO[Unit]
-
-  // TODO: Need more than just SubgraphMatch Map - need time, SubgraphSpec.name
+  
   def output: Hub[SubgraphMatch]
 
 // TODO: s/b able to have multiple standing queries?
@@ -99,7 +96,7 @@ final case class StandingQueryEvaluationLive(graph: Graph, subgraphSpec: Subgrap
     for
       matcher <- Matcher.make(time, graph, subgraphSpec, changedNodes)
       nodeMatches <- matcher.matchNodes(changedNodes.map(_.id))
-      _ <- if nodeMatches.nonEmpty then hub.offer(SubgraphMatch(time, subgraphSpec, nodeMatches)) else  ZIO.unit
+      _ <- if nodeMatches.nonEmpty then hub.offer(SubgraphMatch(time, subgraphSpec, nodeMatches)) else ZIO.unit
     yield ZIO.unit
 
 object StandingQueryEvaluation:

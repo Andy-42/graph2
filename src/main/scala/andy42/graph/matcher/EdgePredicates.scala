@@ -54,8 +54,8 @@ extension (edgeSpec: EdgeSpec)
 
 /** Matcher extensions */
 extension (edgeSpec: EdgeSpec)
-  def someLocalMatchExists: NodeSnapshot ?=> Boolean =
-    summon[NodeSnapshot].edges.exists(isLocalMatch)
+  def someShallowMatchExists: NodeSnapshot ?=> Boolean =
+    summon[NodeSnapshot].edges.exists(isShallowMatch)
 
-  def isLocalMatch(edge: Edge): NodeSnapshot ?=> Boolean =
+  def isShallowMatch(edge: Edge): NodeSnapshot ?=> Boolean =
     edgeSpec.direction.p(edge.direction) && edgeSpec.edgeKey.forall(_.p(edge.k))
