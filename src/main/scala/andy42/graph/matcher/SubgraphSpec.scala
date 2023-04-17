@@ -4,6 +4,8 @@ import andy42.graph.matcher
 import andy42.graph.model.*
 import zio.ZIO
 
+import scala.annotation.tailrec
+
 trait NodePredicate:
   def p: NodeSnapshot ?=> Boolean
   def mermaid: String
@@ -17,13 +19,13 @@ trait NodePredicate:
 case class NodeSpec(
     name: String,
     description: String,
-    predicates: Vector[NodePredicate] = Vector.empty
+    predicates: List[NodePredicate] = Nil
 ):
   require(name.nonEmpty)
-  
+
   def withNodePredicate(nodePredicate: NodePredicate): NodeSpec =
     copy(predicates = predicates :+ nodePredicate)
-  
+
   /* An unconstrained node has no predicates specified. An unconstrained node for every possible NodeId is always
    * considered to exist in the graph, which is significant in optimizing standing query evaluation. */
   def isUnconstrained: Boolean = predicates.isEmpty
@@ -54,7 +56,7 @@ trait EdgeKeyPredicate:
 
 case class EdgeSpec(
     direction: EdgeDirectionPredicate,
-    edgeKey: Vector[EdgeKeyPredicate] = Vector.empty
+    edgeKey: List[EdgeKeyPredicate] = Nil
 ):
   def withKeyPredicate(p: EdgeKeyPredicate): EdgeSpec =
     copy(edgeKey = edgeKey :+ p)
@@ -71,26 +73,71 @@ trait SubgraphPostFilter:
 
 case class SubgraphSpec(
     name: String,
-    edges: Vector[EdgeSpec],
+    edges: List[EdgeSpec],
     filter: Option[SubgraphPostFilter] = None
 ):
+
   def where(filter: SubgraphPostFilter): SubgraphSpec =
     copy(filter = Some(filter))
 
   val nodeMermaid =
-    edges.flatMap { case edge: EdgeSpec => Vector(edge.direction.from, edge.direction.to) }
-      .map(spec => spec.name -> spec).toMap.values
+    edges
+      .flatMap { case edge: EdgeSpec => List(edge.direction.from, edge.direction.to) }
+      .map(spec => spec.name -> spec)
+      .toMap
+      .values
       .map(_.mermaid)
       .mkString("\n")
 
-  
   val filterMermaid = name + filter.fold("")(filter => ": " + filter.description)
-  def subgraphStart = s"subgraph Subgraph[\"$filterMermaid\"]" 
+  def subgraphStart = s"subgraph Subgraph[\"$filterMermaid\"]"
   def subgraphEnd = "end"
-  
-  
+
   def edgeMermaid: String = edges.map(_.mermaid).mkString("\n")
   def mermaid: String = s"flowchart TD\n$subgraphStart\n$nodeMermaid\n$edgeMermaid\n$subgraphEnd"
 
+  // TODO: Validate that names are unique
+  val allNodeSpecs: List[NodeSpec] =
+    for
+      edgeSpec <- edges
+      fromAndToSpecs <- List(edgeSpec.direction.from, edgeSpec.direction.to)
+    yield fromAndToSpecs
+
+  val allNodeSpecNames: List[String] = allNodeSpecs.map(_.name)
+
+  val nameToNodeSpec: Map[String, NodeSpec] = allNodeSpecs.map(node => node.name -> node).toMap
+
+  val incomingEdges: Map[String, List[EdgeSpec]] =
+    allNodeSpecNames.map(nodeSpecName => nodeSpecName -> edges.filter(_.direction.to.name == nodeSpecName)).toMap
+
+  val outgoingEdges: Map[String, List[EdgeSpec]] =
+    allNodeSpecNames.map(nodeSpecName => nodeSpecName -> edges.filter(_.direction.from.name == nodeSpecName)).toMap
+
+  def allConnectedNodes(startNode: String): Set[String] =
+
+    def visit(current: String = startNode, visited: Set[String] = Set.empty): Set[String] =
+      if visited.contains(current) then visited
+      else
+        outgoingEdges(startNode)
+          .map(_.direction.to.name)
+          .foldLeft(visited)((visited, farNode) => visit(farNode, visited))
+
+    visit()
+
+  /** A valid edge spec will have exactly one (fully) connected subgraph */
+  def connectedSubgraphs: List[Set[String]] =
+
+    @tailrec
+    def accumulate(allSpecs: Set[String] = allNodeSpecNames.toSet, r: List[Set[String]] = Nil): List[Set[String]] =
+      if allSpecs.isEmpty then r
+      else
+        val nextGroup = allConnectedNodes(allSpecs.head)
+        val remaining = allSpecs -- nextGroup
+
+        if remaining.isEmpty then nextGroup :: r
+        else accumulate(remaining, nextGroup :: r)
+
+    accumulate()
+
 def subgraph(name: String)(edgeSpecs: EdgeSpec*): SubgraphSpec =
-  SubgraphSpec(name = name, edges = edgeSpecs.toVector)
+  SubgraphSpec(name = name, edges = edgeSpecs.toList)

@@ -1,11 +1,12 @@
 package andy42.graph.services
 
-import andy42.graph.model.{Event, EventTime, EventsAtTime, Node, NodeId, UnpackFailure}
+import andy42.graph.matcher.{Matcher, NodeMatches, SubgraphSpec}
+import andy42.graph.model.*
 import zio.*
-import zio.stm.STM
-import zio.stm.TQueue
+import zio.stm.{STM, TQueue}
+import zio.stream.{UStream, ZStream}
 
-import andy42.graph.model.NodeIO
+case class SubgraphMatch(time: EventTime, subgraphSpec: SubgraphSpec, nodeMatches: List[NodeMatches])
 
 /** Observe a node that is changed.
   */
@@ -22,9 +23,13 @@ trait StandingQueryEvaluation:
       changes: Vector[NodeMutationOutput]
   ): NodeIO[Unit]
 
-  // TODO: How to get the output stream?
+  // TODO: Need more than just SubgraphMatch Map - need time, SubgraphSpec.name
+  def output: Hub[SubgraphMatch]
 
-final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQueryEvaluation:
+// TODO: s/b able to have multiple standing queries?
+
+final case class StandingQueryEvaluationLive(graph: Graph, subgraphSpec: SubgraphSpec, hub: Hub[SubgraphMatch])
+    extends StandingQueryEvaluation:
 
   /** Match the node change against all standing queries.
     *
@@ -40,19 +45,17 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
       time: EventTime,
       mutations: Vector[NodeMutationOutput]
   ): NodeIO[Unit] =
-    // TODO: Config, no match on only far edge events.
-
     for
       changedNodes <- allAffectedNodes(time, mutations)
       _ <- matchAgainstStandingQueries(time, changedNodes)
     yield ()
 
-  /**
-    * Get the new state for all nodes that were modified in this group of changes.
-    * The Graph will pass the new node states after the changes have been applied, but since
-    * it will not include any far edge events (since that is done in an eventually-consistent way),
-    * so we retrieve any nodes affected by edge events and patch them as though the far edges had been
-    * modified.
+  override def output: Hub[SubgraphMatch] = hub
+
+  /** Get the new state for all nodes that were modified in this group of changes. The Graph will pass the new node
+    * states after the changes have been applied, but since it will not include any far edge events (since that is done
+    * in an eventually-consistent way), so we retrieve any nodes affected by edge events and patch them as though the
+    * far edges had been modified.
     */
   private def allAffectedNodes(
       time: EventTime,
@@ -90,17 +93,18 @@ final case class StandingQueryEvaluationLive(graph: Graph) extends StandingQuery
     yield updatedNodes
 
   private def matchAgainstStandingQueries(
-    time: EventTime,
-    changedNodes: Vector[Node]
-  ): NodeIO[Unit] = ???
-  // for each node in changedNodes and each standing query, match the subgraph against the standing query
-  // The keys in the initial changedNode are the ones that are matched.
-  // As matching proceeds, accumulate all the nodes visited in a cache
+      time: EventTime,
+      changedNodes: Vector[Node]
+  ): NodeIO[Unit] =
+    for
+      matcher <- Matcher.make(time, graph, subgraphSpec, changedNodes)
+      nodeMatches <- matcher.matchNodes(changedNodes.map(_.id))
+      _ <- if nodeMatches.nonEmpty then hub.offer(SubgraphMatch(time, subgraphSpec, nodeMatches)) else  ZIO.unit
+    yield ZIO.unit
 
 object StandingQueryEvaluation:
-  val layer: URLayer[Graph, StandingQueryEvaluation] =
-    ZLayer {
-      for graph <- ZIO.service[Graph]
-        // TODO: Service that sinks the standing query output stream
-      yield StandingQueryEvaluationLive(graph)
-    }
+  def make(subgraphSpec: SubgraphSpec): URIO[Graph, StandingQueryEvaluation] =
+    for
+      graph <- ZIO.service[Graph]
+      hub <- Hub.unbounded[SubgraphMatch]
+    yield StandingQueryEvaluationLive(graph, subgraphSpec, hub)
