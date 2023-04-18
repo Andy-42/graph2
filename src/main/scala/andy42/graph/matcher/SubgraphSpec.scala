@@ -17,7 +17,7 @@ trait NodePredicate:
   *   Predicates that constrain this node.
   */
 case class NodeSpec(
-    name: String,
+    name: NodeSpecName,
     description: String,
     predicates: List[NodePredicate] = Nil
 ):
@@ -103,41 +103,33 @@ case class SubgraphSpec(
       fromAndToSpecs <- List(edgeSpec.direction.from, edgeSpec.direction.to)
     yield fromAndToSpecs
 
-  val allNodeSpecNames: List[String] = allNodeSpecs.map(_.name)
+  val allNodeSpecNames: List[NodeSpecName] = allNodeSpecs.map(_.name)
 
-  val nameToNodeSpec: Map[String, NodeSpec] = allNodeSpecs.map(node => node.name -> node).toMap
+  val nameToNodeSpec: Map[NodeSpecName, NodeSpec] = allNodeSpecs.map(node => node.name -> node).toMap
 
-  val incomingEdges: Map[String, List[EdgeSpec]] =
+  val incomingEdges: Map[NodeSpecName, List[EdgeSpec]] =
     allNodeSpecNames.map(nodeSpecName => nodeSpecName -> edges.filter(_.direction.to.name == nodeSpecName)).toMap
 
-  val outgoingEdges: Map[String, List[EdgeSpec]] =
+  val outgoingEdges: Map[NodeSpecName, List[EdgeSpec]] =
     allNodeSpecNames.map(nodeSpecName => nodeSpecName -> edges.filter(_.direction.from.name == nodeSpecName)).toMap
-
-  def allConnectedNodes(startNode: String): Set[String] =
-
-    def visit(current: String = startNode, visited: Set[String] = Set.empty): Set[String] =
-      if visited.contains(current) then visited
-      else
-        outgoingEdges(startNode)
-          .map(_.direction.to.name)
-          .foldLeft(visited)((visited, farNode) => visit(farNode, visited))
-
-    visit()
+  
+  final def allConnectedNodes(current: NodeSpecName, visited: Set[NodeSpecName] = Set.empty): Set[NodeSpecName] =
+    if visited.contains(current) then visited
+    else
+      outgoingEdges(current)
+        .map(_.direction.to.name)
+        .foldLeft(visited)((visited, farNode) => allConnectedNodes(farNode, visited))
 
   /** A valid edge spec will have exactly one (fully) connected subgraph */
-  def connectedSubgraphs: List[Set[String]] =
-
-    @tailrec
-    def accumulate(allSpecs: Set[String] = allNodeSpecNames.toSet, r: List[Set[String]] = Nil): List[Set[String]] =
-      if allSpecs.isEmpty then r
-      else
-        val nextGroup = allConnectedNodes(allSpecs.head)
-        val remaining = allSpecs -- nextGroup
-
-        if remaining.isEmpty then nextGroup :: r
-        else accumulate(remaining, nextGroup :: r)
-
-    accumulate()
+  @tailrec
+  final def connectedSubgraphs(
+      remainingNodeSpecs: Set[NodeSpecName] = allNodeSpecNames.toSet,
+      r: List[Set[NodeSpecName]] = List.empty[Set[NodeSpecName]]
+  ): List[Set[NodeSpecName]] =
+    if remainingNodeSpecs.isEmpty then r
+    else
+      val nextGroup = allConnectedNodes(remainingNodeSpecs.head)
+      connectedSubgraphs(remainingNodeSpecs -- nextGroup, nextGroup :: r)
 
 def subgraph(name: String)(edgeSpecs: EdgeSpec*): SubgraphSpec =
   SubgraphSpec(name = name, edges = edgeSpecs.toList)

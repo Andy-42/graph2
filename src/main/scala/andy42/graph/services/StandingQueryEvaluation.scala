@@ -1,10 +1,10 @@
 package andy42.graph.services
 
-import andy42.graph.matcher.{Matcher, MatchingNodes, SubgraphSpec}
+import andy42.graph.matcher.{Matcher, SubgraphMatch, SubgraphSpec}
 import andy42.graph.model.*
 import zio.*
 
-case class SubgraphMatch(time: EventTime, subgraphSpec: SubgraphSpec, nodeMatches: List[MatchingNodes])
+case class SubgraphMatchAtTime(time: EventTime, subgraphSpec: SubgraphSpec, nodeMatches: List[SubgraphMatch])
 
 /** Observe a node that is changed.
   */
@@ -21,11 +21,11 @@ trait StandingQueryEvaluation:
       changes: Vector[NodeMutationOutput]
   ): NodeIO[Unit]
   
-  def output: Hub[SubgraphMatch]
+  def output: Hub[SubgraphMatchAtTime]
 
 // TODO: s/b able to have multiple standing queries?
 
-final case class StandingQueryEvaluationLive(graph: Graph, subgraphSpec: SubgraphSpec, hub: Hub[SubgraphMatch])
+final case class StandingQueryEvaluationLive(graph: Graph, subgraphSpec: SubgraphSpec, hub: Hub[SubgraphMatchAtTime])
     extends StandingQueryEvaluation:
 
   /** Match the node change against all standing queries.
@@ -47,7 +47,7 @@ final case class StandingQueryEvaluationLive(graph: Graph, subgraphSpec: Subgrap
       _ <- matchAgainstStandingQueries(time, changedNodes)
     yield ()
 
-  override def output: Hub[SubgraphMatch] = hub
+  override def output: Hub[SubgraphMatchAtTime] = hub
 
   /** Get the new state for all nodes that were modified in this group of changes. The Graph will pass the new node
     * states after the changes have been applied, but since it will not include any far edge events (since that is done
@@ -96,12 +96,12 @@ final case class StandingQueryEvaluationLive(graph: Graph, subgraphSpec: Subgrap
     for
       matcher <- Matcher.make(time, graph, subgraphSpec, changedNodes)
       nodeMatches <- matcher.matchNodes(changedNodes.map(_.id))
-      _ <- if nodeMatches.nonEmpty then hub.offer(SubgraphMatch(time, subgraphSpec, nodeMatches)) else ZIO.unit
+      _ <- if nodeMatches.nonEmpty then hub.offer(SubgraphMatchAtTime(time, subgraphSpec, nodeMatches)) else ZIO.unit
     yield ZIO.unit
 
 object StandingQueryEvaluation:
   def make(subgraphSpec: SubgraphSpec): URIO[Graph, StandingQueryEvaluation] =
     for
       graph <- ZIO.service[Graph]
-      hub <- Hub.unbounded[SubgraphMatch]
+      hub <- Hub.unbounded[SubgraphMatchAtTime]
     yield StandingQueryEvaluationLive(graph, subgraphSpec, hub)

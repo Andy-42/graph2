@@ -1,6 +1,6 @@
 package andy42.graph.services
 
-import andy42.graph.matcher.MatchingNodes
+import andy42.graph.matcher.SubgraphMatch
 import andy42.graph.model.EventTime
 import zio.*
 import zio.stream.ZStream
@@ -16,7 +16,7 @@ final case class TestStandingQueryEvaluationLive(queue: Queue[(EventTime, Vector
   override def graphChangedParameters: UIO[Chunk[(EventTime, Vector[NodeMutationOutput])]] =
     queue.takeAll
 
-  override def output: Hub[SubgraphMatch] = ???
+  override def output: Hub[SubgraphMatchAtTime] = ???
 
   override def graphChanged(time: EventTime, changes: Vector[NodeMutationOutput]): UIO[Unit] =
     queue.offer(time -> changes) *> ZIO.unit

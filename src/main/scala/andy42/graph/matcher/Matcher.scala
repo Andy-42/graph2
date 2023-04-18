@@ -5,40 +5,71 @@ import andy42.graph.model.*
 import andy42.graph.services.{Graph, NodeMutationOutput, PersistenceFailure}
 import zio.*
 
-type MatchingNodes = Map[String, NodeId]
+import scala.annotation.tailrec
+
+type NodeSpecName = String
+type SubgraphMatch = Map[NodeSpecName, NodeId]
 
 trait Matcher:
 
+  /** The match is as-of a particular point in time. */
   val time: EventTime
 
-  // TODO: After matching, if there are any nodes in the cache where the current > time
-  // then we need to run SQE for all those nodes/times, otherwise, it is possible to miss matches.
-  // The NodeCache can be reused, but the MatcherDataViewCache needs to be re-created.
+  def matchNodes(ids: Seq[NodeId]): NodeIO[List[SubgraphMatch]]
 
-  def matchNodes(ids: Seq[NodeId]): NodeIO[List[MatchingNodes]]
+// TODO: After matching, if there are any nodes in the cache where the current > time
+// then we need to run SQE for all those nodes/times, otherwise, it is possible to miss matches.
+// The NodeCache can be reused, but the MatcherDataViewCache needs to be re-created.
 
 case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: MatcherDataViewCache) extends Matcher:
 
-  override def matchNodes(ids: Seq[NodeId]): NodeIO[List[MatchingNodes]] =
-    ZIO.foldLeft(nodeAndSpecCrossProduct(ids.toList))(List.empty) { case (matchingNodes, (id, nodeSpec)) =>
-      for maybeMatchingNodes <- matchNode(id, nodeSpec, nodeMatchesSoFar = Map.empty)
-      yield maybeMatchingNodes.fold(matchingNodes)(_ :: matchingNodes)
-    }
-
-  private def nodeAndSpecCrossProduct(nodeIds: List[NodeId]): List[(NodeId, NodeSpec)] =
+  /** Match a set of nodes against a SubgraphSpec.
+    * @param ids
+    *   The nodes that are to be matched to the Subgraph spec.
+    * @return
+    *   A list of subgraph matches, where each entry defined a match between a NodeSpec and a Node at that time. The
+    *   matches are not necessarily unique, but are complete.
+    */
+  override def matchNodes(ids: Seq[NodeId]): NodeIO[List[SubgraphMatch]] =
     for
-      nodeId <- nodeIds
+      matches <- ZIO.foreachPar(nodeAndSpecCrossProduct(ids)) { case (id, nodeSpec) =>
+        matchNode(id, nodeSpec, subgraphMatch = Map.empty)
+      }
+      postFilteredMatches <- subgraphSpec.filter.fold(ZIO.succeed(matches.flatten)) { postFilter =>
+        ZIO.filter(matches.flatten) { subgraphMatch =>
+          postFilter.p(using SnapshotProviderLive(time, cache, subgraphMatch))
+        }
+      }
+    yield postFilteredMatches
+
+  private def nodeAndSpecCrossProduct(nodeIds: Seq[NodeId]): List[(NodeId, NodeSpec)] =
+    for
+      nodeId <- nodeIds.toList
       nodeSpec <- subgraphSpec.nameToNodeSpec.values
     yield (nodeId, nodeSpec)
 
+  /** Match a node by traversing the graph from a node starting point.
+    *
+    * TODO: Consolidate the Node access so that it is only retrieved from the cache once for the shallowMatch and
+    * deepMatch
+    *
+    * @param id
+    *   The id of the graph node being matched.
+    * @param nodeSpec
+    *   The spec that the node is being matched against
+    * @param subgraphMatch
+    *   All the matched nodes that have been matched so far in this graph traversal.
+    * @return
+    *   All the matches accumulated so far for this node.
+    */
   private def matchNode(
       id: NodeId,
       nodeSpec: NodeSpec,
-      nodeMatchesSoFar: MatchingNodes
-  ): NodeIO[Option[MatchingNodes]] =
+      subgraphMatch: SubgraphMatch
+  ): NodeIO[List[SubgraphMatch]] =
     ZIO.ifZIO(shallowMatch(id, nodeSpec))(
-      onTrue = deepMatch(id, nodeSpec, nodeMatchesSoFar),
-      onFalse = ZIO.none
+      onTrue = deepMatch(id, nodeSpec, subgraphMatch),
+      onFalse = ZIO.succeed(List.empty)
     )
 
   /** Test the local state of the node to determine if there is at least one possible match */
@@ -49,49 +80,103 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
     for snapshot <- cache.getSnapshot(id, time)
     yield shallowMatch(nodeSpec)(using snapshot)
 
-  /** For a node that matches locally, do a deep test to check that all referenced */
+  /** Find all the possible matches for the part of the subgraph reachable from this node.
+    *
+    * If this node is already in the subgraph match so far, then the edges have looped back to some previously-matched
+    * point.
+    *
+    * @return
+    *   A SubgraphMatch that includes matches for all nodes that are reachable from this node.
+    */
   private def deepMatch(
       id: NodeId,
       nodeSpec: NodeSpec,
-      nodeMatchesSoFar: MatchingNodes
-  ): NodeIO[Option[MatchingNodes]] =
-    if nodeMatchesSoFar.contains(nodeSpec.name) then ZIO.some(nodeMatchesSoFar)
+      subgraphMatchSoFar: SubgraphMatch
+  ): NodeIO[List[SubgraphMatch]] =
+    if subgraphMatchSoFar.contains(nodeSpec.name) then ZIO.succeed(List(subgraphMatchSoFar))
     else
       for
         snapshot <- cache.getSnapshot(id, time)
-        finalResolution <- eachReferencedNodeMatches(id, nodeSpec, nodeMatchesSoFar)(using snapshot)
+        finalResolution <- eachReferencedNodeMatches(nodeSpec, subgraphMatchSoFar)(using snapshot)
       yield finalResolution
 
-  /** All the edge combinations that could possibly match. This assumes that testLocal has previously be tested and
-    * returned true
-    */
-  private def shallowMatchesForEachEdgeSpec(
-      nodeSpec: NodeSpec
-  )(using snapshot: NodeSnapshot): List[(String, List[NodeId])] =
-    subgraphSpec
-      .outgoingEdges(nodeSpec.name)
-      .map { edgeSpec =>
-        val farNodeSpecName = edgeSpec.direction.to.name
-        val farNodeIds = snapshot.edges.toList.collect { case edge if edgeSpec.isShallowMatch(edge) => edge.other }
-        farNodeSpecName -> farNodeIds
-      }
-
-  private def eachReferencedNodeMatches(id: NodeId, nodeSpec: NodeSpec, subgraphMatch: MatchingNodes)(using
+  private def eachReferencedNodeMatches(nodeSpec: NodeSpec, matchingNodes: SubgraphMatch)(using
       snapshot: NodeSnapshot
-  ): NodeIO[Option[MatchingNodes]] =
-    val allMatches = shallowMatchesForEachEdgeSpec(nodeSpec) // TODO: short-circuit
-    if allMatches.exists(_._2.isEmpty) then ZIO.none
-    else
-      // PUNT: Only consider the first combination - TODO: Test each combination!
-      val targets: List[(String, NodeId)] = allMatches.map((k, l) => k -> l.head)
+  ): NodeIO[List[SubgraphMatch]] =
+    shallowMatchesForEachEdgeSpec(nodeSpec)
+      .fold(ZIO.succeed(List.empty))(groupsOfEdgesThatShouldMatch =>
+        for x <- ZIO.foreachPar(groupsOfEdgesThatShouldMatch)(matchEachEdge(_, matchingNodes))
+        yield x.flatten
+      )
 
-      ZIO.foldLeft[Any, UnpackFailure | PersistenceFailure, Option[MatchingNodes], (String, NodeId)](targets)(
-        Some(subgraphMatch.updated(nodeSpec.name, id))
-      ) {
-        case (Some(subgraphMatch), (name, id)) =>
-          matchNode(id, subgraphSpec.nameToNodeSpec(name), subgraphMatch)
-        case _ => ZIO.none
+  /** Generate combinations.
+    *
+    * This is the method from StackOverflow via Micaela Martino's version (re-formatted)
+    * https://stackoverflow.com/questions/23425930/generating-all-possible-combinations-from-a-listlistint-in-scala
+    *
+    * @param xs
+    *   A list of lists of A
+    * @return
+    *   A list of all the combinations that can be generated using one value from each of the lists.
+    */
+  private def generator[A](xs: List[List[A]]): List[List[A]] =
+    xs.foldRight(List(List.empty[A])) { (next, combinations) =>
+      for
+        a <- next
+        as <- combinations
+      yield a +: as
+    }
+
+  /** All the edge combinations that could possibly match.
+    *
+    * The first step is to calculate all the matches in a cross-product of the edges and the edge specs. An edge spec
+    * could be matched by multiple edges, so we have to calculate all the possible combinations.
+    */
+  private def shallowMatchesForEachEdgeSpec(nodeSpec: NodeSpec)(using
+      snapshot: NodeSnapshot
+  ): Option[List[List[(NodeSpecName, NodeId)]]] =
+
+    @tailrec def accumulate(
+        outgoing: List[EdgeSpec] = subgraphSpec.outgoingEdges(nodeSpec.name),
+        r: List[List[(NodeSpecName, NodeId)]] = List.empty
+    ): Option[List[List[(NodeSpecName, NodeId)]]] =
+      outgoing match {
+        case edgeSpec :: tail =>
+          val farNodeSpecName = edgeSpec.direction.to.name
+          val possiblyMatchingEdges = snapshot.edges.toList.collect {
+            case edge if edgeSpec.isShallowMatch(edge) => farNodeSpecName -> edge.other
+          }
+
+          if (possiblyMatchingEdges.isEmpty) None
+          else accumulate(outgoing = tail, r :+ possiblyMatchingEdges)
+
+        case _ => Some(r)
       }
+
+    accumulate().map(generator)
+
+  /** Determine whether a list of NodeSpec and NodeIds match. The match is done recursively through all nodes that are
+    * matchable through the given NodeIds.
+    *
+    * @param targets
+    *   A list of NodeSpecName
+    * @param subgraphMatchSoFar
+    *   Any nodes that have been matched so far.
+    * @return
+    *   All possible subgraph matches that can be accumulated by matching from the given edge matches.
+    */
+  private def matchEachEdge(
+      targets: List[(NodeSpecName, NodeId)],
+      subgraphMatchSoFar: SubgraphMatch
+  ): NodeIO[List[SubgraphMatch]] =
+    for x <- ZIO.foreachPar(targets) { case (farNodeSpecName, farId) =>
+        matchNode(
+          farId,
+          subgraphSpec.nameToNodeSpec(farNodeSpecName),
+          subgraphMatchSoFar.updated(farNodeSpecName, farId)
+        )
+      }
+    yield x.flatten
 
 object Matcher:
 

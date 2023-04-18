@@ -44,7 +44,7 @@ object StandingQuery extends App:
       new SubgraphPostFilter:
         override def description: String = "write.time <= read.time <= delete.time <= sendTime"
         
-        override def p: ContextFunction1[SnapshotProvider, NodeIO[Boolean]] =
+        override def p: SnapshotProvider ?=> NodeIO[Boolean] =
           for
             writeTime <- writeEvent.epochMillis("time")
             readTime <- readEvent.epochMillis("time")
