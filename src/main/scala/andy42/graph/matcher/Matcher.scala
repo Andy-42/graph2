@@ -12,18 +12,21 @@ type SubgraphMatch = Map[NodeSpecName, NodeId]
 
 trait Matcher:
 
-  /** The match is as-of a particular point in time. */
+  /** Matching is done as of a particular point in time. */
   val time: EventTime
 
   def matchNodes(ids: Seq[NodeId]): NodeIO[List[SubgraphMatch]]
 
 // TODO: After matching, if there are any nodes in the cache where the current > time
-// then we need to run SQE for all those nodes/times, otherwise, it is possible to miss matches.
+// then we need to match those nodes at those times, otherwise, it is possible to miss matches.
 // The NodeCache can be reused, but the MatcherDataViewCache needs to be re-created.
 
 case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: MatcherDataViewCache) extends Matcher:
 
   /** Match a set of nodes against a SubgraphSpec.
+    *
+    * Each node-spec pair is matched in parallel.
+    *
     * @param ids
     *   The nodes that are to be matched to the Subgraph spec.
     * @return
@@ -32,13 +35,13 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
     */
   override def matchNodes(ids: Seq[NodeId]): NodeIO[List[SubgraphMatch]] =
     for
-      matches <- ZIO.foreachPar(nodeAndSpecCrossProduct(ids)) { case (id, nodeSpec) =>
+      matches <- ZIO.foreachPar(nodeAndSpecCrossProduct(ids))((id, nodeSpec) =>
         matchNode(id, nodeSpec, subgraphMatch = Map.empty)
-      }
+      )
       postFilteredMatches <- subgraphSpec.filter.fold(ZIO.succeed(matches.flatten)) { postFilter =>
-        ZIO.filter(matches.flatten) { subgraphMatch =>
+        ZIO.filter(matches.flatten)(subgraphMatch =>
           postFilter.p(using SnapshotProviderLive(time, cache, subgraphMatch))
-        }
+        )
       }
     yield postFilteredMatches
 
@@ -67,7 +70,7 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
     for
       snapshot <- cache.getSnapshot(id, time)
       matches <-
-        if shallowMatch(nodeSpec)(using snapshot) then deepMatch(snapshot, nodeSpec, subgraphMatch)
+        if shallowMatch(nodeSpec)(using snapshot) then deepMatch(id, snapshot, nodeSpec, subgraphMatch)
         else ZIO.succeed(List.empty)
     yield matches
 
@@ -84,13 +87,21 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
     *   A SubgraphMatch that includes matches for all nodes that are reachable from this node.
     */
   private def deepMatch(
+      id: NodeId,
       snapshot: NodeSnapshot,
       nodeSpec: NodeSpec,
       subgraphMatchSoFar: SubgraphMatch
   ): NodeIO[List[SubgraphMatch]] =
     if subgraphMatchSoFar.contains(nodeSpec.name) then ZIO.succeed(List(subgraphMatchSoFar))
-    else eachReferencedNodeMatches(nodeSpec, subgraphMatchSoFar)(using snapshot)
+    else eachReferencedNodeMatches(nodeSpec, subgraphMatchSoFar.updated(nodeSpec.name, id))(using snapshot)
 
+  /**
+   * Match the outgoing edges.
+   * 
+   * Since there are possibly multiple combinations of edges that could match, each possible combination is tried,
+   * so it is possible that multiple `SubgraphMatch`es can be returned for one match.
+   * Each combination of subgraph matches are tested in parallel.
+   */
   private def eachReferencedNodeMatches(nodeSpec: NodeSpec, matchingNodes: SubgraphMatch)(using
       snapshot: NodeSnapshot
   ): NodeIO[List[SubgraphMatch]] =
@@ -139,7 +150,7 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
           }
 
           if (possiblyMatchingEdges.isEmpty) None
-          else accumulate(outgoing = tail, r :+ possiblyMatchingEdges)
+          else accumulate(outgoing = tail, r = r :+ possiblyMatchingEdges)
 
         case _ => Some(r)
       }
@@ -148,11 +159,13 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
 
   /** Determine whether a list of NodeSpec and NodeIds match. The match is done recursively through all nodes that are
     * matchable through the given NodeIds.
+   * 
+   * Each edge is matched in parallel.
     *
     * @param targets
     *   A list of NodeSpecName
     * @param subgraphMatchSoFar
-    *   Any nodes that have been matched so far.
+    *   Any nodes that have been matched so far. This will include the node currently being matched.
     * @return
     *   All possible subgraph matches that can be accumulated by matching from the given edge matches.
     */
@@ -160,13 +173,9 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
       targets: List[(NodeSpecName, NodeId)],
       subgraphMatchSoFar: SubgraphMatch
   ): NodeIO[List[SubgraphMatch]] =
-    for x <- ZIO.foreachPar(targets) { case (farNodeSpecName, farId) =>
-        matchNode(
-          farId,
-          subgraphSpec.nameToNodeSpec(farNodeSpecName),
-          subgraphMatchSoFar.updated(farNodeSpecName, farId)
-        )
-      }
+    for x <- ZIO.foreachPar(targets)((farNodeSpecName, farId) =>
+        matchNode(farId, subgraphSpec.nameToNodeSpec(farNodeSpecName), subgraphMatchSoFar)
+      )
     yield x.flatten
 
 object Matcher:
