@@ -50,9 +50,6 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
 
   /** Match a node by traversing the graph from a node starting point.
     *
-    * TODO: Consolidate the Node access so that it is only retrieved from the cache once for the shallowMatch and
-    * deepMatch
-    *
     * @param id
     *   The id of the graph node being matched.
     * @param nodeSpec
@@ -67,18 +64,16 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
       nodeSpec: NodeSpec,
       subgraphMatch: SubgraphMatch
   ): NodeIO[List[SubgraphMatch]] =
-    ZIO.ifZIO(shallowMatch(id, nodeSpec))(
-      onTrue = deepMatch(id, nodeSpec, subgraphMatch),
-      onFalse = ZIO.succeed(List.empty)
-    )
+    for
+      snapshot <- cache.getSnapshot(id, time)
+      matches <-
+        if shallowMatch(nodeSpec)(using snapshot) then deepMatch(snapshot, nodeSpec, subgraphMatch)
+        else ZIO.succeed(List.empty)
+    yield matches
 
   /** Test the local state of the node to determine if there is at least one possible match */
   private def shallowMatch(nodeSpec: NodeSpec)(using snapshot: NodeSnapshot): Boolean =
     nodeSpec.allPredicatesMatch && subgraphSpec.outgoingEdges(nodeSpec.name).forall(someShallowMatchExists)
-
-  private def shallowMatch(id: NodeId, nodeSpec: NodeSpec): NodeIO[Boolean] =
-    for snapshot <- cache.getSnapshot(id, time)
-    yield shallowMatch(nodeSpec)(using snapshot)
 
   /** Find all the possible matches for the part of the subgraph reachable from this node.
     *
@@ -89,16 +84,12 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
     *   A SubgraphMatch that includes matches for all nodes that are reachable from this node.
     */
   private def deepMatch(
-      id: NodeId,
+      snapshot: NodeSnapshot,
       nodeSpec: NodeSpec,
       subgraphMatchSoFar: SubgraphMatch
   ): NodeIO[List[SubgraphMatch]] =
     if subgraphMatchSoFar.contains(nodeSpec.name) then ZIO.succeed(List(subgraphMatchSoFar))
-    else
-      for
-        snapshot <- cache.getSnapshot(id, time)
-        finalResolution <- eachReferencedNodeMatches(nodeSpec, subgraphMatchSoFar)(using snapshot)
-      yield finalResolution
+    else eachReferencedNodeMatches(nodeSpec, subgraphMatchSoFar)(using snapshot)
 
   private def eachReferencedNodeMatches(nodeSpec: NodeSpec, matchingNodes: SubgraphMatch)(using
       snapshot: NodeSnapshot
