@@ -107,6 +107,12 @@ final case class GraphLive(
       node <- optionNode.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
     yield node
 
+  private def getWithPermitHeldNoCache(id: NodeId): NodeIO[Node] =
+    for
+      optionNode <- cache.get(id)
+      node <- optionNode.fold(nodeDataService.get(id))(ZIO.succeed)
+    yield node
+
   private def getNodeFromDataServiceAndAddToCache(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
     for
       node <- nodeDataService.get(id)
@@ -122,7 +128,10 @@ final case class GraphLive(
     for
       output <- ZIO.foreachPar(changes)(processChangesForOneNode(time, _))
       _ <- standingQueryEvaluation.graphChanged(time, output)
-      _ <- edgeSynchronization.graphChanged(time, output) // add near edge events into reconciliation; append far edge mutations
+      _ <- edgeSynchronization.graphChanged(
+        time,
+        output
+      ) // add near edge events into reconciliation; append far edge mutations
     yield ()
 
   override def appendFarEdgeEvents(
@@ -154,7 +163,7 @@ final case class GraphLive(
     ZIO.scoped {
       for
         _ <- withNodePermit(id)
-        existingNode <- getWithPermitHeld(id)
+        existingNode <- getWithPermitHeldNoCache(id) // Do not cache on retrieval since we will cache shortly
 
         tuple <- existingNode.appendWithEventsAtTime(time, events)
         (nextNode, maybeEventsAtTime) = tuple
