@@ -131,7 +131,7 @@ final case class GraphLive(
       _ <- edgeSynchronization.graphChanged(
         time,
         output
-      ) // add near edge events into reconciliation; append far edge mutations
+      )
     yield ()
 
   override def appendFarEdgeEvents(

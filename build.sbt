@@ -21,4 +21,6 @@ libraryDependencies ++= Seq(
   "dev.zio" %% "zio-test-magnolia" % zioV % Test
 )
 
+scalacOptions ++= Seq("-deprecation")
+
 testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")

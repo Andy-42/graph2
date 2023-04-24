@@ -5,6 +5,8 @@ import org.msgpack.value.ValueType
 import zio.*
 
 import java.io.IOException
+import scala.collection.compat.immutable.ArraySeq
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
@@ -56,7 +58,7 @@ object UnpackOperations:
       val a: Array[T] = Array.ofDim[T](length)
 
       def accumulate(i: Int = 0): IO[UnpackFailure | Throwable, Seq[T]] =
-        if i == length then ZIO.succeed(a)
+        if i == length then ZIO.succeed(ArraySeq.unsafeWrapArray(a))
         else
           unpackElement.flatMap { t =>
             a(i) = t
