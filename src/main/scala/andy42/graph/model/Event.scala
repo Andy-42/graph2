@@ -1,12 +1,12 @@
 package andy42.graph.model
 
 import andy42.graph.model.*
+import andy42.graph.services.EdgeReconciliationEvent
+import andy42.graph.services.EdgeReconciliationEvent.apply
 import org.msgpack.core.*
 import zio.*
 
 import java.io.IOException
-import andy42.graph.services.EdgeReconciliationEvent.apply
-import andy42.graph.services.EdgeReconciliationEvent
 
 enum Event extends Packable:
   case NodeRemoved

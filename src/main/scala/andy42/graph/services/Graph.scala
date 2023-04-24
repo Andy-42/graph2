@@ -4,7 +4,7 @@ import andy42.graph.model.*
 import zio.*
 import zio.stm.*
 
-/*
+/**
  * The Graph service represents the entire state of a graph.
  *
  * The Graph API consists of only two fundamental APIs:

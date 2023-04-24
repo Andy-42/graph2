@@ -1,10 +1,9 @@
 package andy42.graph.matcher
 
-import andy42.graph.services.Graph
-
 import andy42.graph.model.*
-import zio.stm.*
+import andy42.graph.services.Graph
 import zio.*
+import zio.stm.*
 
 trait MatcherNodeCache:
   def get(id: NodeId): NodeIO[Node]

@@ -1,7 +1,7 @@
 package andy42.graph.matcher
 
-import zio.*
 import andy42.graph.model.*
+import zio.*
 
 /**
  * Extensions to NodeSpec that allow for building general constraints on a node
@@ -14,4 +14,4 @@ extension (nodeSpec: NodeSpec)
 
     def epochMillis(propertyName: String): SnapshotProvider ?=> NodeIO[Long] =
       for snapshot <- getSnapshotForMatchedNode
-      yield snapshot.properties.get(propertyName).get.asInstanceOf[Long] // FIXME: NoSuchElementException, ClassCastException
+      yield snapshot.properties(propertyName).asInstanceOf[Long] // FIXME: NoSuchElementException, ClassCastException

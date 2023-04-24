@@ -64,7 +64,7 @@ case class EdgeSpec(
   def reverse: EdgeSpec =
     copy(direction = direction.reverse)
 
-  def keySpec = edgeKey.map(_.mermaid).mkString("\n")
+  def keySpec: String = edgeKey.map(_.mermaid).mkString("\n")
   def mermaid = s"${direction.from.name} ${direction.mermaid} |$keySpec| ${direction.to.name}"
 
 trait SubgraphPostFilter:
@@ -80,7 +80,7 @@ case class SubgraphSpec(
   def where(filter: SubgraphPostFilter): SubgraphSpec =
     copy(filter = Some(filter))
 
-  val nodeMermaid =
+  val nodeMermaid: String =
     edges
       .flatMap { case edge: EdgeSpec => List(edge.direction.from, edge.direction.to) }
       .map(spec => spec.name -> spec)
@@ -89,7 +89,7 @@ case class SubgraphSpec(
       .map(_.mermaid)
       .mkString("\n")
 
-  val filterMermaid = name + filter.fold("")(filter => ": " + filter.description)
+  val filterMermaid: _root_.java.lang.String = name + filter.fold("")(filter => ": " + filter.description)
   def subgraphStart = s"subgraph Subgraph[\"$filterMermaid\"]"
   def subgraphEnd = "end"
 
@@ -122,14 +122,14 @@ case class SubgraphSpec(
 
   /** A valid edge spec will have exactly one (fully) connected subgraph */
   @tailrec
-  final def connectedSubgraphs(
+  final def connectedSubGraphs(
       remainingNodeSpecs: Set[NodeSpecName] = allNodeSpecNames.toSet,
       r: List[Set[NodeSpecName]] = List.empty[Set[NodeSpecName]]
   ): List[Set[NodeSpecName]] =
     if remainingNodeSpecs.isEmpty then r
     else
       val nextGroup = allConnectedNodes(remainingNodeSpecs.head)
-      connectedSubgraphs(remainingNodeSpecs -- nextGroup, nextGroup :: r)
+      connectedSubGraphs(remainingNodeSpecs -- nextGroup, nextGroup :: r)
 
 def subgraph(name: String)(edgeSpecs: EdgeSpec*): SubgraphSpec =
   SubgraphSpec(name = name, edges = edgeSpecs.toList)

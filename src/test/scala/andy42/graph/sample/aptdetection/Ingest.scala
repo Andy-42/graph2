@@ -7,7 +7,6 @@ import zio.*
 import zio.json.*
 import zio.stream.{ZPipeline, ZStream}
 import zio.test.*
-import zio.test.TestAspect
 
 import java.nio.file.{Files, Paths}
 
@@ -133,23 +132,23 @@ object IngestSpec extends ZIOAppDefault:
   val endpointPath = s"$filePrefix/endpoint-first-1000.json"
   val networkPath = s"$filePrefix/network-first-1000.json"
 
-  val sampleEndpointId = NodeId.fromNamedValues("Process")(3428)
-  val sampleNetworkId = NodeId.fromNamedValues("Source")("10.1.2.195", 59487)
+  val sampleEndpointId: NodeId = NodeId.fromNamedValues("Process")(3428)
+  val sampleNetworkId: NodeId = NodeId.fromNamedValues("Source")("10.1.2.195", 59487)
 
   val ingest: ZIO[Graph, Any, Unit] =
     for
       graph <- ZIO.service[Graph]
       graphLive = graph.asInstanceOf[GraphLive]
-  
+
       _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)(parallelism = 4)
       _ <- IngestableJson.ingestFromFile[Network](networkPath)(parallelism = 4)
-  
-      // Not checking anything useful here, but checking that we ingested something 
+
+      // Not checking anything useful here, but checking that we ingested something
       sampleEndpoint <- graphLive.nodeDataService.get(sampleEndpointId)
       sampleNetwork <- graphLive.nodeDataService.get(sampleNetworkId)
       _ = sampleEndpoint.packedHistory.nonEmpty
       _ = sampleNetwork.packedHistory.nonEmpty
     yield ()
 
-  override def run: ZIO[Any, Any, Any] = 
+  override def run: ZIO[Any, Any, Any] =
     ingest.provideLayer(graphLayer)

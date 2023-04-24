@@ -1,7 +1,6 @@
 package andy42.graph.services
 
-import andy42.graph.model.Edge
-import andy42.graph.model.NodeId
+import andy42.graph.model.{Edge, NodeId}
 import io.getquill.*
 import io.getquill.context.qzio.ImplicitSyntax.*
 import zio.*

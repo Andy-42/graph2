@@ -1,8 +1,7 @@
 package andy42.graph.model
 
 import andy42.graph.model.NodeHistory
-import andy42.graph.services.PersistenceFailure
-import andy42.graph.services.CacheItem
+import andy42.graph.services.{CacheItem, PersistenceFailure}
 import org.msgpack.core.*
 import zio.*
 

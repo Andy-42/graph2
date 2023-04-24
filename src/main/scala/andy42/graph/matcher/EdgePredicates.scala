@@ -48,7 +48,7 @@ case class EdgeKeyMatches(r: Regex) extends EdgeKeyPredicate:
 
 /** Extensions that add an edge predicate to an EdgeSpec. */
 extension (edgeSpec: EdgeSpec)
-  def edgeKeyIs(s: String) = edgeSpec.withKeyPredicate(EdgeKeyIs(s))
+  def edgeKeyIs(s: String): EdgeSpec = edgeSpec.withKeyPredicate(EdgeKeyIs(s))
   def edgeKeyIsOneOf(ss: Set[String]) = edgeSpec.withKeyPredicate(EdgeKeyIsOneOf(ss))
   def edgeKeyMatches(r: Regex) = edgeSpec.withKeyPredicate(EdgeKeyMatches(r))
 

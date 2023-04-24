@@ -1,11 +1,10 @@
 package andy42.graph.services
 
-import java.sql.SQLException
-
 import andy42.graph.model.NodeId
-
-import zio.logging.{LogAnnotation, LogFormat }
 import zio.*
+import zio.logging.{LogAnnotation, LogFormat}
+
+import java.sql.SQLException
 
 sealed trait PersistenceFailure extends Throwable:
   def message: String

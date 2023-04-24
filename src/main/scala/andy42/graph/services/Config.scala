@@ -1,12 +1,11 @@
 package andy42.graph.services
 
 import eu.timepit.refined.api.Refined
+import eu.timepit.refined.auto.autoUnwrap
 import eu.timepit.refined.boolean.And
 import eu.timepit.refined.numeric.{GreaterEqual, LessEqual, Positive}
-import zio.*
+import zio.{ConfigProvider, *}
 import zio.config.magnolia.deriveConfig
-import eu.timepit.refined.auto.autoUnwrap
-import zio.ConfigProvider
 
 // TODO: The the Refined integration with ZIO 2/Scala 3 is incomplete (4.0.0-RC13) - substitute refined types when fixed
 

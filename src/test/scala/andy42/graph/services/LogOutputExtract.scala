@@ -1,9 +1,8 @@
 package andy42.graph.services
 
 import zio.Chunk
-import zio.logging.logContext
+import zio.logging.{LogAnnotation, logContext}
 import zio.test.ZTestLogger.LogEntry
-import zio.logging.LogAnnotation
 
 object LogOutputExtract:
 

@@ -1,14 +1,12 @@
 package andy42.graph.model
 
-import org.msgpack.core.MessagePacker
-import org.msgpack.core.MessageUnpacker
+import andy42.graph.model.UnpackOperations.unpackCountedToSeq
+import org.msgpack.core.{MessagePacker, MessageUnpacker}
 import org.msgpack.value.ValueType
 import zio.*
 
 import java.io.IOException
 import java.time.Instant
-
-import UnpackOperations.unpackCountedToSeq
 
 object PropertyValue extends Unpackable[PropertyValueType]:
 

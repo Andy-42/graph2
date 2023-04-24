@@ -2,13 +2,13 @@ package andy42.graph.model
 
 import andy42.graph.model.EventPackSpec.test
 import zio.*
+import zio.test.*
 import zio.test.Assertion.*
 import zio.test.TestAspect.timed
-import zio.test.*
 
 object EventPackSpec extends ZIOSpecDefault:
 
-  def spec = suite("Domain model packing/unpacking")(
+  def spec: Spec[Any, UnpackFailure] = suite("Domain model packing/unpacking")(
     test("Events can be round-tripped through packed form")(
       check(Generators.genEvent)((originalEvent: Event) =>
         val packed = originalEvent.toPacked

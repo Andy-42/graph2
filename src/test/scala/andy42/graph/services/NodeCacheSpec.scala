@@ -1,13 +1,10 @@
 package andy42.graph.services
 
-import andy42.graph.model.Node
-import andy42.graph.model.NodeId
-import andy42.graph.model.StartOfTime
-import andy42.graph.model.TestNode
+import andy42.graph.model.*
 import zio.*
+import zio.test.*
 import zio.test.Assertion.*
 import zio.test.TestAspect.timed
-import zio.test.*
 
 import java.time.temporal.ChronoUnit.MILLIS
 
@@ -23,7 +20,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
 
     def implementation: NodeCacheLive = cache.asInstanceOf[NodeCacheLive]
 
-  override def spec = suite("NodeCache")(
+  override def spec: Spec[Any, UnpackFailure] = suite("NodeCache")(
     test("watermark moves forward and items are removed when size exceeds capacity") {
       val fractionToRetainOnNodeCacheTrim = 0.5
 

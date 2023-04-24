@@ -1,11 +1,7 @@
 package andy42.graph.services
 
-import andy42.graph.model.EdgeHash
-import andy42.graph.model.Event
-import andy42.graph.model.EventTime
-import andy42.graph.model.NodeId
-import andy42.graph.services.MillisecondDuration
-import andy42.graph.services.WindowStart
+import andy42.graph.model.{EdgeHash, Event, EventTime, NodeId}
+import andy42.graph.services.{MillisecondDuration, WindowStart}
 import zio.logging.LogAnnotation
 
 object LogAnnotations:

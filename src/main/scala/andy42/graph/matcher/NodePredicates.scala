@@ -7,11 +7,11 @@ case class NodeHasPropertyPredicate(k: String) extends NodePredicate:
   override def mermaid: String = s"property: $k"
 
 case class NodeHasPropertyWithValue(k: String, v: PropertyValueType) extends NodePredicate:
-  override def p: NodeSnapshot ?=> Boolean = summon[NodeSnapshot].properties.get(k) == Some(v)
+  override def p: NodeSnapshot ?=> Boolean = summon[NodeSnapshot].properties.get(k).contains(v)
   override def mermaid: String = s"property: $k = $v"
 
 case class IsLabeled(label: String) extends NodePredicate:
-  override def p: NodeSnapshot ?=> Boolean = summon[NodeSnapshot].properties.get(label) == Some(())
+  override def p: NodeSnapshot ?=> Boolean = summon[NodeSnapshot].properties.get(label).contains(())
   override def mermaid: String = s"label: $label"
 
 extension (nodeSpec: NodeSpec)
