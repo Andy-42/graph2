@@ -6,8 +6,10 @@ import zio.stream.ZStream
 
 import java.time.temporal.ChronoUnit.MILLIS
 
-type WindowStart = Long // Epoch millis adjusted to start of window
-type WindowEnd = Long // Epoch millis adjusted to last period in window
+/** Epoch millis adjusted to start of window */
+type WindowStart = Long
+/** Epoch millis adjusted to last period in window */
+type WindowEnd = Long 
 type MillisecondDuration = Long
 
 trait EdgeReconciliationProcessor:

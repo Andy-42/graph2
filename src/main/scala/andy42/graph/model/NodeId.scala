@@ -11,8 +11,7 @@ import java.util.UUID
 final case class NodeId(msb: Long, lsb: Long) extends Ordered[NodeId]:
 
   override def toString: String = new UUID(msb, lsb).toString
-
-  // Same hash function as for UUID
+  
   override def hashCode: Int =
     val x = msb ^ lsb
     (x >> 32).toInt ^ x.toInt

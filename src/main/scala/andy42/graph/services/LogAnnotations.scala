@@ -6,10 +6,6 @@ import zio.logging.LogAnnotation
 
 object LogAnnotations:
 
-  private def formatEvent(event: Event): String = event.getClass.getSimpleName
-
-
-
   // Edge Reconciliation
   val expiryThresholdAnnotation: LogAnnotation[WindowStart] =
     LogAnnotation[WindowStart]("expiryThreshold", (_, x) => x, _.toString)
@@ -44,5 +40,3 @@ object LogAnnotations:
     LogAnnotation[Int]("nextSize", (_, x) => x, _.toString)
   val trimCount: LogAnnotation[Int] =
     LogAnnotation[Int]("trimCount", (_, x) => x, _.toString)  
-  
-    

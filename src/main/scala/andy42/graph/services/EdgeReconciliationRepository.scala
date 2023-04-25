@@ -11,9 +11,9 @@ trait EdgeReconciliationRepository:
   def markWindow(edgeReconciliation: EdgeReconciliationSnapshot): UIO[Unit]
 
 final case class EdgeReconciliationSnapshot private (
-    windowStart: Long, // clustering key
-    windowSize: Long, // payload
-    state: Byte // payload
+    windowStart: Long,
+    windowSize: Long,
+    state: Byte
 )
 
 object EdgeReconciliationSnapshot:
@@ -21,16 +21,17 @@ object EdgeReconciliationSnapshot:
   private val Inconsistent: Byte = 2.toByte
   private val Unknown: Byte = 3.toByte
 
-  // All pairs of half-edges were determined to be reconciled for this window
+  /** All pairs of half-edges were determined to be reconciled for this window */
   def reconciled(windowStart: Long, windowSize: Long): EdgeReconciliationSnapshot =
     EdgeReconciliationSnapshot(windowStart, windowSize, Reconciled)
 
-  // The window is known or suspected of being inconsistent
+  /** The window is known or suspected of being inconsistent */
   def inconsistent(windowStart: Long, windowSize: Long): EdgeReconciliationSnapshot =
     EdgeReconciliationSnapshot(windowStart, windowSize, Inconsistent)
 
-  // The state is unknown. This is not typically something that we expect to write,
-  // and it would normally be represented as a gap in the table.
+  /** The state is unknown. This is not typically something that we expect to write, and it would normally be
+    * represented as a gap in the table.
+    */
   def unknown(windowStart: Long, windowSize: Long): EdgeReconciliationSnapshot =
     EdgeReconciliationSnapshot(windowStart, windowSize, Unknown)
 
@@ -39,11 +40,13 @@ final case class EdgeReconciliationRepositoryLive(ds: DataSource) extends EdgeRe
   val ctx: PostgresZioJdbcContext[Literal] = PostgresZioJdbcContext(Literal)
   import ctx.*
 
-  private inline def edgeReconciliationTable: Quoted[EntityQuery[EdgeReconciliationSnapshot]] = quote { 
-    query[EdgeReconciliationSnapshot] 
+  private inline def edgeReconciliationTable: Quoted[EntityQuery[EdgeReconciliationSnapshot]] = quote {
+    query[EdgeReconciliationSnapshot]
   }
 
-  private inline def quotedMarkWindow(edgeReconciliation: EdgeReconciliationSnapshot): Quoted[Insert[EdgeReconciliationSnapshot]] = quote {
+  private inline def quotedMarkWindow(
+      edgeReconciliation: EdgeReconciliationSnapshot
+  ): Quoted[Insert[EdgeReconciliationSnapshot]] = quote {
     edgeReconciliationTable
       .insertValue(lift(edgeReconciliation))
       .onConflictUpdate(_.windowStart)(

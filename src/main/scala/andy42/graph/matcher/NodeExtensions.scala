@@ -5,7 +5,7 @@ import zio.*
 
 /**
  * Extensions to NodeSpec that allow for building general constraints on a node
- * that has already been matched
+ * that has already been matched.
  */
 extension (nodeSpec: NodeSpec)
   

@@ -10,7 +10,6 @@ trait EdgeDirectionPredicate:
   def p(edgeDirection: EdgeDirection): Boolean
   def reverse: EdgeDirectionPredicate
   def mermaid: String
-// TODO: Some mermaid generation stuff
 
 case class OutgoingDirectedEdgeSpec(from: NodeSpec, to: NodeSpec) extends EdgeDirectionPredicate:
   def p(edgeDirection: EdgeDirection): Boolean = edgeDirection == EdgeDirection.Outgoing
@@ -27,8 +26,7 @@ case class UndirectedEdgeSpec(from: NodeSpec, to: NodeSpec) extends EdgeDirectio
   def reverse: EdgeDirectionPredicate = UndirectedEdgeSpec(from = to, to = from)
   def mermaid = "---"
 
-/** Create a new edge specification.
-  */
+/** Create a new edge specification. */
 object EdgeSpecs:
 
   def directedEdge(from: NodeSpec, to: NodeSpec): EdgeSpec =

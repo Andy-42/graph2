@@ -7,12 +7,15 @@ import zio.*
 
 import scala.util.hashing.MurmurHash3
 
-// The time an event occurs
+/** The time an event occurs */
 type EventTime = Long // Epoch Millis
 val StartOfTime: EventTime = Long.MinValue
 val EndOfTime: EventTime = Long.MaxValue
 
-type Sequence = Int // Break ties when multiple groups of events are processed for the same EventTime
+/** Break ties when multiple groups of events are processed for the same EventTime 
+  * The ordering of the EventsAtTime corresponds to the time that the events are appended.
+  */
+type Sequence = Int
 
 final case class NodeSnapshot(time: EventTime, sequence: Int, properties: PropertySnapshot, edges: EdgeSnapshot)
 
