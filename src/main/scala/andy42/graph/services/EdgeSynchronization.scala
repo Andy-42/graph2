@@ -70,11 +70,11 @@ final case class EdgeSynchronizationLive(
       )
 
     for
-      _ <- ZIO.foreach(nodeMutations.extractOtherIdFromNearEdgeEvents.toSet) { other =>
+      _ <- ZIO.foreachDiscard(nodeMutations.extractOtherIdFromNearEdgeEvents.toSet) { other =>
         appendFarEdgeEventsFor(id = other, time = time, events = gatherReversedEdgeEventsForOtherNode(other))
       }
 
-      _ <- ZIO.foreach(nodeMutations) { nodeMutationOutput =>
+      _ <- ZIO.foreachDiscard(nodeMutations) { nodeMutationOutput =>
         val id = nodeMutationOutput.node.id
         val edgeReconciliationEvents = nodeMutationOutput.events.collect {
           case Event.EdgeAdded(edge)      => EdgeReconciliationEvent(id, time, edge)
@@ -83,7 +83,7 @@ final case class EdgeSynchronizationLive(
           case Event.FarEdgeRemoved(edge) => EdgeReconciliationEvent(id, time, edge)
         }
 
-        if edgeReconciliationEvents.nonEmpty then queue.offerAll(edgeReconciliationEvents) else ZIO.unit
+        queue.offerAll(edgeReconciliationEvents).when(edgeReconciliationEvents.nonEmpty)
       }
     yield ()
 
@@ -110,12 +110,12 @@ final case class EdgeSynchronizationLive(
       .appendFarEdgeEvents(time, events)
       .catchAllCause(cause =>
         ZIO.logCause("Unexpected failure appending far edge event", cause)
-        @@ operationAnnotation ("append far edge events")
-        @@ timeAnnotation (time)
-        @@ nearNodeIdAnnotation (id)
-        @@ farNodeIdsAnnotation (events.extractOtherIdsNodeFromFarEdgeEvents)
+          @@ operationAnnotation("append far edge events")
+          @@ timeAnnotation(time)
+          @@ nearNodeIdAnnotation(id)
+          @@ farNodeIdsAnnotation(events.extractOtherIdsNodeFromFarEdgeEvents)
       )
-      .forkDaemon *> ZIO.unit
+      .forkDaemon.unit
 
   /** Start the fiber that consumes the edge synchronization events and reconciles them.
     *
@@ -132,9 +132,9 @@ final case class EdgeSynchronizationLive(
       .runDrain
       .catchAllCause(cause =>
         ZIO.logCause("Unexpected failure scanning edge reconciliation event stream", cause)
-        @@ operationAnnotation ("scan edge reconciliation event stream")
+          @@ operationAnnotation("scan edge reconciliation event stream")
       )
-      .forkDaemon *> ZIO.unit
+      .forkDaemon.unit
 
 object EdgeSynchronization:
 

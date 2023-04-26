@@ -82,7 +82,7 @@ object Edge:
         directionOrdinal <- ZIO.attempt(unpacker.unpackInt())
         direction <- ZIO
           .attempt(EdgeDirection.fromOrdinal(directionOrdinal))
-          .mapError(_ => UnexpectedEventDiscriminator(directionOrdinal))
+          .orElseFail(UnexpectedEventDiscriminator(directionOrdinal))
       yield if isFar then FarEdge(k, other, direction) else NearEdge(k, other, direction)
     }
 

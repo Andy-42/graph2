@@ -116,7 +116,7 @@ final case class GraphLive(
   private def getNodeFromDataServiceAndAddToCache(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
     for
       node <- nodeDataService.get(id)
-      _ <- if node.hasEmptyHistory then ZIO.unit else cache.put(node)
+      _ <- cache.put(node).unless(node.hasEmptyHistory)
     yield node
 
   override def append(

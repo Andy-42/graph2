@@ -50,18 +50,19 @@ object GraphSpec extends ZIOSpecDefault:
       _ = true
     yield
     // There are no nodes in progress by the graph either before or after
-    assert(inFlightBefore.isEmpty)(isTrue) &&
-      assert(inFlightAfter.isEmpty)(isTrue) &&
+    assertTrue(
+      inFlightBefore.isEmpty,
+      inFlightAfter.isEmpty,
       // The node (as obtained from the graph) starts out empty and is modified as expected
-      assert(nodeBefore.hasEmptyHistory)(isTrue) &&
-      assert(nodeFromGraphAfter)(equalTo(expectedNode)) &&
-      assert(nodeCurrentAfter)(equalTo(expectedCurrent)) && // redundant test
+      nodeBefore.hasEmptyHistory,
+      nodeFromGraphAfter == expectedNode,
+      nodeCurrentAfter == expectedCurrent, // redundant test
       // The data service and the cache have been updated with the new node state
-      assert(nodeFromData)(equalTo(expectedNode)) &&
-      assert(nodeFromCacheAfter)(isSome(equalTo(expectedNode))) &&
+      nodeFromData == expectedNode,
+      nodeFromCacheAfter.get == expectedNode,
       // The standing query evaluation and edge synchronization services have been notified of the changes
-      assert(standingQueryEvaluationParameters.toVector)(equalTo(expectedOutputEvents)) &&
-      assert(edgeSynchronizationParameters.toVector)(equalTo(expectedOutputEvents))
+      standingQueryEvaluationParameters.toVector == expectedOutputEvents,
+      edgeSynchronizationParameters.toVector == expectedOutputEvents)
 
   val graphLayer: ULayer[Graph] =
     (TestNodeRepository.layer ++

@@ -15,7 +15,7 @@ final case class TestEdgeSynchronizationLive(queue: Queue[(EventTime, Vector[Nod
     queue.takeAll
 
   def graphChanged(time: EventTime, changes: Vector[NodeMutationOutput]): UIO[Unit] =
-    queue.offer(time -> changes) *> ZIO.unit
+    queue.offer(time -> changes).unit
 
   def startReconciliation: UIO[Unit] = ZIO.unit
 

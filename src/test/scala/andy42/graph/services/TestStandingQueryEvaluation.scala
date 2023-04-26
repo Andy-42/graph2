@@ -19,7 +19,7 @@ final case class TestStandingQueryEvaluationLive(queue: Queue[(EventTime, Vector
   override def output: Hub[SubgraphMatchAtTime] = ???
 
   override def graphChanged(time: EventTime, changes: Vector[NodeMutationOutput]): UIO[Unit] =
-    queue.offer(time -> changes) *> ZIO.unit
+    queue.offer(time -> changes).unit
 
 object TestStandingQueryEvaluation:
   val layer: ULayer[StandingQueryEvaluation] =

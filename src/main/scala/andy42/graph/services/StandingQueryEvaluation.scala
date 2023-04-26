@@ -96,8 +96,8 @@ final case class StandingQueryEvaluationLive(graph: Graph, subgraphSpec: Subgrap
     for
       matcher <- Matcher.make(time, graph, subgraphSpec, changedNodes)
       nodeMatches <- matcher.matchNodes(changedNodes.map(_.id))
-      _ <- if nodeMatches.nonEmpty then hub.offer(SubgraphMatchAtTime(time, subgraphSpec, nodeMatches)) else ZIO.unit
-    yield ZIO.unit
+      _ <- hub.offer(SubgraphMatchAtTime(time, subgraphSpec, nodeMatches)).when(nodeMatches.nonEmpty)
+    yield ()
 
 object StandingQueryEvaluation:
   def make(subgraphSpec: SubgraphSpec): URIO[Graph, StandingQueryEvaluation] =

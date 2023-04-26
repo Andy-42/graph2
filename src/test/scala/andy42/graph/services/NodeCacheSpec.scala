@@ -128,7 +128,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
         cache <- ZIO.service[NodeCache]
         cacheImplementation = cache.implementation
 
-        _ <- ZIO.foreach(0 until n) { i =>
+        _ <- ZIO.foreachDiscard(0 until n) { i =>
           TestClock.adjust(1.millisecond) *> cache.put(TestNode(i))
         }
 
@@ -162,7 +162,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
         cache <- ZIO.service[NodeCache]
         cacheImplementation = cache.implementation
 
-        _ <- ZIO.foreach(0 until n) { i =>
+        _ <- ZIO.foreachDiscard(0 until n) { i =>
           TestClock.adjust(1.millisecond) *> cache.put(TestNode(i))
         }
 
@@ -200,7 +200,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
         cache <- ZIO.service[NodeCache]
 
         // Fill cache just up to capacity
-        _ <- ZIO.foreach(0 until n)(i => cache.put(TestNode(i)))
+        _ <- ZIO.foreachDiscard(0 until n)(i => cache.put(TestNode(i)))
         watermarkAtCapacity <- cache.watermark
         sizeAtCapacity <- cache.size
 

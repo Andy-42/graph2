@@ -37,10 +37,10 @@ final case class NodeCacheLive(
 
       _ <- optionCacheItem.fold(ZIO.unit)(item =>
         // A hot node item might be referenced many times in one millisecond, so only update if lastAccess would change
-        if item.lastAccess < now then
+        ZIO.when(item.lastAccess < now) {
           val e = items.put(id, item.copy(lastAccess = now)).commit
           if config.forkOnUpdateAccessTime then e.fork else e // The safety of forking here is questionable
-        else ZIO.unit
+        }
       )
 
       optionNode <- optionCacheItem.fold(ZIO.succeed(None)) { cacheItem =>
@@ -169,15 +169,15 @@ final case class NodeCacheLive(
     now min (watermark + moveForwardBy)
 
   override def startCurrentSnapshotTrimDaemon: UIO[Unit] =
-    if config.currentSnapshotTrimFrequency == Duration.Zero then ZIO.unit // Don't run the daemon at all
-    else
+    ZIO.when(config.currentSnapshotTrimFrequency != Duration.Zero) {
       currentSnapshotTrim
         .repeat(Schedule.spaced(config.currentSnapshotTrimFrequency))
         .catchAllCause { cause =>
           val operation = "node cache snapshot trim"
           ZIO.logCause(s"Unexpected failure in: $operation", cause) @@ LogAnnotations.operationAnnotation(operation)
         }
-        .forkDaemon *> ZIO.unit
+        .forkDaemon
+    }.unit
 
   private def currentSnapshotTrim: UIO[Unit] =
     for

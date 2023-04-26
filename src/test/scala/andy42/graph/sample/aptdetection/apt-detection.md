@@ -46,7 +46,7 @@ standingQueries:
           type: PrintToStandardOut
 ```
 
-Here is an graphical representation of this query:
+Here is a graphical representation of this query:
 ```mermaid
 flowchart TD
 subgraph Subgraph["APT Detection: write.time <= read.time <= delete.time <= sendTime"]
@@ -69,7 +69,7 @@ e4 --> |EVENT| ip
 end
 ```
 
-This also adds property existence qualifiers on the the 
+This also adds property existence qualifiers on the 
 *Target of a SEND event* and *File* nodes. These properties
 are known to be used for output (i.e., for analysis of graph matches)
 so we include predicates for them to make this clearer.

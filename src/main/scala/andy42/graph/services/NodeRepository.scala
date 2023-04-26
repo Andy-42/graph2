@@ -116,9 +116,10 @@ final case class NodeRepositoryLive(ds: DataSource) extends NodeRepository:
     run(quotedAppend(eventsAtTime.toGraphEventsAtTime(id))).implicitly
       .mapError(SQLWriteFailure(id, _))
       .flatMap { rowsInsertedOrUpdated =>
-        if rowsInsertedOrUpdated != 1 then
-          ZIO.fail(CountPersistenceFailure(id, expected = 1, was = rowsInsertedOrUpdated))
-        else ZIO.unit
+        ZIO
+          .fail(CountPersistenceFailure(id, expected = 1, was = rowsInsertedOrUpdated))
+          .unless(rowsInsertedOrUpdated == 1)
+          .unit
       }
 
 object NodeRepository:
