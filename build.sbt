@@ -6,7 +6,7 @@ scalaVersion := "3.2.2"
 
 val zioV = "2.0.10"
 val zioConfigRefinedV = "4.0.0-RC13"
-val zioLoggingV = "2.1.10"
+val zioLoggingV = "2.1.12"
 val quillV = "4.6.0.1"
 val msgPackV = "0.9.3"
 
