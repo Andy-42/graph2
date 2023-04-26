@@ -123,8 +123,11 @@ final case class GraphLive(
 
     for
       output <- ZIO.foreachPar(changes)(processChangesForOneNode(time, _))
-      _ <- standingQueryEvaluation.graphChanged(time, output)
-      _ <- edgeSynchronization.graphChanged(time, output)
+
+      // SQE and initiation of edge synchronization both need to complete before the append call completes,
+      // but there is no requirement that they happen in a specific order since SQE patches the far half
+      // edges before evaluation (i.e., as though they were updated). The two can be processed in parallel.
+      _ <- standingQueryEvaluation.graphChanged(time, output).zipPar(edgeSynchronization.graphChanged(time, output))
     yield ()
 
   override def appendFarEdgeEvents(
@@ -163,7 +166,7 @@ final case class GraphLive(
 
         // Persist to the data store and cache, if there is new history to persist
         _ <- maybeEventsAtTime.fold(ZIO.unit)(nodeDataService.append(nextNode.id, _))
-        _ <- maybeEventsAtTime.fold(ZIO.unit)(_ => cache.put(nextNode))
+        _ <- cache.put(nextNode).unless(maybeEventsAtTime.isEmpty)
       yield nextNode
     }
 
