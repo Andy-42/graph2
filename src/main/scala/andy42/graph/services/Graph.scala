@@ -4,40 +4,36 @@ import andy42.graph.model.*
 import zio.*
 import zio.stm.*
 
-/**
- * The Graph service represents the entire state of a graph.
- *
- * The Graph API consists of only two fundamental APIs:
- *  - `get` gets the Node given its NodeId.
- *  - `append` appends events to the Node's state at some point in time.
- *
- * All operations can affect the state of the Node in the NodeCache, including `get`, which
- * can modify the last access time of the cached node. `append` operations may require
- * reading from the cache (in one STM transaction), reading/writing to the persistent store
- * (and effectful operation), followed by writing to the cache (a second STM transaction).
- * This means that coherency of the cache cannot be maintained within a single transaction,
- * this service implements a mechanism that serializes all operations on a Node.
- * The graph is free to process operations on a Node in any order.
- *
- * While changes can be applied as though they happened at any point in time (and in any order),
- * all changes to a node must be serialized. Rather than using an actor system and serializing the
- * changes by that mechanism, this API forces changes to be serialized by tracking the node ids that
- * have changes currently in flight in a transactional set.
- *
- * In addition to managing the state of the Nodes in the cache and persistent store, the
- * Graph implementation also notifies downstream services of changes to the graph:
- *  - Edge Synchronization propagates edge events on the near node to the other node.
- *  - Standing Query Evaluation matches any node changes to standing queries.
- *
- * Since all changes to a node are serialized,
- * attempting to propagate edge events to the far nodes within the transaction would
- * create the possibility of a communications deadlock. For that reason, edge reconciliation
- * is done in an eventually consistent way.
- *
- * Edge Synchronization and Standing Query Evaluation notifications (as well as `append`) use
- * at-least-once semantics. For example, if the graph is consuming events from a Kafka stream,
- * a failed window can be re-processed by the Graph safely.
- */
+/** The Graph service represents the entire state of a graph.
+  *
+  * The Graph API consists of only two fundamental APIs:
+  *   - `get` gets the Node given its NodeId.
+  *   - `append` appends events to the Node's state at some point in time.
+  *
+  * All operations can affect the state of the Node in the NodeCache, including `get`, which can modify the last access
+  * time of the cached node. `append` operations may require reading from the cache (in one STM transaction),
+  * reading/writing to the persistent store (and effectful operation), followed by writing to the cache (a second STM
+  * transaction). This means that coherency of the cache cannot be maintained within a single transaction, this service
+  * implements a mechanism that serializes all operations on a Node. The graph is free to process operations on a Node
+  * in any order.
+  *
+  * While changes can be applied as though they happened at any point in time (and in any order), all changes to a node
+  * must be serialized. Rather than using an actor system and serializing the changes by that mechanism, this API forces
+  * changes to be serialized by tracking the node ids that have changes currently in flight in a transactional set.
+  *
+  * In addition to managing the state of the Nodes in the cache and persistent store, the Graph implementation also
+  * notifies downstream services of changes to the graph:
+  *   - Edge Synchronization propagates edge events on the near node to the other node.
+  *   - Standing Query Evaluation matches any node changes to standing queries.
+  *
+  * Since all changes to a node are serialized, attempting to propagate edge events to the far nodes within the
+  * transaction would create the possibility of a communications deadlock. For that reason, edge reconciliation is done
+  * in an eventually consistent way.
+  *
+  * Edge Synchronization and Standing Query Evaluation notifications (as well as `append`) use at-least-once semantics.
+  * For example, if the graph is consuming events from a Kafka stream, a failed window can be re-processed by the Graph
+  * safely.
+  */
 trait Graph:
 
   /** Get a node from the graph.
@@ -128,10 +124,7 @@ final case class GraphLive(
     for
       output <- ZIO.foreachPar(changes)(processChangesForOneNode(time, _))
       _ <- standingQueryEvaluation.graphChanged(time, output)
-      _ <- edgeSynchronization.graphChanged(
-        time,
-        output
-      )
+      _ <- edgeSynchronization.graphChanged(time, output)
     yield ()
 
   override def appendFarEdgeEvents(
