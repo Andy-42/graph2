@@ -33,7 +33,7 @@ extension (mutations: Vector[NodeMutationOutput])
   def extractOtherIdFromNearEdgeEvents: Vector[NodeId] =
     for
       groupedGraphMutationOutput <- mutations
-      other <- groupedGraphMutationOutput.events collect {
+      other <- groupedGraphMutationOutput.events.collect {
         case Event.EdgeAdded(edge: NearEdge)   => edge.other
         case Event.EdgeRemoved(edge: NearEdge) => edge.other
       }
@@ -41,7 +41,7 @@ extension (mutations: Vector[NodeMutationOutput])
 
 extension (mutations: NodeMutationInput)
   def extractOtherIdsNodeFromFarEdgeEvents: Vector[NodeId] =
-    for other <- mutations.events collect {
+    for other <- mutations.events.collect {
         case Event.FarEdgeAdded(edge)   => edge.other
         case Event.FarEdgeRemoved(edge) => edge.other
       }
@@ -62,7 +62,7 @@ final case class EdgeSynchronizationLive(
         events = for
           groupedGraphMutationOutput <- nodeMutations
           id = groupedGraphMutationOutput.node.id
-          reversedEdgeEvent <- groupedGraphMutationOutput.events collect {
+          reversedEdgeEvent <- groupedGraphMutationOutput.events.collect {
             case Event.EdgeAdded(edge: NearEdge)   => Event.FarEdgeAdded(edge.reverse(id))
             case Event.EdgeRemoved(edge: NearEdge) => Event.FarEdgeRemoved(edge.reverse(id))
           }
