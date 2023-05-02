@@ -45,8 +45,7 @@ case class NodeSpec(name: NodeSpecName, predicates: List[NodePredicate] = Nil):
   def predicatesMermaid: String = predicates.map("\\n" + _.mermaid).mkString
   def mermaid: String = s"$name[$name$predicatesMermaid]"
 
-def node(name: String): NodeSpec =
-  NodeSpec(name = name)
+def node(name: NodeSpecName): NodeSpec = NodeSpec(name)
 
 trait EdgeKeyPredicate:
   def p(k: String): Boolean
@@ -89,8 +88,7 @@ case class SubgraphSpec(
     filter: Option[SubgraphPostFilter] = None
 ):
 
-  def where(filter: SubgraphPostFilter): SubgraphSpec =
-    copy(filter = Some(filter))
+  def where(filter: SubgraphPostFilter): SubgraphSpec = copy(filter = Some(filter))
 
   val nodeMermaid: String =
     edges

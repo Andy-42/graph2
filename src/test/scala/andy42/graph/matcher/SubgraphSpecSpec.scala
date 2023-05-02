@@ -12,12 +12,12 @@ object SubgraphSpecSpec extends ZIOSpecDefault:
     suite("SubgraphSpec")(
       test("Basic node and edge spec enumeration") {
 
-        val node1 = node("n1")
-        val node2 = node("n2")
-        val node3 = node("n3")
+        val nodeSpec1 = node("n1")
+        val nodeSpec2 = node("n2")
+        val nodeSpec3 = node("n3")
 
-        val edgeSpec1to2 = directedEdge(from = node1, to = node2)
-        val edgeSpec1to3 = directedEdge(from = node1, to = node3)
+        val edgeSpec1to2 = directedEdge(from = nodeSpec1, to = nodeSpec2)
+        val edgeSpec1to3 = directedEdge(from = nodeSpec1, to = nodeSpec3)
         // The reversed edge specs will be created automatically to represent the other half-edge
         val edgeSpec2to1 = edgeSpec1to2.reverse
         val edgeSpec3to1 = edgeSpec1to3.reverse
@@ -41,7 +41,7 @@ object SubgraphSpecSpec extends ZIOSpecDefault:
         assertTrue(
           // Even though there are only two edge specs, they are expanded to 4 half-edges
           subgraphSpec.allHalfEdges.length == 4,
-          subgraphSpec.allUniqueNodeSpecs == List(node1, node2, node3),
+          subgraphSpec.allUniqueNodeSpecs == List(nodeSpec1, nodeSpec2, nodeSpec3),
           subgraphSpec.allNodeSpecNames == List("n1", "n2", "n3"),
           // The incoming and outgoing edges for each node.
           subgraphSpec.incomingEdges == expectedIncoming,
@@ -56,23 +56,23 @@ object SubgraphSpecSpec extends ZIOSpecDefault:
       },
       test("connected nodes and connected subgraphs") {
 
-        val node1 = node("n1")
-        val node2 = node("n2")
-        val node3 = node("n3")
-        val node4 = node("n4")
-        val node5 = node("n5")
-        val node6 = node("n6")
+        val nodeSpec1 = node("n1")
+        val nodeSpec2 = node("n2")
+        val nodeSpec3 = node("n3")
+        val nodeSpec4 = node("n4")
+        val nodeSpec5 = node("n5")
+        val nodeSpec6 = node("n6")
 
         val subgraphSpec = subgraph("s")(
           // A subgraph that loops back on itself
-          directedEdge(from = node1, to = node2),
-          directedEdge(from = node2, to = node3),
-          directedEdge(from = node3, to = node1),
+          directedEdge(from = nodeSpec1, to = nodeSpec2),
+          directedEdge(from = nodeSpec2, to = nodeSpec3),
+          directedEdge(from = nodeSpec3, to = nodeSpec1),
           // A separate unconnected subgraph - no loop, but multiple
-          // edges connect node4 and node6 in the connected subgraph
-          directedEdge(from = node4, to = node5),
-          directedEdge(from = node4, to = node6),
-          directedEdge(from = node5, to = node6)
+          // edges connect nodeSpec4 and nodeSpec6 in the connected subgraph
+          directedEdge(from = nodeSpec4, to = nodeSpec5),
+          directedEdge(from = nodeSpec4, to = nodeSpec6),
+          directedEdge(from = nodeSpec5, to = nodeSpec6)
         )
 
         assertTrue(
@@ -89,13 +89,13 @@ object SubgraphSpecSpec extends ZIOSpecDefault:
       },
       test("Detect duplicate NodeSpec names") {
 
-        val node1 = node("n1")
-        val node2 = node("n1")
-        val node3 = node("n3")
+        val nodeSpec1 = node("n1")
+        val nodeSpec2 = node("n1")
+        val nodeSpec3 = node("n3")
 
         val subgraphSpec = subgraph("s")(
-          directedEdge(from = node1, to = node2),
-          directedEdge(from = node1, to = node3)
+          directedEdge(from = nodeSpec1, to = nodeSpec2),
+          directedEdge(from = nodeSpec1, to = nodeSpec3)
         )
 
         assertTrue(
