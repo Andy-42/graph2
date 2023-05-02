@@ -91,3 +91,18 @@ without needing to do any deep analysis (potentially fetching more nodes from ca
 
 When an edge references a node that is unqualified, that predicate can be re-written
 to move the predicate to the other node...
+
+# Prune Events
+
+If we are not interested in exploring events beyond the four types that are matched
+(i.e., WRITE, SEND, DELETE and READ), then events with all other types could be dropped
+at ingestion time and simply not be included in the graph. In addition to avoiding the
+ingestion overhead, it also reduces the cost of matching.
+
+This kind of pruning would be suitable for a runtime where there is only the requirement to
+match the given subgraph spec.
+
+# Eliminate EndpointEvent Nodes Completely!
+
+If you encode the time in the edge key, then the EndpointEvent nodes could be eliminated completely.
+This reduces the number of nodes in the graph by half, but adds complexity to edge key predicate processing.
