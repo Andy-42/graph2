@@ -7,7 +7,7 @@ import zio.test.*
 
 object MatcherSpec extends ZIOSpecDefault:
 
-  /** All tests in this fixture use a test at a single event time, the value of which doesn't matter. */
+  /** All tests in this fixture use a test at a single event time, the value of which doesn't matter in these tests. */
   val time: EventTime = 42
 
   extension (subgraphSpec: SubgraphSpec)
@@ -29,7 +29,7 @@ object MatcherSpec extends ZIOSpecDefault:
       for
         matcher <- Matcher.make(
           time = time,
-          graph = UnimplementedGraph(), // unused - all nodes will be fetched from in he cache
+          graph = UnimplementedGraph(), // unused - all nodes will be fetched from the cache
           subgraphSpec = subgraphSpec,
           nodes = graphNodes
         )
@@ -48,9 +48,9 @@ object MatcherSpec extends ZIOSpecDefault:
       )
     )
 
-  val nodeId1 = NodeId(0, 1)
-  val nodeId2 = NodeId(0, 2)
-  val nodeId3 = NodeId(0, 3)
+  val nodeId1: NodeId = NodeId(0, 1)
+  val nodeId2: NodeId = NodeId(0, 2)
+  val nodeId3: NodeId = NodeId(0, 3)
 
   def spec: Spec[Any, Any] = suite("Edge Reconciliation")(
     test("Simple case: a spec with two nodes distinct nodes with a single edge between them") {

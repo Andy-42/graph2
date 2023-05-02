@@ -41,7 +41,7 @@ object SubgraphSpecSpec extends ZIOSpecDefault:
         assertTrue(
           // Even though there are only two edge specs, they are expanded to 4 half-edges
           subgraphSpec.allHalfEdges.length == 4,
-          subgraphSpec.allNodeSpecs == List(node1, node2, node3),
+          subgraphSpec.allUniqueNodeSpecs == List(node1, node2, node3),
           subgraphSpec.allNodeSpecNames == List("n1", "n2", "n3"),
           // The incoming and outgoing edges for each node.
           subgraphSpec.incomingEdges == expectedIncoming,
@@ -82,6 +82,7 @@ object SubgraphSpecSpec extends ZIOSpecDefault:
           subgraphSpec.allConnectedNodes("n4") == Set("n4", "n5", "n6"),
           subgraphSpec.allConnectedNodes("n5") == Set("n4", "n5", "n6"),
           subgraphSpec.allConnectedNodes("n6") == Set("n4", "n5", "n6"),
+          // A valid SubgraphSpec has only one connected subgraph
           subgraphSpec.connectedSubgraphs() == Set(Set("n1", "n2", "n3"), Set("n4", "n5", "n6")),
           subgraphSpec.duplicateNodeSpecNames.isEmpty
         )

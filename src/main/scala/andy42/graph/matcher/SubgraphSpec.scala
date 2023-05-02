@@ -13,14 +13,12 @@ trait NodePredicate:
 /** A specification for the node. This spec constrains using the properties and edges of the node itself, without
   * traversing edges or referencing the the contents of any other node.
   *
+  * @param name
+  *   The name that uniquely identifies a node. The `name` will be used to relate a node spec to a matched node.
   * @param predicates
   *   Predicates that constrain this node.
   */
-case class NodeSpec(
-    name: NodeSpecName,
-    description: String,
-    predicates: List[NodePredicate] = Nil
-):
+case class NodeSpec(name: NodeSpecName, predicates: List[NodePredicate] = Nil):
   require(name.nonEmpty)
 
   def withNodePredicate(nodePredicate: NodePredicate): NodeSpec =
@@ -45,10 +43,10 @@ case class NodeSpec(
       yield allPredicatesMatch(using snapshot)
 
   def predicatesMermaid: String = predicates.map("\\n" + _.mermaid).mkString
-  def mermaid: String = s"$name[$description$predicatesMermaid]"
+  def mermaid: String = s"$name[$name$predicatesMermaid]"
 
-def node(name: String, description: String = ""): NodeSpec =
-  NodeSpec(name = name, description = description)
+def node(name: String): NodeSpec =
+  NodeSpec(name = name)
 
 trait EdgeKeyPredicate:
   def p(k: String): Boolean
@@ -103,64 +101,74 @@ case class SubgraphSpec(
       .map(_.mermaid)
       .mkString("\n")
 
-  val filterMermaid: _root_.java.lang.String = name + filter.fold("")(filter => ": " + filter.description)
+  val filterMermaid: String = name + filter.fold("")(filter => ": " + filter.description)
   def subgraphStart = s"subgraph Subgraph[\"$filterMermaid\"]"
   def subgraphEnd = "end"
 
   def edgeMermaid: String = edges.map(_.mermaid).mkString("\n")
   def mermaid: String = s"flowchart TD\n$subgraphStart\n$nodeMermaid\n$edgeMermaid\n$subgraphEnd"
 
-  val allHalfEdges: List[EdgeSpec] = edges ++ edges.map(_.reverse)
-
-  private def allNodeSpecsIncludingDuplicates: List[NodeSpec] =
+  private val allNodeSpecsIncludingDuplicates: List[NodeSpec] =
     for
       edgeSpec <- edges
       fromAndToSpecs <- List(edgeSpec.direction.from, edgeSpec.direction.to)
     yield fromAndToSpecs
 
-  // TODO: Validate that names of distinct NodeSpecs are are unique
-  val allNodeSpecs: List[NodeSpec] =
+  /** A list of all unique node specs.
+    *
+    * The names of node specs must be unique for the subgraph spec to be useful, but this implementation does not check
+    * that. The `duplicateNodeSpecNames` method should be used to validate this condition, but this implementation
+    * relies on the implementer to validate at the appropriate point.
+    */
+  val allUniqueNodeSpecs: List[NodeSpec] =
     allNodeSpecsIncludingDuplicates
       .map(nodeSpec => nodeSpec.name -> nodeSpec)
       .toMap
       .toList
       .sortBy(_._1)
-      .map((x: (NodeSpecName, NodeSpec)) => x._2)
+      .map(_._2)
 
-  val allNodeSpecNames: List[NodeSpecName] = allNodeSpecs.map(_.name).sorted
+  val allNodeSpecNames: List[NodeSpecName] = allUniqueNodeSpecs.map(_.name).sorted
 
-  val nameToNodeSpec: Map[NodeSpecName, NodeSpec] = allNodeSpecs.map(node => node.name -> node).toMap
+  val nameToNodeSpec: Map[NodeSpecName, NodeSpec] = allUniqueNodeSpecs.map(node => node.name -> node).toMap
+
+  val allHalfEdges: List[EdgeSpec] = edges ++ edges.map(_.reverse)
 
   val incomingEdges: Map[NodeSpecName, List[EdgeSpec]] =
     allNodeSpecNames
       .map(nodeSpecName =>
         nodeSpecName -> allHalfEdges
           .filter(_.direction.to.name == nodeSpecName)
-          .sortBy(edgeSpec => (edgeSpec.direction.from.name, edgeSpec.direction.to.name))
+          .sortBy(_.direction.from.name)
       )
       .toMap
 
   val outgoingEdges: Map[NodeSpecName, List[EdgeSpec]] =
     allNodeSpecNames
-      .map(nodeSpecName => nodeSpecName -> allHalfEdges.filter(_.direction.from.name == nodeSpecName))
+      .map(nodeSpecName =>
+        nodeSpecName -> allHalfEdges
+          .filter(_.direction.from.name == nodeSpecName)
+          .sortBy(_.direction.to.name)
+      )
       .toMap
 
-  /** Validate that all NodeSpecs have a unique name.
+  /** Find any node spec names that are duplicated.
     * @return
-    *   Any NodeSpec names that are duplicated. This list will be unique and sorted.
+    *   Any NodeSpec names that are duplicated, unique and sorted.
     */
   def duplicateNodeSpecNames: List[NodeSpecName] =
 
     @tailrec def accumulate(
         nodeSpecs: List[NodeSpec] = allNodeSpecsIncludingDuplicates,
-        x: Map[NodeSpecName, NodeSpec] = Map.empty[NodeSpecName, NodeSpec],
+        nameToNodeSpec: Map[NodeSpecName, NodeSpec] = Map.empty[NodeSpecName, NodeSpec],
         duplicates: List[NodeSpecName] = Nil
     ): List[NodeSpecName] =
       nodeSpecs match {
         case nodeSpec :: xs =>
-          if !x.contains(nodeSpec.name) then accumulate(xs, x + (nodeSpec.name -> nodeSpec), duplicates)
-          else if x(nodeSpec.name) eq nodeSpec then accumulate(xs, x, duplicates)
-          else accumulate(xs, x, nodeSpec.name :: duplicates)
+          if !nameToNodeSpec.contains(nodeSpec.name) then
+            accumulate(xs, nameToNodeSpec.updated(nodeSpec.name, nodeSpec), duplicates)
+          else if nameToNodeSpec(nodeSpec.name) eq nodeSpec then accumulate(xs, nameToNodeSpec, duplicates)
+          else accumulate(xs, nameToNodeSpec, nodeSpec.name :: duplicates)
 
         case _ => duplicates.distinct.sorted
       }
@@ -177,7 +185,9 @@ case class SubgraphSpec(
         .map(_.direction.to.name)
         .foldLeft(visited + current)((visited, farNode) => allConnectedNodes(farNode, visited))
 
-  /** A valid edge spec will have exactly one (fully) connected subgraph */
+  /** Find all the groups of nodes that are connected. A subgraph spec should typically be validated to contain exactly
+    * one (fully) connected subgraph
+    */
   @tailrec
   final def connectedSubgraphs(
       remainingNodeSpecs: Set[NodeSpecName] = allNodeSpecNames.toSet,

@@ -50,14 +50,14 @@ Here is a graphical representation of this query:
 ```mermaid
 flowchart TD
 subgraph Subgraph["APT Detection: write.time <= read.time <= delete.time <= sendTime"]
-ip[Target of a SEND event]
-e1[Event 1\nproperty: type = WRITE\nlabel: EndpointEvent]
-f[File]
-e4[Event 4\nproperty: type = SEND\nlabel: EndpointEvent]
-e3[Event 3\nproperty: type = DELETE\nlabel: EndpointEvent]
-p2[Process 2]
-e2[Event 2\nproperty: type = READ\nlabel: EndpointEvent]
-p1[Process 1]
+ip[ip]
+e1[e1\nproperty: type = WRITE\nlabel: EndpointEvent]
+f[f]
+e4[e4\nproperty: type = SEND\nlabel: EndpointEvent]
+e3[e3\nproperty: type = DELETE\nlabel: EndpointEvent]
+p2[p2]
+e2[e2\nproperty: type = READ\nlabel: EndpointEvent]
+p1[p1]
 p1 --> |EVENT| e1
 e1 --> |EVENT| f
 p2 --> |EVENT| e2
@@ -80,6 +80,12 @@ The time comparisons are represented as a post-filter expression
 This mechanism allows for general filter predicates to be constructed
 on subgraph that has been fully matched on the node and
 edge predicates.
+
+# Reducing Matching Complexity
+
+- Include the type of the event in the edges from p1, p2 to the event nodes.
+- Reduces complexity of matching: initial comparison in SQE can filter on properties of nodes directly
+without needing to do any deep analysis (potentially fetching more nodes from cache).
 
 # Edge predicate re-write
 

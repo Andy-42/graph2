@@ -7,25 +7,25 @@ import zio.*
 
 object StandingQuery extends App:
 
-  val p1 = node("p1", "Process 1")
-  val p2 = node("p2", "Process 2")
+  val p1 = node("p1")
+  val p2 = node("p2")
 
-  val f = node("f", "File")
+  val f = node("f")
 
-  val writeEvent = node("e1", "Event 1")
+  val writeEvent = node("e1")
     .hasProperty("type", "WRITE")
     .isLabeled("EndpointEvent")
-  val readEvent = node("e2", "Event 2")
+  val readEvent = node("e2")
     .hasProperty("type", "READ")
     .isLabeled("EndpointEvent")
-  val deleteEvent = node("e3", "Event 3")
+  val deleteEvent = node("e3")
     .hasProperty("type", "DELETE")
     .isLabeled("EndpointEvent")
-  val sendEvent = node("e4", "Event 4")
+  val sendEvent = node("e4")
     .hasProperty("type", "SEND")
     .isLabeled("EndpointEvent")
 
-  val ip = node("ip", "Target of a SEND event")
+  val ip = node("ip")
 
   import EdgeSpecs.directedEdge
 
@@ -47,9 +47,8 @@ object StandingQuery extends App:
         readTime <- readEvent.epochMillis("time")
         deleteTime <- readEvent.epochMillis("time")
         sendTime <- sendEvent.epochMillis("time")
-
-      // In the Quine sample, this expression uses '<',
-      // which would not match events happening within 1 ms resolution.
+      // In the Quine APT Detection recipe, this expression uses '<',
+      // which would not match events happening within a 1 ms resolution.
       yield writeTime <= readTime && readTime <= deleteTime && deleteTime <= sendTime
 
   println(subgraphSpec.mermaid)
