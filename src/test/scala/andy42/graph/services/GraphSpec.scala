@@ -62,7 +62,8 @@ object GraphSpec extends ZIOSpecDefault:
       nodeFromCacheAfter.get == expectedNode,
       // The standing query evaluation and edge synchronization services have been notified of the changes
       standingQueryEvaluationParameters.toVector == expectedOutputEvents,
-      edgeSynchronizationParameters.toVector == expectedOutputEvents)
+      edgeSynchronizationParameters.toVector == expectedOutputEvents
+    )
 
   val graphLayer: ULayer[Graph] =
     (TestNodeRepository.layer ++
@@ -76,7 +77,7 @@ object GraphSpec extends ZIOSpecDefault:
 
   override def spec: Spec[Any, Any] =
     suite("Graph")(
-      test("Simplest possible test that touches all data flows") {
+      test("Simplest possible test that touches all data flows")(
         check(genNodeId, Gen.long, Gen.long) { (id, time, p1Value) =>
 
           val edge = NearEdge("e1", id, EdgeDirection.Outgoing) // Reflexive - points back to originating node
@@ -92,5 +93,5 @@ object GraphSpec extends ZIOSpecDefault:
 
           testGraphDataFlow(id, time, inputMutations, expectedNode, expectedCurrent, expectedMutationOutput)
         }
-      }.provide(graphLayer)
+      ).provide(graphLayer)
     ) @@ timed

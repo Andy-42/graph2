@@ -14,7 +14,7 @@ case class MatcherDataViewCacheLive(
     nodeCache: MatcherNodeCache,
     snapshotCache: TMap[SnapshotCacheKey, NodeSnapshot],
     snapshotCacheInFlight: TSet[SnapshotCacheKey]
-) extends MatcherDataViewCache {
+) extends MatcherDataViewCache:
 
   private def acquireSnapshotCachePermit(id: => SnapshotCacheKey): UIO[SnapshotCacheKey] =
     STM
@@ -46,7 +46,6 @@ case class MatcherDataViewCacheLive(
         snapshot <- optionSnapshot.fold(getFromNodeCacheAndCacheSnapshot(id, time))(ZIO.succeed)
       yield snapshot
     }
-}
 
 object MatcherDataViewCache:
   def make(nodeCache: MatcherNodeCache): UIO[MatcherDataViewCache] =

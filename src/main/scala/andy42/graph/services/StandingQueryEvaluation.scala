@@ -20,13 +20,16 @@ trait StandingQueryEvaluation:
       time: EventTime,
       changes: Vector[NodeMutationOutput]
   ): NodeIO[Unit]
-  
+
   def output: Hub[SubgraphMatchAtTime]
 
 // TODO: s/b able to have multiple standing queries?
 
-final case class StandingQueryEvaluationLive(graph: Graph, subgraphSpec: SubgraphSpec, hub: Hub[SubgraphMatchAtTime])
-    extends StandingQueryEvaluation:
+final case class StandingQueryEvaluationLive(
+    graph: Graph,
+    subgraphSpec: SubgraphSpec,
+    hub: Hub[SubgraphMatchAtTime]
+) extends StandingQueryEvaluation:
 
   /** Match the node change against all standing queries.
     *
@@ -83,7 +86,7 @@ final case class StandingQueryEvaluationLive(graph: Graph, subgraphSpec: Subgrap
       farEdgeEventsGroupedById
         .get(node.id)
         .fold(ZIO.succeed(node))(events => node.append(time, events))
-
+      
     for
       additionalReferencedNodes <- ZIO.foreachPar(additionalReferencedNodeIds)(graph.get)
       updatedNodes <- ZIO.foreach(mutations.map(_.node) ++ additionalReferencedNodes)(appendFarEdgeEvents)

@@ -11,7 +11,6 @@ object StandingQuery extends App:
   val p2 = node("p2", "Process 2")
 
   val f = node("f", "File")
-    //.hasProperty("time").hasProperty("data") // required for output
 
   val writeEvent = node("e1", "Event 1")
     .hasProperty("type", "WRITE")
@@ -27,7 +26,6 @@ object StandingQuery extends App:
     .isLabeled("EndpointEvent")
 
   val ip = node("ip", "Target of a SEND event")
-    //.hasProperty("object") // required for output
 
   import EdgeSpecs.directedEdge
 
@@ -40,20 +38,18 @@ object StandingQuery extends App:
     directedEdge(from = deleteEvent, to = f).edgeKeyIs("EVENT"),
     directedEdge(from = p2, to = sendEvent).edgeKeyIs("EVENT"),
     directedEdge(from = sendEvent, to = ip).edgeKeyIs("EVENT")
-  ) where {
-      new SubgraphPostFilter:
-        override def description: String = "write.time <= read.time <= delete.time <= sendTime"
-        
-        override def p: SnapshotProvider ?=> NodeIO[Boolean] =
-          for
-            writeTime <- writeEvent.epochMillis("time")
-            readTime <- readEvent.epochMillis("time")
-            deleteTime <- readEvent.epochMillis("time")
-            sendTime <- sendEvent.epochMillis("time")
-      
-          // In the Quine sample, this expression uses '<', 
-          // which would not match events happening within 1 ms resolution.
-          yield writeTime <= readTime && readTime <= deleteTime && deleteTime <= sendTime
-  }
+  ) where new SubgraphPostFilter:
+    override def description: String = "write.time <= read.time <= delete.time <= sendTime"
+
+    override def p: SnapshotProvider ?=> NodeIO[Boolean] =
+      for
+        writeTime <- writeEvent.epochMillis("time")
+        readTime <- readEvent.epochMillis("time")
+        deleteTime <- readEvent.epochMillis("time")
+        sendTime <- sendEvent.epochMillis("time")
+
+      // In the Quine sample, this expression uses '<',
+      // which would not match events happening within 1 ms resolution.
+      yield writeTime <= readTime && readTime <= deleteTime && deleteTime <= sendTime
 
   println(subgraphSpec.mermaid)

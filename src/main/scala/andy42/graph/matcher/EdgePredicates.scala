@@ -32,6 +32,9 @@ object EdgeSpecs:
   def directedEdge(from: NodeSpec, to: NodeSpec): EdgeSpec =
     EdgeSpec(OutgoingDirectedEdgeSpec(from = from, to = to))
 
+  def undirectedEdge(from: NodeSpec, to: NodeSpec): EdgeSpec =
+    EdgeSpec(UndirectedEdgeSpec(from = from, to = to))
+
 case class EdgeKeyIs(x: String) extends EdgeKeyPredicate:
   override def p(k: String): Boolean = k == x
   override def mermaid: String = x

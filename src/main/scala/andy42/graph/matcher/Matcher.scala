@@ -95,13 +95,12 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
     if subgraphMatchSoFar.contains(nodeSpec.name) then ZIO.succeed(List(subgraphMatchSoFar))
     else eachReferencedNodeMatches(nodeSpec, subgraphMatchSoFar.updated(nodeSpec.name, id))(using snapshot)
 
-  /**
-   * Match the outgoing edges.
-   * 
-   * Since there are possibly multiple combinations of edges that could match, each possible combination is tried,
-   * so it is possible that multiple `SubgraphMatch`es can be returned for one match.
-   * Each combination of subgraph matches are tested in parallel.
-   */
+  /** Match the outgoing edges.
+    *
+    * Since there are possibly multiple combinations of edges that could match, each possible combination is tried, so
+    * it is possible that multiple `SubgraphMatch`es can be returned for one match. Each combination of subgraph matches
+    * are tested in parallel.
+    */
   private def eachReferencedNodeMatches(nodeSpec: NodeSpec, matchingNodes: SubgraphMatch)(using
       snapshot: NodeSnapshot
   ): NodeIO[List[SubgraphMatch]] =
@@ -159,8 +158,8 @@ case class MatcherLive(time: EventTime, subgraphSpec: SubgraphSpec, cache: Match
 
   /** Determine whether a list of NodeSpec and NodeIds match. The match is done recursively through all nodes that are
     * matchable through the given NodeIds.
-   * 
-   * Each edge is matched in parallel.
+    *
+    * Each edge is matched in parallel.
     *
     * @param targets
     *   A list of NodeSpecName
