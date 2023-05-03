@@ -5,7 +5,7 @@ import andy42.graph.matcher.EdgeSpecs.*
 import andy42.graph.model.NodeIO
 import zio.*
 
-object StandingQuery extends App:
+object StandingQuery:
 
   val p1 = node("p1")
   val p2 = node("p2")
@@ -26,7 +26,7 @@ object StandingQuery extends App:
     .isLabeled("EndpointEvent")
 
   val ip = node("ip")
-  
+
   val subgraphSpec = subgraph("APT Detection")(
     directedEdge(from = p1, to = writeEvent).edgeKeyIs("EVENT"),
     directedEdge(from = writeEvent, to = f).edgeKeyIs("EVENT"),

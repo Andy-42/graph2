@@ -121,7 +121,7 @@ object IngestSpec extends ZIOAppDefault:
   val graphLayer: ULayer[Graph] =
     (TestNodeRepository.layer ++
       TestNodeCache.layer ++
-      TestStandingQueryEvaluation.layer ++
+      TestMatchSink.layer ++
       TestEdgeSynchronization.layer) >>> Graph.layer
 
   given JsonDecoder[Endpoint] = Endpoint.decoder
@@ -129,26 +129,25 @@ object IngestSpec extends ZIOAppDefault:
 
   // Currently using only the first 1000 lines of the original file to limit test runtime
   val filePrefix = "src/test/scala/andy42/graph/sample/aptdetection"
-  val endpointPath = s"$filePrefix/endpoint-first-1000.json"
+  // val endpointPath = s"$filePrefix/endpoint-first-1000.json"
+  val endpointPath = s"$filePrefix/endpoint.json"
   val networkPath = s"$filePrefix/network-first-1000.json"
 
-  val sampleEndpointId: NodeId = NodeId.fromNamedValues("Process")(3428)
-  val sampleNetworkId: NodeId = NodeId.fromNamedValues("Source")("10.1.2.195", 59487)
-
-  val ingest: ZIO[Graph, Any, Unit] =
+  val ingest: ZIO[Graph, Any, Chunk[SubgraphMatchAtTime]] =
     for
       graph <- ZIO.service[Graph]
+      _ <- graph.registerStandingQuery(StandingQuery.subgraphSpec)
+
       graphLive = graph.asInstanceOf[GraphLive]
+      testMatchSink = graphLive.matchSink.asInstanceOf[TestMatchSink]
 
       _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)(parallelism = 4)
-      _ <- IngestableJson.ingestFromFile[Network](networkPath)(parallelism = 4)
-
-      // Not checking anything useful here, but checking that we ingested something
-      sampleEndpoint <- graphLive.nodeDataService.get(sampleEndpointId)
-      sampleNetwork <- graphLive.nodeDataService.get(sampleNetworkId)
-      _ = sampleEndpoint.packedHistory.nonEmpty
-      _ = sampleNetwork.packedHistory.nonEmpty
-    yield ()
+      matches <- testMatchSink.matches
+    yield matches
 
   override def run: ZIO[Any, Any, Any] =
-    ingest.provideLayer(graphLayer)
+    for
+      matches <- ingest.provideLayer(graphLayer)
+      _ <- ZIO.debug(matches)
+    yield ()
+

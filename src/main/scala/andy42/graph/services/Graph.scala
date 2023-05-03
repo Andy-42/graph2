@@ -1,5 +1,6 @@
 package andy42.graph.services
 
+import andy42.graph.matcher.{Matcher, SubgraphMatch, SubgraphSpec}
 import andy42.graph.model.*
 import zio.*
 import zio.stm.*
@@ -70,6 +71,8 @@ trait Graph:
       mutations: Vector[NodeMutationInput]
   ): NodeIO[Unit]
 
+  def registerStandingQuery(subgraphSpec: SubgraphSpec): UIO[Unit]
+
   def appendFarEdgeEvents(
       time: EventTime,
       mutation: NodeMutationInput
@@ -84,7 +87,8 @@ final case class GraphLive(
     cache: NodeCache,
     nodeDataService: NodeRepository,
     edgeSynchronization: EdgeSynchronization,
-    standingQueryEvaluation: StandingQueryEvaluation
+    matchSink: MatchSink,
+    standingQueries: Ref[Set[SubgraphSpec]]
 ) extends Graph:
 
   override def get(
@@ -124,12 +128,17 @@ final case class GraphLive(
     for
       output <- ZIO.foreachPar(changes)(processChangesForOneNode(time, _))
 
-      // SQE and initiation of edge synchronization both need to complete before the append call completes,
-      // but there is no requirement that they happen in a specific order since SQE patches the far half
-      // edges before evaluation (i.e., as though they were updated). The two can be processed in parallel.
-      _ <- standingQueryEvaluation.graphChanged(time, output).zipPar(edgeSynchronization.graphChanged(time, output))
+      // TODO: Should fork here since the design edge reconciliation is explicitly eventually consistent.
+      // This complicates testing so there should be a way to configure this to fork or not.
+      _ <- edgeSynchronization.graphChanged(time, output) // .fork
+
+      // Expand the changed nodes to include the targets of any affected nodes
+      x <- allAffectedNodes(time, output)
+      subgraphSpecs <- standingQueries.get
+      _ <- ZIO.foreachParDiscard(subgraphSpecs)(matchAgainstStandingQueries(time, x))
     yield ()
 
+  // TODO: Can remove this and if there is a need to bypass SQE for far edge creation, that can be detected and handled (use config)
   override def appendFarEdgeEvents(
       time: EventTime,
       mutation: NodeMutationInput
@@ -139,6 +148,7 @@ final case class GraphLive(
     for
       output <- processChangesForOneNode(time, mutation)
       // SQE is not run since those events are processed by SQE in the original append
+      // TODO: This is a questionable decision - since it is possible that this could miss matches
       _ <- edgeSynchronization.graphChanged(time, Vector(output)) // add far edge events into reconciliation
     yield ()
 
@@ -170,6 +180,58 @@ final case class GraphLive(
       yield nextNode
     }
 
+  override def registerStandingQuery(subgraphSpec: SubgraphSpec): UIO[Unit] = standingQueries.update(_ + subgraphSpec)
+
+  /** Get the new state for all nodes that were modified in this group of changes. The Graph will pass the new node
+    * states after the changes have been applied, but since it will not include any far edge events (since that is done
+    * in an eventually-consistent way), so we retrieve any nodes affected by edge events and patch them as though the
+    * far edges had been modified.
+    */
+  private def allAffectedNodes(
+      time: EventTime,
+      mutations: Vector[NodeMutationOutput]
+  ): NodeIO[Vector[Node]] =
+
+    def farEdgeEvents: Vector[(NodeId, Event)] =
+      for
+        mutation <- mutations
+        NodeMutationOutput(node, events) = mutation
+        referencedNodeAndFarEdgeEvent <- events.collect {
+          case event: Event.EdgeAdded   => event.edge.other -> Event.FarEdgeAdded(event.edge.reverse(node.id))
+          case event: Event.EdgeRemoved => event.edge.other -> Event.FarEdgeRemoved(event.edge.reverse(node.id))
+        }
+      yield referencedNodeAndFarEdgeEvent
+
+    val farEdgeEventsGroupedById: Map[NodeId, Vector[Event]] =
+      farEdgeEvents
+        .groupBy((id, _) => id)
+        .map((k, v) => k -> v.map(_._2))
+
+    // Nodes referenced in NearEdge Events that are not already part of this mutation
+    val additionalReferencedNodeIds = farEdgeEventsGroupedById.keys.filter { id =>
+      !mutations.exists(_.node.id == id)
+    }
+
+    def appendFarEdgeEvents(node: Node): NodeIO[Node] =
+      farEdgeEventsGroupedById
+        .get(node.id)
+        .fold(ZIO.succeed(node))(events => node.append(time, events))
+
+    for
+      additionalReferencedNodes <- ZIO.foreachPar(additionalReferencedNodeIds)(get)
+      updatedNodes <- ZIO.foreach(mutations.map(_.node) ++ additionalReferencedNodes)(appendFarEdgeEvents)
+    yield updatedNodes
+
+  private def matchAgainstStandingQueries(
+      time: EventTime,
+      changedNodes: Vector[Node]
+  )(subgraphSpec: SubgraphSpec): NodeIO[Unit] =
+    for
+      matcher <- Matcher.make(time, this, subgraphSpec, changedNodes) // TODO: Fix order of parameters
+      nodeMatches <- matcher.matchNodes(changedNodes.map(_.id))
+      _ <- matchSink.offer(SubgraphMatchAtTime(time, subgraphSpec, nodeMatches)).when(nodeMatches.nonEmpty)
+    yield ()
+
   private def acquirePermit(id: => NodeId): UIO[NodeId] =
     STM
       .ifSTM(inFlight.contains(id))(STM.retry, inFlight.put(id).map(_ => id))
@@ -188,14 +250,22 @@ final case class GraphLive(
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
 object Graph:
-  val layer: URLayer[NodeCache & NodeRepository & EdgeSynchronization & StandingQueryEvaluation, Graph] =
+  val layer: URLayer[NodeCache & NodeRepository & EdgeSynchronization & MatchSink, Graph] =
     ZLayer {
       for
         nodeCache <- ZIO.service[NodeCache]
         nodeDataService <- ZIO.service[NodeRepository]
         edgeSynchronization <- ZIO.service[EdgeSynchronization]
-        standingQueryEvaluation <- ZIO.service[StandingQueryEvaluation]
+        matchSink <- ZIO.service[MatchSink]
 
+        standingQueries <- Ref.make(Set.empty[SubgraphSpec])
         inFlight <- TSet.empty[NodeId].commit
-      yield GraphLive(inFlight, nodeCache, nodeDataService, edgeSynchronization, standingQueryEvaluation)
+      yield GraphLive(
+        inFlight = inFlight,
+        cache = nodeCache,
+        nodeDataService = nodeDataService,
+        edgeSynchronization = edgeSynchronization,
+        matchSink = matchSink,
+        standingQueries = standingQueries
+      )
     }

@@ -25,7 +25,6 @@ object GraphSpec extends ZIOSpecDefault:
       graphLive = graph.asInstanceOf[GraphLive]
       testNodeRepository = graphLive.nodeDataService.asInstanceOf[TestNodeRepositoryLive]
       testNodeCache = graphLive.cache.asInstanceOf[TestNodeCacheLive]
-      testStandingQueryEvaluation = graphLive.standingQueryEvaluation.asInstanceOf[TestStandingQueryEvaluation]
       testEdgeSynchronization = graphLive.edgeSynchronization.asInstanceOf[TestEdgeSynchronization]
       _ <- testNodeCache.clear() *> testNodeRepository.clear()
 
@@ -45,7 +44,6 @@ object GraphSpec extends ZIOSpecDefault:
       nodeFromData <- testNodeRepository.get(id)
       nodeFromCacheAfter <- testNodeCache.get(id)
       // Services that get notified of changes to the node state
-      standingQueryEvaluationParameters <- testStandingQueryEvaluation.graphChangedParameters
       edgeSynchronizationParameters <- testEdgeSynchronization.graphChangedParameters
       _ = true
     yield
@@ -61,14 +59,13 @@ object GraphSpec extends ZIOSpecDefault:
       nodeFromData == expectedNode,
       nodeFromCacheAfter.get == expectedNode,
       // The standing query evaluation and edge synchronization services have been notified of the changes
-      standingQueryEvaluationParameters.toVector == expectedOutputEvents,
       edgeSynchronizationParameters.toVector == expectedOutputEvents
     )
 
   val graphLayer: ULayer[Graph] =
     (TestNodeRepository.layer ++
       TestNodeCache.layer ++
-      TestStandingQueryEvaluation.layer ++
+      TestMatchSink.layer ++
       TestEdgeSynchronization.layer) >>> Graph.layer
 
   val genNodeId: Gen[Any, NodeId] =

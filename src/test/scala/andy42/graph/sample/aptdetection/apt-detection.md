@@ -70,7 +70,7 @@ end
 ```
 
 This also adds property existence qualifiers on the 
-*Target of a SEND event* and *File* nodes. These properties
+*f* and *ip* nodes. These properties
 are known to be used for output (i.e., for analysis of graph matches)
 so we include predicates for them to make this clearer.
 happen in within the time resolution of 1 ms.

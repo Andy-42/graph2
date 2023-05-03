@@ -1,0 +1,16 @@
+package andy42.graph.services
+
+import andy42.graph.matcher.{SubgraphMatch, SubgraphSpec}
+import zio.*
+import andy42.graph.model.EventTime
+
+case class SubgraphMatchAtTime(time: EventTime, subgraphSpec: SubgraphSpec, nodeMatches: List[SubgraphMatch])
+
+/** Accepts the matched subgraph specs.
+  *
+  * An implementation might write the matches to a persistent store (e.g., Kafka or a database), and it may also do some
+  * work to remove duplicates.
+  */
+trait MatchSink:
+
+  def offer(matches: SubgraphMatchAtTime): UIO[Unit]
