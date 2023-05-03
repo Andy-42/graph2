@@ -26,9 +26,7 @@ object StandingQuery extends App:
     .isLabeled("EndpointEvent")
 
   val ip = node("ip")
-
-  import EdgeSpecs.directedEdge
-
+  
   val subgraphSpec = subgraph("APT Detection")(
     directedEdge(from = p1, to = writeEvent).edgeKeyIs("EVENT"),
     directedEdge(from = writeEvent, to = f).edgeKeyIs("EVENT"),
