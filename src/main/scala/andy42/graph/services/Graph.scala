@@ -1,6 +1,6 @@
 package andy42.graph.services
 
-import andy42.graph.matcher.{Matcher, SubgraphMatch, SubgraphSpec}
+import andy42.graph.matcher.{Matcher, SubgraphSpec}
 import andy42.graph.model.*
 import zio.*
 import zio.stm.*

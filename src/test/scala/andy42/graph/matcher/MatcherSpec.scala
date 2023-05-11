@@ -25,7 +25,7 @@ object MatcherSpec extends ZIOSpecDefault:
     def matchTo(
         graphNodes: Vector[Node],
         matchStartingAt: Vector[NodeId]
-    ): NodeIO[List[SubgraphMatch]] =
+    ): NodeIO[Vector[ResolvedMatches]] =
       for
         matcher <- Matcher.make(
           time = time,
@@ -68,10 +68,17 @@ object MatcherSpec extends ZIOSpecDefault:
       // When matched starting at either node1 and node2, two matches are produced since the starting point will
       // match either node a or b in the graph.
       // When matching starting at node1 and node2, there will be a total of four matches, with two pairs of duplicates.
+      // However, two of these pairs are duplicates.
       // Matching starting at node3 never produces any matches since node3 has no edges.
       val expectedMatches = Set(
-        Map("a" -> nodeId1, "b" -> nodeId2),
-        Map("a" -> nodeId2, "b" -> nodeId1)
+        Map(
+          SpecNodeMatch(specName = "a", nodeId1) -> Vector(Vector(SpecNodeMatch(specName = "b", nodeId2))),
+          SpecNodeMatch(specName = "b", nodeId2) -> Vector(Vector(SpecNodeMatch(specName = "a", nodeId1)))
+        ),
+        Map(
+          SpecNodeMatch(specName = "b", nodeId1) -> Vector(Vector(SpecNodeMatch(specName = "a", nodeId2))),
+          SpecNodeMatch(specName = "a", nodeId2) -> Vector(Vector(SpecNodeMatch(specName = "b", nodeId1)))
+        )
       )
 
       for
@@ -112,7 +119,7 @@ object MatcherSpec extends ZIOSpecDefault:
 
       // There is only one possible match
       val expectedMatches = Set(
-        Map("a" -> nodeId1)
+        Map(SpecNodeMatch(specName = "a", nodeId1) -> Vector(Vector(SpecNodeMatch(specName = "a", nodeId1))))
       )
 
       for matches <- subgraphSpec.matchTo(
@@ -120,7 +127,7 @@ object MatcherSpec extends ZIOSpecDefault:
           matchStartingAt = Vector(nodeId1, nodeId2)
         )
       yield assertTrue(
-        matches.length == 2,
+        matches.length == 1,
         matches.toSet == expectedMatches
       )
     }

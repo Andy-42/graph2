@@ -36,10 +36,10 @@ case class NodeSpec(name: NodeSpecName, predicates: List[NodePredicate] = Nil):
       for snapshot <- node.atTime(time)
       yield allPredicatesMatch(using snapshot)
 
-  def matches(id: NodeId, time: EventTime): MatcherDataViewCache ?=> NodeIO[Boolean] =
+  def matches(id: NodeId, time: EventTime): MatcherSnapshotCache ?=> NodeIO[Boolean] =
     if isUnconstrained then ZIO.succeed(true)
     else
-      for snapshot <- summon[MatcherDataViewCache].getSnapshot(id, time)
+      for snapshot <- summon[MatcherSnapshotCache].get(id)
       yield allPredicatesMatch(using snapshot)
 
   def predicatesMermaid: String = predicates.map("\\n" + _.mermaid).mkString
@@ -130,7 +130,7 @@ case class SubgraphSpec(
 
   val nameToNodeSpec: Map[NodeSpecName, NodeSpec] = allUniqueNodeSpecs.map(node => node.name -> node).toMap
 
-  val allHalfEdges: List[EdgeSpec] = edges ++ edges.map(_.reverse)
+  val allHalfEdges: List[EdgeSpec] = (edges ++ edges.map(_.reverse)).distinct
 
   val incomingEdges: Map[NodeSpecName, List[EdgeSpec]] =
     allNodeSpecNames

@@ -5,16 +5,19 @@ import andy42.graph.services.Graph
 import zio.*
 import zio.stm.*
 
-trait MatcherDataViewCache:
-  def getSnapshot(id: NodeId, time: EventTime): NodeIO[NodeSnapshot]
+trait MatcherSnapshotCache:
+  def get(id: NodeId): NodeIO[NodeSnapshot]
+
+  def fetchSnapshots(ids: Vector[NodeId]): NodeIO[Vector[NodeSnapshot]] = ZIO.foreachPar(ids)(get)
 
 type SnapshotCacheKey = (NodeId, EventTime)
 
 case class MatcherDataViewCacheLive(
+    time: EventTime,
     nodeCache: MatcherNodeCache,
     snapshotCache: TMap[SnapshotCacheKey, NodeSnapshot],
     snapshotCacheInFlight: TSet[SnapshotCacheKey]
-) extends MatcherDataViewCache:
+) extends MatcherSnapshotCache:
 
   private def acquireSnapshotCachePermit(id: => SnapshotCacheKey): UIO[SnapshotCacheKey] =
     STM
@@ -27,32 +30,30 @@ case class MatcherDataViewCacheLive(
   private def withSnapshotCachePermit(id: => SnapshotCacheKey): ZIO[Scope, Nothing, SnapshotCacheKey] =
     ZIO.acquireRelease(acquireSnapshotCachePermit(id))(releaseSnapshotCachePermit(_))
 
-  private def getFromNodeCacheAndCacheSnapshot(id: NodeId, time: EventTime): NodeIO[NodeSnapshot] =
+  private def getFromNodeCacheAndCacheSnapshot(id: NodeId): NodeIO[NodeSnapshot] =
     for
       node <- nodeCache.get(id)
       snapshot <- node.atTime(time)
       _ <- snapshotCache.put((id, time), snapshot).commit
     yield snapshot
 
-  override def getSnapshot(
-      id: NodeId,
-      time: EventTime
-  ): NodeIO[NodeSnapshot] =
+  override def get(id: NodeId): NodeIO[NodeSnapshot] =
     ZIO.scoped {
       val key = (id, time)
       for
         _ <- withSnapshotCachePermit(key)
         optionSnapshot <- snapshotCache.get(key).commit
-        snapshot <- optionSnapshot.fold(getFromNodeCacheAndCacheSnapshot(id, time))(ZIO.succeed)
+        snapshot <- optionSnapshot.fold(getFromNodeCacheAndCacheSnapshot(id))(ZIO.succeed)
       yield snapshot
     }
 
-object MatcherDataViewCache:
-  def make(nodeCache: MatcherNodeCache): UIO[MatcherDataViewCache] =
+object MatcherSnapshotCache:
+  def make(time: EventTime, nodeCache: MatcherNodeCache): UIO[MatcherSnapshotCache] =
     for
       snapshotCache <- TMap.empty[SnapshotCacheKey, NodeSnapshot].commit
       snapshotCacheInFlight <- TSet.empty[SnapshotCacheKey].commit
     yield MatcherDataViewCacheLive(
+      time = time,
       nodeCache = nodeCache,
       snapshotCache = snapshotCache,
       snapshotCacheInFlight = snapshotCacheInFlight
