@@ -28,19 +28,19 @@ case class NodeSpec(name: NodeSpecName, predicates: List[NodePredicate] = Nil):
    * considered to exist in the graph, which is significant in optimizing standing query evaluation. */
   def isUnconstrained: Boolean = predicates.isEmpty
 
-  val allPredicatesMatch: NodeSnapshot ?=> Boolean = predicates.forall(_.p)
+  val allNodePredicatesMatch: NodeSnapshot ?=> Boolean = predicates.forall(_.p)
 
   def matches(node: Node, time: EventTime): NodeIO[Boolean] =
     if isUnconstrained then ZIO.succeed(true)
     else
       for snapshot <- node.atTime(time)
-      yield allPredicatesMatch(using snapshot)
+      yield allNodePredicatesMatch(using snapshot)
 
   def matches(id: NodeId, time: EventTime): MatcherSnapshotCache ?=> NodeIO[Boolean] =
     if isUnconstrained then ZIO.succeed(true)
     else
       for snapshot <- summon[MatcherSnapshotCache].get(id)
-      yield allPredicatesMatch(using snapshot)
+      yield allNodePredicatesMatch(using snapshot)
 
   def predicatesMermaid: String = predicates.map("\\n" + _.mermaid).mkString
   def mermaid: String = s"$name[$name$predicatesMermaid]"

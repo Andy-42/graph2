@@ -5,7 +5,8 @@ import andy42.graph.sample.IngestableJson
 import andy42.graph.services.*
 import zio.*
 import zio.json.*
-import zio.stream.{ZPipeline, ZStream}
+import zio.telemetry.opentelemetry.context.ContextStorage
+import zio.telemetry.opentelemetry.tracing.Tracing
 import zio.test.*
 
 import java.nio.file.{Files, Paths}
@@ -118,19 +119,24 @@ object Network:
 
 object IngestSpec extends ZIOAppDefault:
 
-  val graphLayer: ULayer[Graph] =
-    (TestNodeRepository.layer ++
+  val appConfigLayer = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = true)))
+  val trace = appConfigLayer >>> TracingService.live
+
+  val graphLayer =
+    (appConfigLayer ++
+      TestNodeRepository.layer ++
       TestNodeCache.layer ++
       TestMatchSink.layer ++
-      TestEdgeSynchronization.layer) >>> Graph.layer
+      TestEdgeSynchronization.layer ++
+      trace) >>> Graph.layer
 
   given JsonDecoder[Endpoint] = Endpoint.decoder
   given JsonDecoder[Network] = Network.decoder
 
   // Currently using only the first 1000 lines of the original file to limit test runtime
   val filePrefix = "src/test/scala/andy42/graph/sample/aptdetection"
-  // val endpointPath = s"$filePrefix/endpoint-first-1000.json"
-  val endpointPath = s"$filePrefix/endpoint.json"
+  val endpointPath = s"$filePrefix/endpoint-first-1000.json"
+  // val endpointPath = s"$filePrefix/endpoint.json"
   val networkPath = s"$filePrefix/network-first-1000.json"
 
   val ingest: ZIO[Graph, Any, Chunk[SubgraphMatchAtTime]] =
@@ -141,13 +147,14 @@ object IngestSpec extends ZIOAppDefault:
       graphLive = graph.asInstanceOf[GraphLive]
       testMatchSink = graphLive.matchSink.asInstanceOf[TestMatchSink]
 
-      _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)(parallelism = 4)
+      _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)(parallelism = 1)
       matches <- testMatchSink.matches
     yield matches
 
   override def run: ZIO[Any, Any, Any] =
-    for
-      matches <- ingest.provideLayer(graphLayer)
-      _ <- ZIO.debug(matches)
-    yield ()
-
+    (
+      for
+        matches <- ingest
+        _ <- ZIO.debug(matches)
+      yield ()
+    ).provide(graphLayer)

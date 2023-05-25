@@ -2,6 +2,9 @@ package andy42.graph.services
 
 import andy42.graph.model.*
 import zio.*
+import zio.config.*
+import zio.telemetry.opentelemetry.context.ContextStorage
+import zio.telemetry.opentelemetry.tracing.Tracing
 import zio.test.*
 import zio.test.Assertion.*
 import zio.test.TestAspect.timed
@@ -62,11 +65,16 @@ object GraphSpec extends ZIOSpecDefault:
       edgeSynchronizationParameters.toVector == expectedOutputEvents
     )
 
-  val graphLayer: ULayer[Graph] =
-    (TestNodeRepository.layer ++
+  val appConfigLayer = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = true)))
+  val trace = appConfigLayer >>> TracingService.live
+
+  val graphLayer =
+    (appConfigLayer ++
+      TestNodeRepository.layer ++
       TestNodeCache.layer ++
       TestMatchSink.layer ++
-      TestEdgeSynchronization.layer) >>> Graph.layer
+      TestEdgeSynchronization.layer ++
+      trace) >>> Graph.layer
 
   val genNodeId: Gen[Any, NodeId] =
     for id <- Gen.vectorOfN(NodeId.byteLength)(Gen.byte)

@@ -1,14 +1,21 @@
 package andy42.graph.matcher
 
 import andy42.graph.matcher.EdgeSpecs.{directedEdge, undirectedEdge}
-import andy42.graph.model.{NodeId, *}
+import andy42.graph.model.*
 import andy42.graph.model.Generators.*
+import andy42.graph.services.{AppConfig, TracerConfig, TracingService}
+import zio.*
+import zio.telemetry.opentelemetry.context.ContextStorage
+import zio.telemetry.opentelemetry.tracing.Tracing
 import zio.test.*
 
 object MatcherSpec extends ZIOSpecDefault:
 
   /** All tests in this fixture use a test at a single event time, the value of which doesn't matter in these tests. */
   val time: EventTime = 42
+
+  val appConfigLayer = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = false)))
+  val trace = appConfigLayer >>> TracingService.live
 
   extension (subgraphSpec: SubgraphSpec)
     /** Match `subgraphSpec` against the nodes in a graph, starting matching at the given starting points.
@@ -23,6 +30,7 @@ object MatcherSpec extends ZIOSpecDefault:
       *   All the matches for this subgraph spec starting matching at the given nodes.
       */
     def matchTo(
+        tracer: Tracing,
         graphNodes: Vector[Node],
         matchStartingAt: Vector[NodeId]
     ): NodeIO[Vector[ResolvedMatches]] =
@@ -30,6 +38,7 @@ object MatcherSpec extends ZIOSpecDefault:
         matcher <- Matcher.make(
           time = time,
           graph = UnimplementedGraph(), // unused - all nodes will be fetched from the cache
+          tracing = tracer,
           subgraphSpec = subgraphSpec,
           nodes = graphNodes
         )
@@ -71,26 +80,31 @@ object MatcherSpec extends ZIOSpecDefault:
       // However, two of these pairs are duplicates.
       // Matching starting at node3 never produces any matches since node3 has no edges.
       val expectedMatches = Set(
-        Map(
-          SpecNodeMatch(specName = "a", nodeId1) -> Vector(Vector(SpecNodeMatch(specName = "b", nodeId2))),
-          SpecNodeMatch(specName = "b", nodeId2) -> Vector(Vector(SpecNodeMatch(specName = "a", nodeId1)))
+        Set(
+          SpecNodeMatch(specName = "a", nodeId1),
+          SpecNodeMatch(specName = "b", nodeId2)
         ),
-        Map(
-          SpecNodeMatch(specName = "b", nodeId1) -> Vector(Vector(SpecNodeMatch(specName = "a", nodeId2))),
-          SpecNodeMatch(specName = "a", nodeId2) -> Vector(Vector(SpecNodeMatch(specName = "b", nodeId1)))
+        Set(
+          SpecNodeMatch(specName = "b", nodeId1),
+          SpecNodeMatch(specName = "a", nodeId2)
         )
       )
 
       for
+        tracing <- ZIO.service[Tracing]
+
         matchesStartingAtAllThreeNodes <- subgraphSpec.matchTo(
+          tracing,
           graphNodes = Vector(node1, node2, node3),
           matchStartingAt = Vector(nodeId1, nodeId2, nodeId3)
         )
         matchesStartingAtNode1 <- subgraphSpec.matchTo(
+          tracing,
           graphNodes = Vector(node1, node2, node3),
           matchStartingAt = Vector(nodeId1)
         )
         matchesStartingAtNode2 <- subgraphSpec.matchTo(
+          tracing,
           graphNodes = Vector(node1, node2, node3),
           matchStartingAt = Vector(nodeId2)
         )
@@ -119,10 +133,13 @@ object MatcherSpec extends ZIOSpecDefault:
 
       // There is only one possible match
       val expectedMatches = Set(
-        Map(SpecNodeMatch(specName = "a", nodeId1) -> Vector(Vector(SpecNodeMatch(specName = "a", nodeId1))))
+        Set(SpecNodeMatch(specName = "a", nodeId1))
       )
 
-      for matches <- subgraphSpec.matchTo(
+      for
+        tracing <- ZIO.service[Tracing]
+        matches <- subgraphSpec.matchTo(
+          tracing,
           graphNodes = Vector(node1, node2),
           matchStartingAt = Vector(nodeId1, nodeId2)
         )
@@ -131,4 +148,4 @@ object MatcherSpec extends ZIOSpecDefault:
         matches.toSet == expectedMatches
       )
     }
-  )
+  ).provide(trace)

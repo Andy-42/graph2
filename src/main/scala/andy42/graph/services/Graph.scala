@@ -4,6 +4,7 @@ import andy42.graph.matcher.{Matcher, SubgraphSpec}
 import andy42.graph.model.*
 import zio.*
 import zio.stm.*
+import zio.telemetry.opentelemetry.tracing.Tracing
 
 /** The Graph service represents the entire state of a graph.
   *
@@ -88,6 +89,7 @@ final case class GraphLive(
     nodeDataService: NodeRepository,
     edgeSynchronization: EdgeSynchronization,
     matchSink: MatchSink,
+    tracing: Tracing,
     standingQueries: Ref[Set[SubgraphSpec]]
 ) extends Graph:
 
@@ -227,7 +229,13 @@ final case class GraphLive(
       changedNodes: Vector[Node]
   )(subgraphSpec: SubgraphSpec): NodeIO[Unit] =
     for
-      matcher <- Matcher.make(time, this, subgraphSpec, changedNodes) // TODO: Fix order of parameters
+      matcher <- Matcher.make(
+        time = time,
+        graph = this,
+        tracing = tracing,
+        subgraphSpec = subgraphSpec,
+        nodes = changedNodes
+      ) // TODO: Fix order of parameters
       nodeMatches <- matcher.matchNodes(changedNodes.map(_.id))
       _ <- matchSink.offer(SubgraphMatchAtTime(time, subgraphSpec, nodeMatches)).when(nodeMatches.nonEmpty)
     yield ()
@@ -250,13 +258,14 @@ final case class GraphLive(
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
 object Graph:
-  val layer: URLayer[NodeCache & NodeRepository & EdgeSynchronization & MatchSink, Graph] =
+  val layer: URLayer[NodeCache & NodeRepository & EdgeSynchronization & MatchSink & Tracing, Graph] =
     ZLayer {
       for
         nodeCache <- ZIO.service[NodeCache]
         nodeDataService <- ZIO.service[NodeRepository]
         edgeSynchronization <- ZIO.service[EdgeSynchronization]
         matchSink <- ZIO.service[MatchSink]
+        tracing <- ZIO.service[Tracing]
 
         standingQueries <- Ref.make(Set.empty[SubgraphSpec])
         inFlight <- TSet.empty[NodeId].commit
@@ -266,6 +275,7 @@ object Graph:
         nodeDataService = nodeDataService,
         edgeSynchronization = edgeSynchronization,
         matchSink = matchSink,
+        tracing = tracing,
         standingQueries = standingQueries
       )
     }

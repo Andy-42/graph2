@@ -4,34 +4,44 @@ import eu.timepit.refined.api.Refined
 import eu.timepit.refined.auto.autoUnwrap
 import eu.timepit.refined.boolean.And
 import eu.timepit.refined.numeric.{GreaterEqual, LessEqual, Positive}
-import zio.{ConfigProvider, *}
 import zio.config.magnolia.deriveConfig
+import zio.*
 
 // TODO: The the Refined integration with ZIO 2/Scala 3 is incomplete (4.0.0-RC13) - substitute refined types when fixed
 
 type CacheRetainFraction = Double Refined GreaterEqual[0.0] And LessEqual[1.0]
 
 final case class NodeCacheConfig(
-    capacity: Int, // Refined Positive
+    capacity: Int = 1000, // Refined Positive
 
     // Balance more frequent trims against retaining a useful amount of information in the cache
     fractionToRetainOnNodeCacheTrim: Double /* CacheRetainFraction */ = 0.9,
-
     currentSnapshotTrimFrequency: Duration = Duration.Zero, // Zero turns off current snapshot purging
     // Don't want to keep snapshots around for long to prevent them becoming tenured in the old heap generation
     fractionOfSnapshotsToRetainOnSnapshotTrim: Double /* CacheRetainFraction */ = 0.1,
-
     forkOnUpdateAccessTime: Boolean = false, // Might be a useful optimization, but not clear that this is kosher
     forkOnTrim: Boolean = true // Should always have this on at runtime, but false is useful for testing
 )
 
 final case class EdgeReconciliationConfig(
-    windowSize: Duration,
-    windowExpiry: Duration,
-    maximumIntervalBetweenChunks: Duration,
-    maxChunkSize: Int // Refined Positive
+    windowSize: Duration = 1.minute,
+    windowExpiry: Duration = 5.minutes,
+    maximumIntervalBetweenChunks: Duration = 1.minute,
+    maxChunkSize: Int = 10000 // Refined Positive
 )
 
-object Config:
+final case class TracerConfig(enabled: Boolean = false,
+                              host: String = "http://localhost:14250",
+                              instrumentationScopeName: String = "streaming-graph")
+
+final case class AppConfig(
+    nodeCache: NodeCacheConfig = NodeCacheConfig(),
+    edgeReconciliation: EdgeReconciliationConfig = EdgeReconciliationConfig(),
+    tracer: TracerConfig = TracerConfig()
+)
+
+object AppConfig:
+  val appConfigDescriptor: Config[AppConfig] = deriveConfig[AppConfig]
   val lruCacheDescriptor: Config[NodeCacheConfig] = deriveConfig[NodeCacheConfig]
   val edgeReconciliationDescriptor: Config[EdgeReconciliationConfig] = deriveConfig[EdgeReconciliationConfig]
+  val tracerConfigDescriptor: Config[TracerConfig] = deriveConfig[TracerConfig]

@@ -4,6 +4,7 @@ import andy42.graph.model.*
 import andy42.graph.services.Graph
 import zio.*
 import zio.stm.*
+import zio.telemetry.opentelemetry.tracing.Tracing
 
 trait MatcherSnapshotCache:
   def get(id: NodeId): NodeIO[NodeSnapshot]
@@ -16,8 +17,11 @@ case class MatcherDataViewCacheLive(
     time: EventTime,
     nodeCache: MatcherNodeCache,
     snapshotCache: TMap[SnapshotCacheKey, NodeSnapshot],
-    snapshotCacheInFlight: TSet[SnapshotCacheKey]
+    snapshotCacheInFlight: TSet[SnapshotCacheKey],
+    tracing: Tracing
 ) extends MatcherSnapshotCache:
+
+  import tracing.aspects.*
 
   private def acquireSnapshotCachePermit(id: => SnapshotCacheKey): UIO[SnapshotCacheKey] =
     STM
@@ -28,7 +32,10 @@ case class MatcherDataViewCacheLive(
     snapshotCacheInFlight.delete(id).commit
 
   private def withSnapshotCachePermit(id: => SnapshotCacheKey): ZIO[Scope, Nothing, SnapshotCacheKey] =
-    ZIO.acquireRelease(acquireSnapshotCachePermit(id))(releaseSnapshotCachePermit(_))
+    for
+      _ <- tracing.setAttribute("id", id.toString)
+      snapshotCacheKey <- ZIO.acquireRelease(acquireSnapshotCachePermit(id))(releaseSnapshotCachePermit(_))
+    yield snapshotCacheKey
 
   private def getFromNodeCacheAndCacheSnapshot(id: NodeId): NodeIO[NodeSnapshot] =
     for
@@ -41,14 +48,16 @@ case class MatcherDataViewCacheLive(
     ZIO.scoped {
       val key = (id, time)
       for
-        _ <- withSnapshotCachePermit(key)
-        optionSnapshot <- snapshotCache.get(key).commit
-        snapshot <- optionSnapshot.fold(getFromNodeCacheAndCacheSnapshot(id))(ZIO.succeed)
+        _ <- withSnapshotCachePermit(key) @@ span("withSnapshotCachePermit")
+        optionSnapshot <- snapshotCache.get(key).commit @@ span("snapshotCache.get")
+        snapshot <- optionSnapshot.fold(getFromNodeCacheAndCacheSnapshot(id))(ZIO.succeed) @@ span(
+          "getFromNodeCacheAndCacheSnapshot"
+        )
       yield snapshot
     }
 
 object MatcherSnapshotCache:
-  def make(time: EventTime, nodeCache: MatcherNodeCache): UIO[MatcherSnapshotCache] =
+  def make(time: EventTime, nodeCache: MatcherNodeCache, tracing: Tracing): UIO[MatcherSnapshotCache] =
     for
       snapshotCache <- TMap.empty[SnapshotCacheKey, NodeSnapshot].commit
       snapshotCacheInFlight <- TSet.empty[SnapshotCacheKey].commit
@@ -56,5 +65,6 @@ object MatcherSnapshotCache:
       time = time,
       nodeCache = nodeCache,
       snapshotCache = snapshotCache,
-      snapshotCacheInFlight = snapshotCacheInFlight
+      snapshotCacheInFlight = snapshotCacheInFlight,
+      tracing = tracing
     )
