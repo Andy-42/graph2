@@ -2,7 +2,6 @@ package andy42.graph.matcher
 
 import andy42.graph.model.*
 import andy42.graph.services.{Graph, PersistenceFailure, TracingService}
-import io.opentelemetry.api.trace.SpanKind
 import zio.*
 import zio.telemetry.opentelemetry.tracing.Tracing
 
@@ -24,6 +23,8 @@ trait Matcher:
 case class MatcherLive(subgraphSpec: SubgraphSpec, nodeSnapshotCache: MatcherSnapshotCache, tracing: Tracing)
     extends Matcher:
 
+  import tracing.aspects.*
+
   /** Match the given nodes using each node spec in the subgraph spec as a starting point.
     * @param ids
     *   The ids of the nodes to be matched.
@@ -32,20 +33,22 @@ case class MatcherLive(subgraphSpec: SubgraphSpec, nodeSnapshotCache: MatcherSna
     *   duplicate matches.
     */
   override def matchNodes(ids: Vector[NodeId]): NodeIO[Vector[ResolvedMatches]] =
-    import tracing.aspects.*
     (
       for
         _ <- tracing.setAttribute("ids.length", ids.length)
         _ <- tracing.setAttribute("spec.node.length", subgraphSpec.allUniqueNodeSpecs.length)
-        snapshots <- ZIO.foreachPar(ids)(nodeSnapshotCache.get) @@ span("fetch initial snapshots")
+
+        snapshots <- ZIO.foreachPar(ids)(nodeSnapshotCache.get) @@ span("Matcher.matchNodes.fetch snapshots for ids")
+
         potentialMatches <- ZIO.succeed(shallowMatchesInCrossProduct(ids, snapshots)) @@ span(
-          "shallow matches in cross product"
+          "Matcher.matchNodes.shallow match ids cross product node spec"
         )
-        resolvedMatches <- ZIO.foreachPar(potentialMatches) { (resolvedMatch, dependencies) =>
-          prove(Set(resolvedMatch), dependencies)
-        } @@ span("resolve potential matches")
-      yield resolvedMatches.flatten
-    ) @@ root("match nodes", SpanKind.SERVER)
+
+        provenMatches <- ZIO.foreachPar(potentialMatches) { (provenMatch, dependencies) =>
+          prove(Set(provenMatch), dependencies)
+        } @@ span("Matcher.matchNodes.prove potential matches")
+      yield provenMatches.flatten
+    ) @@ root("Matcher.matchNodes")
 
   /** Create an initial match for each spec-node pair that shallow matches.
     * @param ids
@@ -93,9 +96,9 @@ case class MatcherLive(subgraphSpec: SubgraphSpec, nodeSnapshotCache: MatcherSna
       dependencies: Vector[SpecNodeMatch]
   ): NodeIO[Vector[ResolvedMatches]] =
     require(dependencies.forall(!resolvedMatches.contains(_)))
-    import tracing.aspects.*
 
-    if dependencies.isEmpty then ZIO.succeed(Vector(resolvedMatches))
+    if dependencies.isEmpty then
+      ZIO.succeed(Vector(resolvedMatches)) @@ span("Matcher.prove succeed with empty dependencies")
     else
       (
         for
@@ -104,13 +107,13 @@ case class MatcherLive(subgraphSpec: SubgraphSpec, nodeSnapshotCache: MatcherSna
           _ <- tracing.setAttribute("dependencies", dependencies.map(_.toString))
 
           snapshots <- nodeSnapshotCache.fetchSnapshots(dependencies.map(_.id)) @@ span(
-            "fetch dependencies snapshots"
+            "Matcher.prove fetch dependencies snapshots"
           )
           withDependenciesResolved <- resolveDependencies(resolvedMatches, dependencies, snapshots) @@ span(
-            "resolve dependencies"
+            "Matcher.prove dependencies"
           )
         yield withDependenciesResolved
-      ) @@ span("prove")
+      ) @@ span("Matcher.prove")
 
   def resolveDependencies(
       resolvedMatches: ResolvedMatches,
@@ -198,6 +201,6 @@ object Matcher:
       nodes: Vector[Node]
   ): UIO[MatcherLive] =
     for
-      nodeCache <- MatcherNodeCache.make(graph, nodes)
+      nodeCache <- MatcherNodeCache.make(graph, nodes, tracing)
       dataViewCache <- MatcherSnapshotCache.make(time, nodeCache, tracing)
     yield MatcherLive(subgraphSpec, dataViewCache, tracing)

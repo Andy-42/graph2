@@ -4,51 +4,56 @@ import andy42.graph.model.*
 import andy42.graph.services.Graph
 import zio.*
 import zio.stm.*
+import zio.telemetry.opentelemetry.tracing.Tracing
 
 trait MatcherNodeCache:
   def get(id: NodeId): NodeIO[Node]
 
+type NodeIONodePromise = Promise[NodeIOFailure, Node]
+
 case class MatcherNodeCacheLive(
     graph: Graph,
-    cache: TMap[NodeId, Node],
-    inFlight: TSet[NodeId]
+    nodeCache: Ref[Map[NodeId, NodeIONodePromise]],
+    tracing: Tracing
 ) extends MatcherNodeCache:
 
-  private def acquirePermit(id: => NodeId): UIO[NodeId] =
-    STM
-      .ifSTM(inFlight.contains(id))(STM.retry, inFlight.put(id).map(_ => id))
-      .commit
-
-  private def releasePermit(id: => NodeId): UIO[Unit] =
-    inFlight.delete(id).commit
-
-  private def withNodePermit(id: => NodeId): ZIO[Scope, Nothing, NodeId] =
-    ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
-
-  private def getFromGraphAndCache(id: NodeId): NodeIO[Node] =
-    for
-      node <- graph.get(id)
-      _ <- cache.put(id, node).commit
-    yield node
+  import tracing.aspects.span
 
   override def get(
       id: NodeId
   ): NodeIO[Node] =
-    ZIO.scoped {
+    (
       for
-        _ <- withNodePermit(id)
-        optionNode <- cache.get(id).commit
-        node <- optionNode.fold(getFromGraphAndCache(id))(ZIO.succeed)
+        _ <- tracing.setAttribute("id", id.toString)
+
+        newPromise <- Promise.make[NodeIOFailure, Node]
+
+        promiseForThisId <- nodeCache.modify(cache =>
+          cache
+            .get(id)
+            .fold(newPromise -> cache.updated(id, newPromise))(existingPromise => existingPromise -> cache)
+        )
+
+        _ <- initiateFetch(id, newPromise).when(promiseForThisId eq newPromise)
+        node <- promiseForThisId.await
       yield node
-    }
+    ) @@ span("NodeCache.get")
+
+  private def initiateFetch(id: NodeId, promise: NodeIONodePromise): NodeIO[Unit] =
+    fetchNode(id)
+      .tapBoth(e => promise.fail(e), r => promise.succeed(r))
+      .unit
+
+  private def fetchNode(id: NodeId): NodeIO[Node] =
+    (
+      for
+        _ <- tracing.setAttribute("id", id.toString)
+
+        node <- graph.get(id)
+      yield node
+    ) @@ span("Graph.get")
 
 object MatcherNodeCache:
-  def make(graph: Graph, nodes: Vector[Node]): UIO[MatcherNodeCache] =
-    for
-      cache <- TMap.fromIterable[NodeId, Node](nodes.map(node => node.id -> node)).commit
-      inFlight <- TSet.empty[NodeId].commit
-    yield MatcherNodeCacheLive(
-      graph = graph,
-      cache = cache,
-      inFlight = inFlight
-    )
+  def make(graph: Graph, nodes: Vector[Node], tracing: Tracing): UIO[MatcherNodeCache] =
+    for cache <- Ref.make(Map.empty[NodeId, NodeIONodePromise])
+    yield MatcherNodeCacheLive(graph = graph, nodeCache = cache, tracing = tracing)

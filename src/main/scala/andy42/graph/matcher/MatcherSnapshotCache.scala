@@ -1,70 +1,72 @@
 package andy42.graph.matcher
 
 import andy42.graph.model.*
-import andy42.graph.services.Graph
+import andy42.graph.services.PersistenceFailure
 import zio.*
-import zio.stm.*
 import zio.telemetry.opentelemetry.tracing.Tracing
 
 trait MatcherSnapshotCache:
   def get(id: NodeId): NodeIO[NodeSnapshot]
 
-  def fetchSnapshots(ids: Vector[NodeId]): NodeIO[Vector[NodeSnapshot]] = ZIO.foreachPar(ids)(get)
+  def fetchSnapshots(ids: Vector[NodeId]): NodeIO[Vector[NodeSnapshot]]
 
-type SnapshotCacheKey = (NodeId, EventTime)
+type NodeIOFailure = UnpackFailure | PersistenceFailure
+type NodeIOSnapshotPromise = Promise[NodeIOFailure, NodeSnapshot]
 
-case class MatcherDataViewCacheLive(
+case class MatcherSnapshotCacheLive(
     time: EventTime,
     nodeCache: MatcherNodeCache,
-    snapshotCache: TMap[SnapshotCacheKey, NodeSnapshot],
-    snapshotCacheInFlight: TSet[SnapshotCacheKey],
+    snapshotCache: Ref[Map[NodeId, NodeIOSnapshotPromise]],
     tracing: Tracing
 ) extends MatcherSnapshotCache:
 
   import tracing.aspects.*
 
-  private def acquireSnapshotCachePermit(id: => SnapshotCacheKey): UIO[SnapshotCacheKey] =
-    STM
-      .ifSTM(snapshotCacheInFlight.contains(id))(STM.retry, snapshotCacheInFlight.put(id).map(_ => id))
-      .commit
+  override def get(id: NodeId): NodeIO[NodeSnapshot] =
+    (
+      for
+        _ <- tracing.setAttribute("id", id.toString)
 
-  private def releaseSnapshotCachePermit(id: => SnapshotCacheKey): UIO[Unit] =
-    snapshotCacheInFlight.delete(id).commit
+        newPromise <- Promise.make[NodeIOFailure, NodeSnapshot]
 
-  private def withSnapshotCachePermit(id: => SnapshotCacheKey): ZIO[Scope, Nothing, SnapshotCacheKey] =
-    for
-      _ <- tracing.setAttribute("id", id.toString)
-      snapshotCacheKey <- ZIO.acquireRelease(acquireSnapshotCachePermit(id))(releaseSnapshotCachePermit(_))
-    yield snapshotCacheKey
+        promiseForThisId <- snapshotCache.modify(cache =>
+          cache
+            .get(id)
+            .fold(newPromise -> cache.updated(id, newPromise))(existingPromise => existingPromise -> cache)
+        )
 
-  private def getFromNodeCacheAndCacheSnapshot(id: NodeId): NodeIO[NodeSnapshot] =
+        _ <- initiateFetch(id, newPromise).when(promiseForThisId eq newPromise)
+        snapshot <- promiseForThisId.await
+      yield snapshot
+    ) @@ span("SnapshotCache.get")
+
+  private def initiateFetch(id: NodeId, promise: NodeIOSnapshotPromise): NodeIO[Unit] =
+    fetchSnapshot(id)
+      .tapBoth(e => promise.fail(e), r => promise.succeed(r))
+      .unit
+
+  private def fetchSnapshot(id: NodeId): NodeIO[NodeSnapshot] =
     for
       node <- nodeCache.get(id)
       snapshot <- node.atTime(time)
-      _ <- snapshotCache.put((id, time), snapshot).commit
     yield snapshot
 
-  override def get(id: NodeId): NodeIO[NodeSnapshot] =
-    ZIO.scoped {
-      val key = (id, time)
-      for
-        _ <- withSnapshotCachePermit(key) @@ span("withSnapshotCachePermit")
-        optionSnapshot <- snapshotCache.get(key).commit @@ span("snapshotCache.get")
-        snapshot <- optionSnapshot.fold(getFromNodeCacheAndCacheSnapshot(id))(ZIO.succeed) @@ span(
-          "getFromNodeCacheAndCacheSnapshot"
-        )
-      yield snapshot
-    }
+  override def fetchSnapshots(ids: Vector[NodeId]): NodeIO[Vector[NodeSnapshot]] =
+    for
+      _ <- tracing.setAttribute("ids", ids.map(_.toString))
+      snapshots <- ZIO.foreachPar(ids)(get)
+    yield snapshots
 
 object MatcherSnapshotCache:
-  def make(time: EventTime, nodeCache: MatcherNodeCache, tracing: Tracing): UIO[MatcherSnapshotCache] =
-    for
-      snapshotCache <- TMap.empty[SnapshotCacheKey, NodeSnapshot].commit
-      snapshotCacheInFlight <- TSet.empty[SnapshotCacheKey].commit
-    yield MatcherDataViewCacheLive(
+  def make(
+      time: EventTime,
+      nodeCache: MatcherNodeCache,
+      tracing: Tracing
+  ): UIO[MatcherSnapshotCache] =
+    for snapshotCache <- Ref.make(Map.empty[NodeId, NodeIOSnapshotPromise])
+    yield MatcherSnapshotCacheLive(
       time = time,
       nodeCache = nodeCache,
       snapshotCache = snapshotCache,
-      snapshotCacheInFlight = snapshotCacheInFlight,
       tracing = tracing
     )
