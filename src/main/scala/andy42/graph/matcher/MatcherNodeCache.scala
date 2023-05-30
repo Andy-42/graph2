@@ -54,6 +54,16 @@ case class MatcherNodeCacheLive(
     ) @@ span("Graph.get")
 
 object MatcherNodeCache:
+
+  def preloadNode(node: Node): UIO[(NodeId, NodeIONodePromise)] =
+    for
+      promise <- Promise.make[NodeIOFailure, Node]
+      _ <- promise.succeed(node)
+    yield node.id -> promise
+
   def make(graph: Graph, nodes: Vector[Node], tracing: Tracing): UIO[MatcherNodeCache] =
-    for cache <- Ref.make(Map.empty[NodeId, NodeIONodePromise])
+    for
+      // nodes.map(node => node.id -> Promise.make.succeed(Node))
+      nodesToPreloadCacheWith <- ZIO.foreach(nodes)(preloadNode)
+      cache <- Ref.make(nodesToPreloadCacheWith.toMap)
     yield MatcherNodeCacheLive(graph = graph, nodeCache = cache, tracing = tracing)

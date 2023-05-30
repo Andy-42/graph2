@@ -4,6 +4,7 @@ import andy42.graph.matcher.EdgeSpecs.{directedEdge, undirectedEdge}
 import andy42.graph.model.*
 import andy42.graph.model.Generators.*
 import andy42.graph.services.{AppConfig, TracerConfig, TracingService}
+import io.opentelemetry.api.trace.Tracer
 import zio.*
 import zio.telemetry.opentelemetry.context.ContextStorage
 import zio.telemetry.opentelemetry.tracing.Tracing
@@ -14,8 +15,8 @@ object MatcherSpec extends ZIOSpecDefault:
   /** All tests in this fixture use a test at a single event time, the value of which doesn't matter in these tests. */
   val time: EventTime = 42
 
-  val appConfigLayer = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = false)))
-  val trace = appConfigLayer >>> TracingService.live
+  val appConfigLayer: ULayer[AppConfig] = ZLayer.succeed(AppConfig())
+  val trace: TaskLayer[Tracing & Tracer] = appConfigLayer >>> TracingService.live
 
   extension (subgraphSpec: SubgraphSpec)
     /** Match `subgraphSpec` against the nodes in a graph, starting matching at the given starting points.
