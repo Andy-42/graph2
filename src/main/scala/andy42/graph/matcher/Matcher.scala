@@ -51,6 +51,10 @@ case class MatcherLive(subgraphSpec: SubgraphSpec, nodeSnapshotCache: MatcherSna
     ) @@ root("Matcher.matchNodes")
 
   /** Create an initial match for each spec-node pair that shallow matches.
+    *
+    * Unconstrained nodes never need to be examined as a starting point, and doing so would result in very poor matching
+    * performance.
+    *
     * @param ids
     *   The ids of the nodes to be evaluated.
     * @param snapshots
@@ -66,6 +70,7 @@ case class MatcherLive(subgraphSpec: SubgraphSpec, nodeSnapshotCache: MatcherSna
     for
       (id, snapshot) <- ids.zip(snapshots)
       nodeSpec <- subgraphSpec.allUniqueNodeSpecs
+      if !nodeSpec.isUnconstrained
       dependencies <- nodeSpec.shallowMatchNode(using snapshot)
       if dependencies.nonEmpty // empty indicates a failed match
       specNodeMatch = SpecNodeMatch(nodeSpec.name, id)

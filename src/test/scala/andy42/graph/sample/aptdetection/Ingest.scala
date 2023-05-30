@@ -136,8 +136,8 @@ object IngestSpec extends ZIOAppDefault:
 
   // Currently using only the first 1000 lines of the original file to limit test runtime
   val filePrefix = "src/test/scala/andy42/graph/sample/aptdetection"
-  val endpointPath = s"$filePrefix/endpoint-first-1000.json"
-  // val endpointPath = s"$filePrefix/endpoint.json"
+  //val endpointPath = s"$filePrefix/endpoint-first-1000.json"
+  val endpointPath = s"$filePrefix/endpoint.json"
   val networkPath = s"$filePrefix/network-first-1000.json"
 
   val ingest: ZIO[Graph, Any, Chunk[SubgraphMatchAtTime]] =
