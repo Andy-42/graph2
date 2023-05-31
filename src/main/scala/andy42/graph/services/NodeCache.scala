@@ -169,15 +169,17 @@ final case class NodeCacheLive(
     now min (watermark + moveForwardBy)
 
   override def startCurrentSnapshotTrimDaemon: UIO[Unit] =
-    ZIO.when(config.currentSnapshotTrimFrequency != Duration.Zero) {
-      currentSnapshotTrim
-        .repeat(Schedule.spaced(config.currentSnapshotTrimFrequency))
-        .catchAllCause { cause =>
-          val operation = "node cache snapshot trim"
-          ZIO.logCause(s"Unexpected failure in: $operation", cause) @@ LogAnnotations.operationAnnotation(operation)
-        }
-        .forkDaemon
-    }.unit
+    ZIO
+      .when(config.currentSnapshotTrimFrequency != Duration.Zero) {
+        currentSnapshotTrim
+          .repeat(Schedule.spaced(config.currentSnapshotTrimFrequency))
+          .catchAllCause { cause =>
+            val operation = "node cache snapshot trim"
+            ZIO.logCause(s"Unexpected failure in: $operation", cause) @@ LogAnnotations.operationAnnotation(operation)
+          }
+          .forkDaemon
+      }
+      .unit
 
   private def currentSnapshotTrim: UIO[Unit] =
     for
@@ -219,14 +221,14 @@ final case class NodeCacheLive(
 
 object NodeCache:
 
-  val layer: URLayer[NodeCacheConfig, NodeCache] =
+  val layer: URLayer[AppConfig, NodeCache] =
     ZLayer {
       for
-        config <- ZIO.service[NodeCacheConfig]
+        config <- ZIO.service[AppConfig]
         now <- Clock.currentTime(MILLIS)
         oldest <- TRef.make(now).commit
         items <- TMap.empty[NodeId, CacheItem].commit
-        nodeCache = NodeCacheLive(config, oldest, items)
+        nodeCache = NodeCacheLive(config.nodeCache, oldest, items)
         _ <- nodeCache.startCurrentSnapshotTrimDaemon
       yield nodeCache
     }

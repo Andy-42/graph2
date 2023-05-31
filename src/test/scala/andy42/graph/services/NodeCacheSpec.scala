@@ -90,7 +90,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
       )
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 2, fractionToRetainOnNodeCacheTrim = 0.5, forkOnTrim = false)
+        AppConfig(nodeCache = NodeCacheConfig(capacity = 2, fractionToRetainOnNodeCacheTrim = 0.5, forkOnTrim = false))
       ) >>> NodeCache.layer
     ),
     test("puts from multiple concurrent fibers") {
@@ -117,7 +117,9 @@ object NodeCacheSpec extends ZIOSpecDefault:
       yield assertTrue(actualSize == n)
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 10000, fractionToRetainOnNodeCacheTrim = 0.75, forkOnTrim = false)
+        AppConfig(
+          nodeCache = NodeCacheConfig(capacity = 10000, fractionToRetainOnNodeCacheTrim = 0.75, forkOnTrim = false)
+        )
       ) >>> NodeCache.layer
     ),
     test("watermark is moved forward by intervals proportional to configuration") {
@@ -151,7 +153,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
       )
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 100, fractionToRetainOnNodeCacheTrim = 0.5)
+        AppConfig(nodeCache = NodeCacheConfig(capacity = 100, fractionToRetainOnNodeCacheTrim = 0.5))
       ) >>> NodeCache.layer
     ),
     test("watermark will be moved forward by at least one millisecond if there is room") {
@@ -186,7 +188,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
       )
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 100, fractionToRetainOnNodeCacheTrim = 0)
+        AppConfig(nodeCache = NodeCacheConfig(capacity = 100, fractionToRetainOnNodeCacheTrim = 0))
       ) >>> NodeCache.layer
     ),
     test("watermark will never be moved past now") {
@@ -234,7 +236,7 @@ object NodeCacheSpec extends ZIOSpecDefault:
       )
     }.provide(
       ZLayer.succeed(
-        NodeCacheConfig(capacity = 100, fractionToRetainOnNodeCacheTrim = 0.5)
+        AppConfig(nodeCache = NodeCacheConfig(capacity = 100, fractionToRetainOnNodeCacheTrim = 0.5))
       ) >>> NodeCache.layer
     )
   ).provideLayer(ZTestLogger.default) @@ timed

@@ -136,8 +136,8 @@ object IngestSpec extends ZIOAppDefault:
 
   // Currently using only the first 1000 lines of the original file to limit test runtime
   val filePrefix = "src/test/scala/andy42/graph/sample/aptdetection"
-  //val endpointPath = s"$filePrefix/endpoint-first-1000.json"
-  val endpointPath = s"$filePrefix/endpoint.json"
+  val endpointPath = s"$filePrefix/endpoint-first-1000.json"
+  //val endpointPath = s"$filePrefix/endpoint.json"
   val networkPath = s"$filePrefix/network-first-1000.json"
 
   val ingest: ZIO[Graph, Any, Chunk[SubgraphMatchAtTime]] =
@@ -148,14 +148,14 @@ object IngestSpec extends ZIOAppDefault:
       graphLive = graph.asInstanceOf[GraphLive]
       testMatchSink = graphLive.matchSink.asInstanceOf[TestMatchSink]
 
-      _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)(parallelism = 1)
+      _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)(parallelism = 2)
       matches <- testMatchSink.matches
     yield matches
 
   override def run: ZIO[Any, Any, Any] =
     (
       for
-        _ <- ZIO.unit.withParallelism(1)
+        _ <- ZIO.unit.withParallelism(2)
         matches <- ingest
         _ <- ZIO.debug(matches)
       yield ()

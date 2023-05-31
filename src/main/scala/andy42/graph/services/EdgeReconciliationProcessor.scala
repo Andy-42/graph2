@@ -8,14 +8,15 @@ import java.time.temporal.ChronoUnit.MILLIS
 
 /** Epoch millis adjusted to start of window */
 type WindowStart = Long
+
 /** Epoch millis adjusted to last period in window */
-type WindowEnd = Long 
+type WindowEnd = Long
 type MillisecondDuration = Long
 
 trait EdgeReconciliationProcessor:
 
   def zero: EdgeReconciliationState
-  
+
   def addChunk(
       state: EdgeReconciliationState,
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent]
@@ -44,7 +45,7 @@ case class EdgeReconciliationProcessorLive(
       edgeHashes = Array.empty[EdgeHash]
     )
 
-  override def addChunk( 
+  override def addChunk(
       state: EdgeReconciliationState,
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent]
   ): UIO[EdgeReconciliationState] =
@@ -164,10 +165,10 @@ case class EdgeReconciliationProcessorLive(
 end EdgeReconciliationProcessorLive
 
 object EdgeReconciliation:
-  val layer: RLayer[EdgeReconciliationConfig & EdgeReconciliationRepository, EdgeReconciliationProcessor] =
+  val layer: RLayer[AppConfig & EdgeReconciliationRepository, EdgeReconciliationProcessor] =
     ZLayer {
       for
-        config <- ZIO.service[EdgeReconciliationConfig]
+        config <- ZIO.service[AppConfig]
         dataService <- ZIO.service[EdgeReconciliationRepository]
-      yield EdgeReconciliationProcessorLive(config, dataService)
+      yield EdgeReconciliationProcessorLive(config.edgeReconciliation, dataService)
     }

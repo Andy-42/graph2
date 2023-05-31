@@ -86,7 +86,7 @@ final case class NodeMutationOutput(node: Node, events: Vector[Event])
 final case class GraphLive(
     inFlight: TSet[NodeId],
     cache: NodeCache,
-    nodeDataService: NodeRepository,
+    nodeRepositoryService: NodeRepository,
     edgeSynchronization: EdgeSynchronization,
     matchSink: MatchSink,
     tracing: Tracing,
@@ -112,12 +112,12 @@ final case class GraphLive(
   private def getWithPermitHeldNoCache(id: NodeId): NodeIO[Node] =
     for
       optionNode <- cache.get(id)
-      node <- optionNode.fold(nodeDataService.get(id))(ZIO.succeed)
+      node <- optionNode.fold(nodeRepositoryService.get(id))(ZIO.succeed)
     yield node
 
   private def getNodeFromDataServiceAndAddToCache(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
     for
-      node <- nodeDataService.get(id)
+      node <- nodeRepositoryService.get(id)
       _ <- cache.put(node).unless(node.hasEmptyHistory)
     yield node
 
@@ -177,7 +177,7 @@ final case class GraphLive(
         (nextNode, maybeEventsAtTime) = tuple
 
         // Persist to the data store and cache, if there is new history to persist
-        _ <- maybeEventsAtTime.fold(ZIO.unit)(nodeDataService.append(nextNode.id, _))
+        _ <- maybeEventsAtTime.fold(ZIO.unit)(nodeRepositoryService.append(nextNode.id, _))
         _ <- cache.put(nextNode).unless(maybeEventsAtTime.isEmpty)
       yield nextNode
     }
@@ -272,7 +272,7 @@ object Graph:
       yield GraphLive(
         inFlight = inFlight,
         cache = nodeCache,
-        nodeDataService = nodeDataService,
+        nodeRepositoryService = nodeDataService,
         edgeSynchronization = edgeSynchronization,
         matchSink = matchSink,
         tracing = tracing,

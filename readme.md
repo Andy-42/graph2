@@ -58,3 +58,68 @@ request sent to the graph is completed successfully:
 and any matches have been committed to the query output stream.
 
 The goal is that a Kafka Consumer could send a window of changes to the graph, and once they are complete, it would commit the offset for that window.
+
+# Service Architecture
+
+The following diagram shows the overall service dependencies (configuration and tracing
+services are not shown). The central service is *Graph*, and this service provides
+the external API that allows events to be appended to the graph, and nodes in the graph to be retrieved.
+Each of these services is implemented as a ZIO Layer. The exception to this is
+that the *Matcher* component which is instantiated each a group of node mutations is
+processed. The *Graph* service has a dependency on *Match Sink* which is not shown
+on this diagram (it is passed to the *Matcher* each a *Matcher* is instantiated).
+
+
+The services that *Graph* collaborates with are:
+* *NodeCache* - An in-memory cache tuned to the requirements of graph.
+* *EdgeSynchronization* - Ensures that when a half-edge is created (by appending events to the graph),
+that the other corresponding half-edge is also added to the graph model. This is done in an eventually-consistent
+way, so the edge synchronization service collaborates with the edge reconciliation processor to provide an audit
+trail of reconciliation (i.e., to ensure that the graph reaches consistency).
+* *Matcher* - As the graph changes, changed nodes are matched against a subgraph specification
+and any subgraphs that match the subgraph spec are emitted to the Match Sink, which is
+the output for this system.
+* *Node Repository* - Implements a persistent store for graph nodes.
+
+```mermaid
+flowchart TD
+    subgraph Services[Services]
+        g[Graph]
+
+        nodeCache[Node Cache]
+        nodeRepository[Node Repository]
+        matcher(Matcher)
+        edgeReconciliationProcessor[Edge Reconciliation Processor]
+        edgeReconciliationRepository[Edge Reconciliation Repository]
+    %%config[AppConfig]
+        dataSource[Data Source]
+        edgeSynchronization[Edge Synchronization]
+
+        matchSink[Match Sink]
+
+
+        matcher --> g
+        matcher --> matchSink
+
+        g --> nodeCache
+        g --> edgeSynchronization
+        %% g --> matchSink
+        g --> matcher
+        g --> nodeRepository
+
+        edgeReconciliationProcessor --> edgeReconciliationRepository
+
+
+        edgeReconciliationRepository --> dataSource
+
+    %% edgeReconciliationProcessor --> config
+    %% edgeSynchronization --> config
+    %% nodeCache --> config
+
+        edgeSynchronization --> edgeReconciliationProcessor
+        edgeSynchronization --> g
+
+        nodeRepository --> dataSource
+
+    end
+```

@@ -110,12 +110,13 @@ final case class EdgeSynchronizationLive(
       .appendFarEdgeEvents(time, events)
       .catchAllCause(cause =>
         ZIO.logCause("Unexpected failure appending far edge event", cause)
-          @@ operationAnnotation("append far edge events")
-          @@ timeAnnotation(time)
-          @@ nearNodeIdAnnotation(id)
-          @@ farNodeIdsAnnotation(events.extractOtherIdsNodeFromFarEdgeEvents)
+        @@ operationAnnotation ("append far edge events")
+        @@ timeAnnotation (time)
+        @@ nearNodeIdAnnotation (id)
+        @@ farNodeIdsAnnotation (events.extractOtherIdsNodeFromFarEdgeEvents)
       )
-      .forkDaemon.unit
+      .forkDaemon
+      .unit
 
   /** Start the fiber that consumes the edge synchronization events and reconciles them.
     *
@@ -132,20 +133,21 @@ final case class EdgeSynchronizationLive(
       .runDrain
       .catchAllCause(cause =>
         ZIO.logCause("Unexpected failure scanning edge reconciliation event stream", cause)
-          @@ operationAnnotation("scan edge reconciliation event stream")
+        @@ operationAnnotation ("scan edge reconciliation event stream")
       )
-      .forkDaemon.unit
+      .forkDaemon
+      .unit
 
 object EdgeSynchronization:
 
-  val layer: URLayer[EdgeReconciliationConfig & Graph & EdgeReconciliationProcessor, EdgeSynchronization] =
+  val layer: URLayer[AppConfig & Graph & EdgeReconciliationProcessor, EdgeSynchronization] =
     ZLayer {
       for
-        config <- ZIO.service[EdgeReconciliationConfig]
+        config <- ZIO.service[AppConfig]
         edgeReconciliationService <- ZIO.service[EdgeReconciliationProcessor]
         graph <- ZIO.service[Graph]
         queue <- Queue.unbounded[EdgeReconciliationEvent] // TODO: s/b bounded?
-        live = EdgeSynchronizationLive(config, edgeReconciliationService, graph, queue)
+        live = EdgeSynchronizationLive(config.edgeReconciliation, edgeReconciliationService, graph, queue)
         _ <- live.startReconciliation
       yield live
     }
