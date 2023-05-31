@@ -65,12 +65,22 @@ object MatcherSpec extends ZIOSpecDefault:
   def spec: Spec[Any, Any] = suite("Edge Reconciliation")(
     test("Simple case: a spec with two nodes distinct nodes with a single edge between them") {
 
-      val node1 = makeNode(id = nodeId1, Event.EdgeAdded(Edge("e1", nodeId2, EdgeDirection.Undirected)))
-      val node2 = makeNode(id = nodeId2, Event.FarEdgeAdded(Edge("e1", nodeId1, EdgeDirection.Undirected)))
+      val node1 = makeNode(
+        id = nodeId1,
+        Event.PropertyAdded("x", 1L),
+        Event.EdgeAdded(Edge("e1", nodeId2, EdgeDirection.Undirected))
+      )
+      val node2 = makeNode(
+        id = nodeId2,
+        Event.PropertyAdded("x", 2L),
+        Event.FarEdgeAdded(Edge("e1", nodeId1, EdgeDirection.Undirected))
+      )
       val node3 = Node.empty(nodeId3)
 
-      val nodeSpecA = node("a")
-      val nodeSpecB = node("b")
+      // The matcher algorithm won't consider a node as a match starting point if it is unqualified,
+      // so add some sort of predicate.
+      val nodeSpecA = node("a").hasProperty("x")
+      val nodeSpecB = node("b").hasProperty("x")
       val subgraphSpec = subgraph("subgraph name")(
         undirectedEdge(from = nodeSpecA, to = nodeSpecB)
       )
@@ -123,11 +133,12 @@ object MatcherSpec extends ZIOSpecDefault:
       val node1 = makeNode(
         id = nodeId1,
         Event.EdgeAdded(Edge("e1", nodeId1, EdgeDirection.Undirected)),
-        Event.FarEdgeAdded(Edge("e1", nodeId1, EdgeDirection.Undirected))
+        Event.FarEdgeAdded(Edge("e1", nodeId1, EdgeDirection.Undirected)),
+        Event.PropertyAdded("x", 1L)
       )
       val node2 = Node.empty(nodeId2)
 
-      val nodeSpecA = node("a")
+      val nodeSpecA = node("a").hasProperty("x") // predicate is so anchor the node as match starting point
       val subgraphSpec = subgraph("subgraph name")(
         undirectedEdge(from = nodeSpecA, to = nodeSpecA)
       )
