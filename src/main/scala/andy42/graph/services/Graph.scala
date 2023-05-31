@@ -110,7 +110,7 @@ final case class GraphLive(
   private def getNodeFromDataServiceAndAddToCache(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
     for
       node <- nodeRepositoryService.get(id)
-      _ <- cache.put(node).unless(node.hasEmptyHistory)
+      _ <- cache.put(node)
     yield node
 
   override def append(
