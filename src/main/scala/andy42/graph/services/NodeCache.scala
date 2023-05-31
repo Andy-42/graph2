@@ -39,7 +39,7 @@ final case class NodeCacheLive(
         // A hot node item might be referenced many times in one millisecond, so only update if lastAccess would change
         ZIO.when(item.lastAccess < now) {
           val e = items.put(id, item.copy(lastAccess = now)).commit
-          if config.forkOnUpdateAccessTime then e.fork else e // The safety of forking here is questionable
+          if config.forkOnUpdateAccessTime then e.fork else e // The safety/utility of forking here is questionable
         }
       )
 
@@ -128,14 +128,14 @@ final case class NodeCacheLive(
         retainFraction = config.fractionToRetainOnNodeCacheTrim
       )
       _ <- items.removeIfDiscard((_, cacheItem) => cacheItem.lastAccess <= nextWatermark)
-      nextSize = items.size
+      nextSize <- items.size
       _ <- watermark.set(nextWatermark)
     yield Some(
       TrimOutcome(
         previousWatermark = currentWatermark,
         nextWatermark = nextWatermark,
         previousSize = currentSize,
-        nextSize = currentSize
+        nextSize = nextSize
       )
     )
 

@@ -94,24 +94,17 @@ final case class GraphLive(
   override def get(
       id: NodeId
   ): NodeIO[Node] =
-    ZIO.scoped {
-      for
-        _ <- withNodePermit(id) // TODO: Should not need to get a node permit for a get
-        node <- getWithPermitHeld(id)
-      yield node
-    }
-
-  private def getWithPermitHeld(id: NodeId): NodeIO[Node] =
     for
       optionNode <- cache.get(id)
-      node <- optionNode.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
-    yield node
-
-  // TODO: Can probably remove this along when updating cache algo to handle far edge cache improvements 
-  private def getWithPermitHeldNoCache(id: NodeId): NodeIO[Node] =
-    for
-      optionNode <- cache.get(id)
-      node <- optionNode.fold(nodeRepositoryService.get(id))(ZIO.succeed)
+      node <- optionNode.fold(
+        ZIO.scoped {
+          for
+            _ <- withNodePermit(id)
+            optionNodeTestAgain <- cache.get(id) // check again since another thread may have cached this id
+            node <- optionNodeTestAgain.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
+          yield node
+        }
+      )(ZIO.succeed)
     yield node
 
   private def getNodeFromDataServiceAndAddToCache(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
@@ -129,7 +122,6 @@ final case class GraphLive(
 
       // TODO: Should fork here since the design edge reconciliation is explicitly eventually consistent.
       // TODO: This complicates testing so there should be a way to configure this to fork or not.
-      // TODO: Do this change together with caching that avoids taking permit that could block SQE
       _ <- edgeSynchronization.graphChanged(time, output) // .fork
 
       // Expect that all changes are far edge events or all not far edge events.
@@ -164,7 +156,8 @@ final case class GraphLive(
     ZIO.scoped {
       for
         _ <- withNodePermit(id)
-        existingNode <- getWithPermitHeldNoCache(id) // Do not cache on retrieval since we will cache shortly
+        optionCachedNode <- cache.get(id)
+        existingNode <- optionCachedNode.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
 
         tuple <- existingNode.appendWithEventsAtTime(time, events)
         (nextNode, maybeEventsAtTime) = tuple
