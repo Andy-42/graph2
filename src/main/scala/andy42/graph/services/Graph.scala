@@ -64,22 +64,20 @@ trait Graph:
     *
     * @param time
     *   The time that the mutations occurred.
-    * @param mutations
+    * @param changes
     *   The events to be applied to the graph state.
     */
   def append(
       time: EventTime,
-      mutations: Vector[NodeMutationInput]
+      changes: Vector[NodeMutationInput]
   ): NodeIO[Unit]
 
   def registerStandingQuery(subgraphSpec: SubgraphSpec): UIO[Unit]
 
-  def appendFarEdgeEvents(
-      time: EventTime,
-      mutation: NodeMutationInput
-  ): NodeIO[Unit]
-
 final case class NodeMutationInput(id: NodeId, events: Vector[Event])
+
+extension (changes: Vector[NodeMutationInput])
+  def hasEventsOtherThanFarEdge: Boolean = changes.exists(_.events.exists(!_.isFarEdgeEvent))
 
 final case class NodeMutationOutput(node: Node, events: Vector[Event])
 
@@ -98,7 +96,7 @@ final case class GraphLive(
   ): NodeIO[Node] =
     ZIO.scoped {
       for
-        _ <- withNodePermit(id)
+        _ <- withNodePermit(id) // TODO: Should not need to get a node permit for a get
         node <- getWithPermitHeld(id)
       yield node
     }
@@ -109,6 +107,7 @@ final case class GraphLive(
       node <- optionNode.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
     yield node
 
+  // TODO: Can probably remove this along when updating cache algo to handle far edge cache improvements 
   private def getWithPermitHeldNoCache(id: NodeId): NodeIO[Node] =
     for
       optionNode <- cache.get(id)
@@ -125,33 +124,27 @@ final case class GraphLive(
       time: EventTime,
       changes: Vector[NodeMutationInput]
   ): NodeIO[Unit] =
-    require(changes.forall(_.events.forall(!_.isFarEdgeEvent)))
-
     for
       output <- ZIO.foreachPar(changes)(processChangesForOneNode(time, _))
 
       // TODO: Should fork here since the design edge reconciliation is explicitly eventually consistent.
-      // This complicates testing so there should be a way to configure this to fork or not.
+      // TODO: This complicates testing so there should be a way to configure this to fork or not.
+      // TODO: Do this change together with caching that avoids taking permit that could block SQE
       _ <- edgeSynchronization.graphChanged(time, output) // .fork
 
-      // Expand the changed nodes to include the targets of any affected nodes
-      x <- allAffectedNodes(time, output)
-      subgraphSpecs <- standingQueries.get
-      _ <- ZIO.foreachParDiscard(subgraphSpecs)(matchAgainstStandingQueries(time, x))
-    yield ()
-
-  // TODO: Can remove this and if there is a need to bypass SQE for far edge creation, that can be detected and handled (use config)
-  override def appendFarEdgeEvents(
-      time: EventTime,
-      mutation: NodeMutationInput
-  ): NodeIO[Unit] =
-    require(mutation.events.forall(_.isFarEdgeEvent))
-
-    for
-      output <- processChangesForOneNode(time, mutation)
-      // SQE is not run since those events are processed by SQE in the original append
-      // TODO: This is a questionable decision - since it is possible that this could miss matches
-      _ <- edgeSynchronization.graphChanged(time, Vector(output)) // add far edge events into reconciliation
+      // Expect that all changes are far edge events or all not far edge events.
+      // When the events don't include far edge events, this is an externally-driven mutation and needs
+      // to be matched against standing queries. If the events are all far edge events, then there is no
+      // need to match against standing queries since that will have been handled as part of the original
+      // append operation that appended the (near) edges.
+      _ <- (
+        for
+          // Expand the changed nodes to include the targets of any affected nodes
+          affectedNodes <- allAffectedNodes(time, output)
+          subgraphSpecs <- standingQueries.get
+          _ <- ZIO.foreachParDiscard(subgraphSpecs)(matchAgainstStandingQueries(time, affectedNodes))
+        yield ()
+      ).when(changes.hasEventsOtherThanFarEdge)
     yield ()
 
   private def processChangesForOneNode(

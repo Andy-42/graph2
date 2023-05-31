@@ -107,7 +107,7 @@ final case class EdgeSynchronizationLive(
   ): UIO[Unit] =
     import LogAnnotations.*
     graph
-      .appendFarEdgeEvents(time, events)
+      .append(time, Vector(events))
       .catchAllCause(cause =>
         ZIO.logCause("Unexpected failure appending far edge event", cause)
         @@ operationAnnotation ("append far edge events")
