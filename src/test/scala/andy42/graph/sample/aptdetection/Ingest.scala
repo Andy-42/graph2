@@ -16,8 +16,8 @@ case class Endpoint(
     pid: Int,
     event_type: String, // TODO: This should be encoded as an enum
     `object`: String | Int,
-    time: Long, // epoch millis - this becomes the EventTime for all generated events
-    sequence: String // appears to be an integer
+    time: Long // epoch millis - this becomes the EventTime for all generated events
+    // sequence: String // appears to be an integer; property is not used
 ) extends IngestableJson:
 
   override def eventTime: EventTime = time
@@ -29,12 +29,14 @@ case class Endpoint(
 
     // CREATE (proc)-[:EVENT]->(event)-[:EVENT]->(object)
 
+    // TODO: Could ignore events with event_type other than: READ | WRITE | DELETE | SEND (e.g., SPAWN, RECEIVE)
+
     Vector(
       NodeMutationInput(
         id = procId,
         events = Vector(
-          Event.PropertyAdded("id", pid.toLong),
-          Event.PropertyAdded("Process", ()), // Unit value is used for a label
+          Event.PropertyAdded("id", pid.toLong), // Presumably would be of interest for output
+          Event.PropertyAdded("Process", ()), // Label is not used in predicates or output, but useful for debugging
           Event.EdgeAdded(Edge("EVENT", eventId, EdgeDirection.Outgoing))
         )
       ),
@@ -42,15 +44,15 @@ case class Endpoint(
         id = eventId,
         events = Vector(
           Event.PropertyAdded("type", event_type),
-          Event.PropertyAdded("EndpointEvent", ()),
+          Event.PropertyAdded("EndpointEvent", ()), // Label not used in predicates or output, but useful for debugging
+          Event.PropertyAdded("time", time),
           Event.EdgeAdded(Edge("EVENT", objectId, EdgeDirection.Outgoing))
         )
       ),
       NodeMutationInput(
         id = objectId,
         events = Vector(
-          Event.PropertyAdded("time", time),
-          `object` match {
+          `object` match { // Data property is only used in output - not in predicates
             case x: String => Event.PropertyAdded("data", x)
             case x: Int    => Event.PropertyAdded("data", x.toLong)
           }
@@ -120,27 +122,16 @@ object Network:
 
 object IngestSpec extends ZIOAppDefault:
 
-  val appConfigLayer: ULayer[AppConfig] = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = true)))
-  val trace: TaskLayer[Tracing & Tracer] = appConfigLayer >>> TracingService.live
-
-  val graphLayer: TaskLayer[Graph] =
-    (appConfigLayer ++
-      TestNodeRepository.layer ++
-      TestNodeCache.layer ++
-      TestMatchSink.layer ++
-      TestEdgeSynchronization.layer ++
-      trace) >>> Graph.layer
-
   given JsonDecoder[Endpoint] = Endpoint.decoder
   given JsonDecoder[Network] = Network.decoder
 
   // Currently using only the first 1000 lines of the original file to limit test runtime
   val filePrefix = "src/test/scala/andy42/graph/sample/aptdetection"
-  val endpointPath = s"$filePrefix/endpoint-first-1000.json"
-  //val endpointPath = s"$filePrefix/endpoint.json"
-  val networkPath = s"$filePrefix/network-first-1000.json"
+//  val endpointPath = s"$filePrefix/endpoint-first-1000.json"
+  val endpointPath = s"$filePrefix/endpoint.json"
+  // val networkPath = s"$filePrefix/network-first-1000.json"
 
-  val ingest: ZIO[Graph, Any, Chunk[SubgraphMatchAtTime]] =
+  val ingest: ZIO[Graph, Throwable, Chunk[SubgraphMatchAtTime]] =
     for
       graph <- ZIO.service[Graph]
       _ <- graph.registerStandingQuery(StandingQuery.subgraphSpec)
@@ -152,11 +143,23 @@ object IngestSpec extends ZIOAppDefault:
       matches <- testMatchSink.matches
     yield matches
 
-  override def run: ZIO[Any, Any, Any] =
-    (
+  val appConfigLayer: ULayer[AppConfig] = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = true)))
+
+  val myApp: ZIO[Graph, Throwable, Unit] =
       for
-        _ <- ZIO.unit.withParallelism(2)
+        _ <- ZIO.unit.withParallelism(2) // TODO: Configure for each parallel operation
         matches <- ingest
-        _ <- ZIO.debug(matches)
+        _ <- ZIO.debug(matches) // TODO: Produce nice display output for each match
       yield ()
-    ).provide(graphLayer)
+
+  override def run: ZIO[Any, Throwable, Unit] =
+      myApp.provide(
+        appConfigLayer,
+        TemporaryRocksDB.layer,
+        RocksDBNodeRepository.layer,
+        TestNodeCache.layer, // TODO: Use real service
+        TestMatchSink.layer,
+        TestEdgeSynchronization.layer, // TODO: Use real service
+        TracingService.live,
+        Graph.layer
+      )

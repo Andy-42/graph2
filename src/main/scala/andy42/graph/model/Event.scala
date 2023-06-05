@@ -118,3 +118,10 @@ object Events extends CountedSeqPacker[Event]:
         events <- UnpackOperations.unpackCountedToSeq(Event.unpack, length)
       yield events.toVector
     }
+  
+  def pack(events: Vector[Event]): Array[Byte] =
+    given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
+    packer.packInt(events.length)
+    events.foreach(_.pack)
+    packer.toByteArray
+    

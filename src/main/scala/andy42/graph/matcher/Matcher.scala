@@ -35,8 +35,8 @@ case class MatcherLive(subgraphSpec: SubgraphSpec, nodeSnapshotCache: MatcherSna
   override def matchNodes(ids: Vector[NodeId]): NodeIO[Vector[ResolvedMatches]] =
     (
       for
-        _ <- tracing.setAttribute("ids.length", ids.length)
-        _ <- tracing.setAttribute("spec.node.length", subgraphSpec.allUniqueNodeSpecs.length)
+        _ <- tracing.setAttribute("nodeSpecs", subgraphSpec.allUniqueNodeSpecs.map(_.name))
+        _ <- tracing.setAttribute("ids", ids.map(_.toString))
 
         snapshots <- ZIO.foreachPar(ids)(nodeSnapshotCache.get) @@ span("Matcher.matchNodes.fetch snapshots for ids")
 

@@ -9,17 +9,26 @@ import java.sql.SQLException
 sealed trait PersistenceFailure extends Throwable:
   def message: String
   def id: NodeId
-  def op: String
+  def op: String // get | append - TODO: enum
 
 trait SQLFailure extends PersistenceFailure:
   override val message = "SQL failure"
   def ex: SQLException
 
 final case class SQLReadFailure(id: NodeId, ex: SQLException) extends SQLFailure:
-  override val op = "read"
+  override val op = "get"
 
 final case class SQLWriteFailure(id: NodeId, ex: SQLException) extends SQLFailure:
   override val op = "append"
+
+final case class RocksDBiteratorFailure(id: NodeId, ex: Throwable) extends PersistenceFailure:
+  override def message: String = ex.getMessage
+  override val op = "get"
+
+final case class RocksDBPutFailure(id: NodeId, ex: Throwable) extends PersistenceFailure:
+  override def message: String = ex.getMessage
+  override val op = "append"
+
 
 final case class CountPersistenceFailure(id: NodeId, expected: Long, was: Long) extends PersistenceFailure:
   override val op = "append"

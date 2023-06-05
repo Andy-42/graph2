@@ -48,5 +48,3 @@ object StandingQuery:
       // In the Quine APT Detection recipe, this expression uses '<',
       // which would not match events happening within a 1 ms resolution.
       yield writeTime <= readTime && readTime <= deleteTime && deleteTime <= sendTime
-
-  println(subgraphSpec.mermaid)

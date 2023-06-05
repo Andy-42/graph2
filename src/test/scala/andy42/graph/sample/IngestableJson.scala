@@ -22,9 +22,9 @@ object IngestableJson:
       _ <- ZStream
         .fromPath(Paths.get(path))
         .via(ZPipeline.utf8Decode >>> ZPipeline.splitLines)
-        .tap(ZIO.debug(_))
         .map(_.fromJson[T])
         .collect { case Right(endpoint) => endpoint } // FIXME: Discarding endpoint decode failures
+        .tap(ZIO.debug(_))
         .mapZIOPar(parallelism)(endpoint => graph.append(endpoint.eventTime, endpoint.produceEvents))
         .runDrain
     yield ()

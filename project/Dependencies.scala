@@ -10,12 +10,14 @@ object Dependencies {
     val zioJson = "0.3.0-RC10"
     val zioConfig = "4.0.0-RC14"
     val zioConfigRefined = "4.0.0-RC14"
+    val rocksDB = "8.1.1.1"
     val quill = "4.6.0.1"
     val msgPack = "0.9.3"
     val cats = "2.7.0"
     val jaeger = "1.8.0"
     val zipkin = "2.16.3"
     val scalaCollectionCompat = "2.10.0"
+    val commonsIo = "2.12.0"
   }
 
   object Orgs {
@@ -26,6 +28,8 @@ object Dependencies {
     val scalaLangModules = "org.scala-lang.modules"
     val quill = "io.getquill"
     val msgpack = "org.msgpack"
+    val commonsIo = "commons-io"
+    val rocksDB = "org.rocksdb"
   }
 
   lazy val zio = Seq(
@@ -36,6 +40,8 @@ object Dependencies {
     Orgs.zio %% "zio-config-typesafe" % Versions.zioConfig,
     Orgs.zio %% "zio-logging" % Versions.zioLogging,
     Orgs.zio %% "zio-opentelemetry" % Versions.zioOpentelemetry,
+    Orgs.rocksDB % "rocksdbjni" % Versions.rocksDB,
+    Orgs.commonsIo % "commons-io" % Versions.commonsIo,
     Orgs.zio %% "zio-test" % Versions.zio % Test,
     Orgs.zio %% "zio-test-sbt" % Versions.zio % Test
   )
