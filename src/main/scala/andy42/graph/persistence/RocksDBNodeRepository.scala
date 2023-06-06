@@ -1,14 +1,13 @@
-package andy42.graph.services
+package andy42.graph.persistence
 
 import andy42.graph.model.*
-import andy42.graph.services.{RocksDBPutFailure, RocksDBiteratorFailure}
 import org.apache.commons.io.FileUtils
 import org.rocksdb.*
 import zio.*
 import zio.stream.*
 
-import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets.UTF_8
 
 case class RocksDBNodeRepository(db: RocksDB, columnFamilyHandle: ColumnFamilyHandle) extends NodeRepository:
   import RocksDBNodeRepository.*
@@ -25,7 +24,6 @@ case class RocksDBNodeRepository(db: RocksDB, columnFamilyHandle: ColumnFamilyHa
       for it <- ZStream.acquireReleaseWith(acquireIterator(keyPrefix))(releaseIterator)
       yield drainIterator(it, keyPrefix)
     ).flatten
-
 
   private val readOptions = new ReadOptions().setPrefixSameAsStart(true)
 
@@ -45,7 +43,6 @@ case class RocksDBNodeRepository(db: RocksDB, columnFamilyHandle: ColumnFamilyHa
 
           // Compare the prefix part of the key to see if we have gone past the prefix
 
-
           val next = it.key() -> it.value()
           it.next()
           ZIO.succeed(next)
@@ -53,7 +50,7 @@ case class RocksDBNodeRepository(db: RocksDB, columnFamilyHandle: ColumnFamilyHa
       }
     }
 
-  override def get(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
+  override def get(id: NodeId): IO[RocksDBIteratorFailure | UnpackFailure, Node] =
     val idBytes = id.toArray
 
     for
@@ -93,9 +90,9 @@ case class RocksDBNodeRepository(db: RocksDB, columnFamilyHandle: ColumnFamilyHa
     keyBytesBuffer.putInt(eventsAtTime.sequence)
     val keyBytes = keyBytesBuffer.array
 
-     ZIO
+    ZIO
       .attemptBlocking(db.put(columnFamilyHandle, keyBytes, Events.pack(eventsAtTime.events)))
-      .mapError(RocksDBPutFailure(id, _))
+      .refineOrDie[RocksDBPutFailure] { case e: RocksDBException => RocksDBPutFailure(id, e) }
 
 object RocksDBNodeRepository:
 

@@ -1,6 +1,7 @@
 package andy42.graph.services
 
 import andy42.graph.model.*
+import andy42.graph.persistence.{EdgeReconciliationRepository, EdgeReconciliationSnapshot, PersistenceFailure}
 import zio.*
 import zio.stream.ZStream
 
@@ -20,12 +21,14 @@ trait EdgeReconciliationProcessor:
   def addChunk(
       state: EdgeReconciliationState,
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent]
-  ): UIO[EdgeReconciliationState]
+  ): IO[PersistenceFailure, EdgeReconciliationState]
 
 case class EdgeReconciliationState(
     firstWindowStart: WindowStart,
     edgeHashes: Array[EdgeHash]
 )
+
+// TODO: Need to have retry and logging for persistence failures
 
 case class EdgeReconciliationProcessorLive(
     config: EdgeReconciliationConfig,
@@ -48,7 +51,7 @@ case class EdgeReconciliationProcessorLive(
   override def addChunk(
       state: EdgeReconciliationState,
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent]
-  ): UIO[EdgeReconciliationState] =
+  ): IO[PersistenceFailure, EdgeReconciliationState] =
     for
       now <- Clock.currentTime(MILLIS)
       expiryThreshold = toWindowEnd(now - windowExpiry)
@@ -60,7 +63,7 @@ case class EdgeReconciliationProcessorLive(
   def handleAndRemoveExpiredEvents(
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent],
       expiryThreshold: WindowStart
-  ): UIO[Chunk[EdgeReconciliationEvent]] =
+  ): IO[PersistenceFailure, Chunk[EdgeReconciliationEvent]] =
     import LogAnnotations.*
 
     // An event is expired if the last period in the window is expired
@@ -82,7 +85,7 @@ case class EdgeReconciliationProcessorLive(
   def expireReconciliationWindows(
       state: EdgeReconciliationState,
       expiryThreshold: WindowStart
-  ): UIO[EdgeReconciliationState] =
+  ): IO[PersistenceFailure, EdgeReconciliationState] =
     import LogAnnotations.*
 
     extension (i: Int)

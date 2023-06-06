@@ -1,10 +1,12 @@
-package andy42.graph.services
+package andy42.graph.persistence
 
 import andy42.graph.model.*
 import org.msgpack.core.*
 import zio.*
 
 import javax.sql.DataSource
+
+case class NodeEntry(id: NodeId, eventsAtTime: EventsAtTime)
 
 trait NodeRepository:
 
@@ -24,3 +26,5 @@ trait NodeRepository:
       id: NodeId,
       eventsAtTime: EventsAtTime
   ): IO[PersistenceFailure, Unit]
+
+  // TODO: def contents: UStream[NodeEntry]

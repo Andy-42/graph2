@@ -1,6 +1,7 @@
 package andy42.graph.sample.aptdetection
 
 import andy42.graph.model.*
+import andy42.graph.persistence.{PersistenceFailure, RocksDBNodeRepository, TemporaryRocksDB}
 import andy42.graph.sample.IngestableJson
 import andy42.graph.services.*
 import io.opentelemetry.api.trace.Tracer
@@ -131,7 +132,7 @@ object IngestSpec extends ZIOAppDefault:
   val endpointPath = s"$filePrefix/endpoint.json"
   // val networkPath = s"$filePrefix/network-first-1000.json"
 
-  val ingest: ZIO[Graph, Throwable, Chunk[SubgraphMatchAtTime]] =
+  val ingest: ZIO[Graph, Throwable | UnpackFailure | PersistenceFailure, Chunk[SubgraphMatchAtTime]] =
     for
       graph <- ZIO.service[Graph]
       _ <- graph.registerStandingQuery(StandingQuery.subgraphSpec)
@@ -145,14 +146,14 @@ object IngestSpec extends ZIOAppDefault:
 
   val appConfigLayer: ULayer[AppConfig] = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = true)))
 
-  val myApp: ZIO[Graph, Throwable, Unit] =
+  val myApp: ZIO[Graph, Throwable | UnpackFailure | PersistenceFailure, Unit] =
       for
         _ <- ZIO.unit.withParallelism(2) // TODO: Configure for each parallel operation
         matches <- ingest
         _ <- ZIO.debug(matches) // TODO: Produce nice display output for each match
       yield ()
 
-  override def run: ZIO[Any, Throwable, Unit] =
+  override def run: ZIO[Any, Throwable | PersistenceFailure, Unit] =
       myApp.provide(
         appConfigLayer,
         TemporaryRocksDB.layer,

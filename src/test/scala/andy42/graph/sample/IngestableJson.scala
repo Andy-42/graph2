@@ -1,6 +1,7 @@
 package andy42.graph.sample
 
 import andy42.graph.model.*
+import andy42.graph.persistence.PersistenceFailure
 import andy42.graph.services.*
 import zio.*
 import zio.json.*

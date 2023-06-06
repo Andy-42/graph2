@@ -1,4 +1,4 @@
-package andy42.graph.services
+package andy42.graph.persistence
 
 import org.apache.commons.io.FileUtils
 import org.rocksdb.{Options, RocksDB, RocksDBException}

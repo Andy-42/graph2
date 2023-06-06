@@ -1,7 +1,8 @@
 package andy42.graph.matcher
 
 import andy42.graph.model.*
-import andy42.graph.services.{Graph, PersistenceFailure, TracingService}
+import andy42.graph.persistence.PersistenceFailure
+import andy42.graph.services.{Graph, TracingService}
 import zio.*
 import zio.telemetry.opentelemetry.tracing.Tracing
 

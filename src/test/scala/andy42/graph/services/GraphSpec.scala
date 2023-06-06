@@ -1,6 +1,7 @@
 package andy42.graph.services
 
 import andy42.graph.model.*
+import andy42.graph.persistence.{TestNodeRepository, TestNodeRepositoryLive}
 import io.opentelemetry.api.trace.Tracer
 import zio.*
 import zio.config.*

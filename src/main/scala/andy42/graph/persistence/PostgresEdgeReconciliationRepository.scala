@@ -1,4 +1,4 @@
-package andy42.graph.services
+package andy42.graph.persistence
 
 import io.getquill.*
 import io.getquill.context.qzio.ImplicitSyntax.*

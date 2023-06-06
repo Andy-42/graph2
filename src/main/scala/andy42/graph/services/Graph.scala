@@ -2,6 +2,7 @@ package andy42.graph.services
 
 import andy42.graph.matcher.{Matcher, SubgraphSpec}
 import andy42.graph.model.*
+import andy42.graph.persistence.{NodeRepository, PersistenceFailure}
 import zio.*
 import zio.stm.*
 import zio.telemetry.opentelemetry.tracing.Tracing
