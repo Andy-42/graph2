@@ -33,7 +33,7 @@ object TemporaryRocksDB:
   def openRocksDB(options: org.rocksdb.Options, directory: Path): ZIO[Any, RocksDBException, RocksDB] =
     ZIO
       .attemptBlocking(RocksDB.open(options, directory.toAbsolutePath.toString))
-      .refineOrDie[RocksDBException] { case e: RocksDBException => e }
+      .refineOrDie { case e: RocksDBException => e }
 
   def closeRocksDB(db: RocksDB): ZIO[Any, Nothing, Unit] =
     ZIO.attemptBlocking(db.close()).orElseSucceed(()) // TODO: Log db.close() failure, use closeE

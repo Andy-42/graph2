@@ -3,6 +3,7 @@ package andy42.graph.persistence
 import andy42.graph.services.*
 import org.rocksdb.*
 import zio.*
+import zio.stream.{UStream, ZStream}
 
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets.UTF_8
@@ -22,9 +23,42 @@ case class RocksDBEdgeReconciliationRepositoryLive(db: RocksDB, cfHandle: Column
 
     ZIO
       .attemptBlocking(db.put(cfHandle, keyBytes, valueBytes))
-      .refineOrDie[RocksDBPutEdgeReconciliationFailure] { case e: RocksDBException =>
-        RocksDBPutEdgeReconciliationFailure(e)
+      .refineOrDie { case e: RocksDBException =>
+        RocksEdgeReconciliationMarkWindowFailure(
+          windowStart = edgeReconciliation.windowStart,
+          windowSize = edgeReconciliation.windowStart,
+          state = edgeReconciliation.state,
+          ex = e
+        )
       }
+
+  override def contents: UStream[EdgeReconciliationSnapshot] =
+    for
+      it <- ZStream.acquireReleaseWith(acquireIterator)(releaseIterator)
+      edgeReconciliationSnapshot <- drainIterator(it)
+    yield edgeReconciliationSnapshot
+
+  private def acquireIterator: UIO[RocksIterator] =
+    ZIO.attemptBlocking { db.newIterator(cfHandle) }.orDie
+
+  private def releaseIterator(it: RocksIterator): UIO[Unit] = ZIO.succeed(it.close())
+
+  private def drainIterator(it: RocksIterator): UStream[EdgeReconciliationSnapshot] =
+    ZStream.repeatZIOOption {
+      ZIO.blocking {
+        if it.isValid then
+
+          val keyBuffer = ByteBuffer.wrap(it.key())
+          val windowStart = keyBuffer.getLong
+          val windowSize = keyBuffer.getLong
+          val state = it.value()(0)
+
+          val next = EdgeReconciliationSnapshot(windowStart, windowSize, state)
+          it.next()
+          ZIO.succeed(next)
+        else ZIO.fail(None)
+      }
+    }
 
 object RocksDBEdgeReconciliationRepository:
 
@@ -33,7 +67,7 @@ object RocksDBEdgeReconciliationRepository:
 
   val keyLength: RuntimeFlags = windowStartLength + windowSizeLength
 
-  private val columnFamilyDescriptor: ColumnFamilyDescriptor =
+  private val cfDescriptor: ColumnFamilyDescriptor =
     new ColumnFamilyDescriptor(
       "edge-reconciliation-repository".getBytes(UTF_8),
       new ColumnFamilyOptions() // .useCappedPrefixExtractor(idLength)
@@ -43,8 +77,8 @@ object RocksDBEdgeReconciliationRepository:
     ZLayer {
       for
         db <- ZIO.service[RocksDB]
-        columnFamilyHandle <- ZIO
-          .attemptBlocking(db.createColumnFamily(columnFamilyDescriptor))
-          .refineOrDie[RocksDBException] { case e: RocksDBException => e }
-      yield RocksDBEdgeReconciliationRepositoryLive(db, columnFamilyHandle)
+        cfHandle <- ZIO
+          .attemptBlocking(db.createColumnFamily(cfDescriptor))
+          .refineOrDie { case e: RocksDBException => e }
+      yield RocksDBEdgeReconciliationRepositoryLive(db, cfHandle)
     }

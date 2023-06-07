@@ -6,6 +6,7 @@ import io.getquill.*
 import io.getquill.context.qzio.ImplicitSyntax.*
 import org.msgpack.core.{MessageBufferPacker, MessagePack, MessagePacker}
 import zio.*
+import zio.stream.Stream
 
 import javax.sql.DataSource
 
@@ -41,41 +42,44 @@ final case class PostgresNodeRepository(ds: DataSource) extends NodeRepository:
 
   override def get(id: NodeId): NodeIO[Node] =
     run(quotedGet(id)).implicitly
-      .mapError(SQLReadFailure(id, _))
+      .mapError(SQLNodeGetFailure(id, _))
       .flatMap(history =>
         // Unpacking the NodeHistory is not strictly necessary at this point, but it is done because:
         //  - it validates that the node unpacks correctly as it enters the system from the data store, and
         //  - it allows the Node constructor to create a current NodeSnapshot and cache it in the instance.
         for nodeHistory <- ZIO.foreach(history.toVector)(_.toEventsAtTime)
-          yield
-            if nodeHistory.isEmpty then Node.empty(id)
-            else
-              Node.fromHistory(
-                id = id,
-                history = nodeHistory,
-                packed = history.toPacked
-              )
+        yield
+          if nodeHistory.isEmpty then Node.empty(id)
+          else
+            Node.fromHistory(
+              id = id,
+              history = nodeHistory,
+              packed = history.toPacked
+            )
       )
 
   override def append(id: NodeId, eventsAtTime: EventsAtTime): IO[PersistenceFailure, Unit] =
     run(quotedAppend(eventsAtTime.toGraphEventsAtTime(id))).implicitly
-      .mapError(SQLWriteFailure(id, _))
+      .mapError(SQLNodeEntryAppendFailure(id, eventsAtTime.time, eventsAtTime.sequence, _))
       .flatMap { rowsInsertedOrUpdated =>
         ZIO
           .fail(CountPersistenceFailure(id, expected = 1, was = rowsInsertedOrUpdated))
           .unless(rowsInsertedOrUpdated == 1)
-          .unit
+          .unit // ???
       }
+
+  override def contents: Stream[PersistenceFailure | UnpackFailure, NodeRepositoryEntry] = ???
 
 object PostgresNodeRepository:
   val layer: URLayer[DataSource, NodeRepository] =
     ZLayer {
       for ds <- ZIO.service[DataSource]
-        yield PostgresNodeRepository(ds)
+      yield PostgresNodeRepository(ds)
     }
 
-
 /** GraphEventsAtTime models the persistent data store.
+  *
+  * TODO: Define an ordering that should be the same as the repository ordering
   *
   * @param id
   *   The Node identifier; clustering key.
@@ -87,15 +91,15 @@ object PostgresNodeRepository:
   *   The events written as a counted sequence packed Event.
   */
 final case class GraphEventsAtTime(
-                                    id: NodeId, // clustering key
-                                    time: EventTime, // sort key
-                                    sequence: Int, // sort key
-                                    events: Array[Byte] // packed payload
-                                  ) extends Packable:
+    id: NodeId, // clustering key
+    time: EventTime, // sort key
+    sequence: Int, // sort key
+    events: Array[Byte] // packed payload
+) extends Packable:
 
   def toEventsAtTime: IO[UnpackFailure, EventsAtTime] =
     for events <- Events.unpack(events)
-      yield EventsAtTime(time, sequence, events)
+    yield EventsAtTime(time, sequence, events)
 
   /** Pack this GraphEventsAtTime to packed form. This is the same representation as for an EventsAtTime, but packing
     * directly from a GraphEventsAtTime avoids having to (unpack and) repack events.
@@ -119,4 +123,3 @@ extension (graphHistory: List[GraphEventsAtTime])
     given packer: MessageBufferPacker = MessagePack.newDefaultBufferPacker()
     graphHistory.foreach(_.pack)
     packer.toByteArray
-

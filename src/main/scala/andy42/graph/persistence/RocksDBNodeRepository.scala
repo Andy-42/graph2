@@ -9,7 +9,7 @@ import zio.stream.*
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets.UTF_8
 
-case class RocksDBNodeRepository(db: RocksDB, columnFamilyHandle: ColumnFamilyHandle) extends NodeRepository:
+case class RocksDBNodeRepository(db: RocksDB, cfHandle: ColumnFamilyHandle) extends NodeRepository:
   import RocksDBNodeRepository.*
 
   private case class UnpackedHistory(
@@ -20,29 +20,34 @@ case class RocksDBNodeRepository(db: RocksDB, columnFamilyHandle: ColumnFamilyHa
   )
 
   private def prefixMatchStream(keyPrefix: Array[Byte]): UStream[(Array[Byte], Array[Byte])] =
-    (
-      for it <- ZStream.acquireReleaseWith(acquireIterator(keyPrefix))(releaseIterator)
-      yield drainIterator(it, keyPrefix)
-    ).flatten
+    kvStream(acquireKeyPrefixIterator(keyPrefix))
+
+  private def columnFamilyContentsStream: UStream[(Array[Byte], Array[Byte])] =
+    kvStream(acquireIterator)
+
+  private def kvStream(acquire: ZIO[Any, Nothing, RocksIterator]): UStream[(Array[Byte], Array[Byte])] =
+    for
+      it <- ZStream.acquireReleaseWith(acquire)(releaseIterator)
+      kv <- drainIterator(it)
+    yield kv
 
   private val readOptions = new ReadOptions().setPrefixSameAsStart(true)
 
-  private def acquireIterator(keyPrefix: Array[Byte]): UIO[RocksIterator] =
+  private def acquireKeyPrefixIterator(keyPrefix: Array[Byte]): UIO[RocksIterator] =
     ZIO.attemptBlocking {
-      val it = db.newIterator(columnFamilyHandle, readOptions)
+      val it = db.newIterator(cfHandle, readOptions)
       it.seek(keyPrefix)
       it
     }.orDie
 
+  private def acquireIterator: UIO[RocksIterator] = ZIO.attemptBlocking { db.newIterator(cfHandle) }.orDie
+
   private def releaseIterator(it: RocksIterator): UIO[Unit] = ZIO.succeed(it.close())
 
-  private def drainIterator(it: RocksIterator, keyPrefix: Array[Byte]): UStream[(Array[Byte], Array[Byte])] =
+  private def drainIterator(it: RocksIterator): UStream[(Array[Byte], Array[Byte])] =
     ZStream.repeatZIOOption {
       ZIO.blocking {
         if it.isValid then
-
-          // Compare the prefix part of the key to see if we have gone past the prefix
-
           val next = it.key() -> it.value()
           it.next()
           ZIO.succeed(next)
@@ -50,7 +55,7 @@ case class RocksDBNodeRepository(db: RocksDB, columnFamilyHandle: ColumnFamilyHa
       }
     }
 
-  override def get(id: NodeId): IO[RocksDBIteratorFailure | UnpackFailure, Node] =
+  override def get(id: NodeId): IO[UnpackFailure, Node] =
     val idBytes = id.toArray
 
     for
@@ -91,8 +96,16 @@ case class RocksDBNodeRepository(db: RocksDB, columnFamilyHandle: ColumnFamilyHa
     val keyBytes = keyBytesBuffer.array
 
     ZIO
-      .attemptBlocking(db.put(columnFamilyHandle, keyBytes, Events.pack(eventsAtTime.events)))
-      .refineOrDie[RocksDBPutFailure] { case e: RocksDBException => RocksDBPutFailure(id, e) }
+      .attemptBlocking(db.put(cfHandle, keyBytes, Events.pack(eventsAtTime.events)))
+      .refineOrDie { case e: RocksDBException => RocksDBPutFailure(id, e) }
+
+  override def contents: Stream[UnpackFailure, NodeRepositoryEntry] =
+    columnFamilyContentsStream.mapZIO { (k, v) =>
+      val id = NodeId(ByteBuffer.wrap(k, idOffset, idLength).array())
+      val time = ByteBuffer.wrap(k, timeOffset, timeLength).getLong
+      val sequence = ByteBuffer.wrap(k, sequenceOffset, sequenceLength).getInt
+      Events.unpack(v).map(events => NodeRepositoryEntry(id, time, sequence, events))
+    }
 
 object RocksDBNodeRepository:
 
@@ -103,10 +116,11 @@ object RocksDBNodeRepository:
 
   val keyLength: Int = idLength + timeLength + sequenceLength
 
+  val idOffset: Int = 0
   val timeOffset: Int = idLength
   val sequenceOffset: Int = idLength + timeLength
 
-  private val columnFamilyDescriptor: ColumnFamilyDescriptor =
+  private val cfDescriptor: ColumnFamilyDescriptor =
     new ColumnFamilyDescriptor(
       "node-repository".getBytes(UTF_8),
       new ColumnFamilyOptions().useCappedPrefixExtractor(idLength)
@@ -116,8 +130,8 @@ object RocksDBNodeRepository:
     ZLayer {
       for
         db <- ZIO.service[RocksDB]
-        columnFamilyHandle <- ZIO
-          .attemptBlocking(db.createColumnFamily(columnFamilyDescriptor))
-          .refineOrDie[RocksDBException] { case e: RocksDBException => e }
-      yield RocksDBNodeRepository(db, columnFamilyHandle)
+        cfHandle <- ZIO
+          .attemptBlocking(db.createColumnFamily(cfDescriptor))
+          .refineOrDie { case e: RocksDBException => e }
+      yield RocksDBNodeRepository(db, cfHandle)
     }

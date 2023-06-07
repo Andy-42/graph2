@@ -1,9 +1,12 @@
 package andy42.graph.persistence
 
+import andy42.graph.model.UnpackFailure
 import io.getquill.*
 import io.getquill.context.qzio.ImplicitSyntax.*
 import zio.*
+import zio.stream.Stream
 
+import java.sql.SQLException
 import javax.sql.DataSource
 
 final case class PostgresEdgeReconciliationRepositoryLive(ds: DataSource) extends EdgeReconciliationRepository:
@@ -13,6 +16,10 @@ final case class PostgresEdgeReconciliationRepositoryLive(ds: DataSource) extend
 
   private inline def edgeReconciliationTable: Quoted[EntityQuery[EdgeReconciliationSnapshot]] = quote {
     query[EdgeReconciliationSnapshot]
+  }
+
+  private inline def contentsQuery: Quoted[Query[EdgeReconciliationSnapshot]] = quote {
+    query[EdgeReconciliationSnapshot].sortBy(_.windowStart)
   }
 
   private inline def quotedMarkWindow(
@@ -28,12 +35,26 @@ final case class PostgresEdgeReconciliationRepositoryLive(ds: DataSource) extend
 
   given Implicit[DataSource] = Implicit(ds)
 
-  override def markWindow(edgeReconciliation: EdgeReconciliationSnapshot): UIO[Unit] =
+  override def markWindow(
+      edgeReconciliation: EdgeReconciliationSnapshot
+  ): IO[SQLEdgeReconciliationMarkWindowFailure, Unit] =
     run(quotedMarkWindow(edgeReconciliation)).implicitly
+      .refineOrDie { case e: SQLException =>
+        SQLEdgeReconciliationMarkWindowFailure(
+          windowStart = edgeReconciliation.windowStart,
+          windowSize = edgeReconciliation.windowSize,
+          state = edgeReconciliation.state,
+          ex = e
+        )
+      }
       .retry(Schedule.recurs(5)) // TODO: Configure retry policy - either exponential or fibonacci
       // TODO: Check that exactly one row is changed, otherwise log error
       // TODO: Log if retries fails
-      .foldZIO(_ => ZIO.unit, _ => ZIO.unit) // TODO: Is this the best way to consume errors
+      .unit
+
+  def contents: Stream[PersistenceFailure | UnpackFailure, EdgeReconciliationSnapshot] =
+    stream(contentsQuery).implicitly
+      .refineOrDie { case e: SQLException => SQLEdgeReconciliationContentsFailure(e) }
 
 object PostgresEdgeReconciliationRepository:
   val layer: URLayer[DataSource, EdgeReconciliationRepository] =

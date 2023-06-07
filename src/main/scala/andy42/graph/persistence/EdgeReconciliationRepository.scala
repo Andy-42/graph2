@@ -2,21 +2,23 @@ package andy42.graph.persistence
 
 import andy42.graph.model.*
 import zio.*
-import zio.stream.{UStream, ZStream}
+import zio.stream.Stream
 
 import javax.sql.DataSource
 
 trait EdgeReconciliationRepository:
   def markWindow(edgeReconciliation: EdgeReconciliationSnapshot): IO[PersistenceFailure, Unit]
+  def contents: Stream[PersistenceFailure | UnpackFailure, EdgeReconciliationSnapshot]
 
-  // TODO: def contents: UStream[EdgeReconciliationSnapshot]
+  // TODO: Should include a timestamp of when the reconciliation was written
 
-final case class EdgeReconciliationSnapshot private (
+final case class EdgeReconciliationSnapshot(
     windowStart: Long,
     windowSize: Long,
     state: Byte
 )
 
+// TODO: Enum
 object EdgeReconciliationSnapshot:
   private val Reconciled: Byte = 1.toByte
   private val Inconsistent: Byte = 2.toByte
