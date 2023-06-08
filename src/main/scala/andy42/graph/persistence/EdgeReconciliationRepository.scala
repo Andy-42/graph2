@@ -10,30 +10,43 @@ trait EdgeReconciliationRepository:
   def markWindow(edgeReconciliation: EdgeReconciliationSnapshot): IO[PersistenceFailure, Unit]
   def contents: Stream[PersistenceFailure | UnpackFailure, EdgeReconciliationSnapshot]
 
-  // TODO: Should include a timestamp of when the reconciliation was written
+enum EdgeReconciliationState:
+  case Reconciled, Inconsistent, Unknown
 
 final case class EdgeReconciliationSnapshot(
-    windowStart: Long,
-    windowSize: Long,
-    state: Byte
+    windowStart: Long, // epoch millis
+    windowSize: Long, // millis
+    whenWritten: Long, // epoch millis
+    state: EdgeReconciliationState
 )
 
-// TODO: Enum
 object EdgeReconciliationSnapshot:
-  private val Reconciled: Byte = 1.toByte
-  private val Inconsistent: Byte = 2.toByte
-  private val Unknown: Byte = 3.toByte
 
   /** All pairs of half-edges were determined to be reconciled for this window */
-  def reconciled(windowStart: Long, windowSize: Long): EdgeReconciliationSnapshot =
-    EdgeReconciliationSnapshot(windowStart, windowSize, Reconciled)
+  def reconciled(windowStart: Long, windowSize: Long, now: Long): EdgeReconciliationSnapshot =
+    EdgeReconciliationSnapshot(
+      windowStart = windowStart,
+      windowSize = windowSize,
+      whenWritten = now,
+      state = EdgeReconciliationState.Reconciled
+    )
 
   /** The window is known or suspected of being inconsistent */
-  def inconsistent(windowStart: Long, windowSize: Long): EdgeReconciliationSnapshot =
-    EdgeReconciliationSnapshot(windowStart, windowSize, Inconsistent)
+  def inconsistent(windowStart: Long, windowSize: Long, now: Long): EdgeReconciliationSnapshot =
+    EdgeReconciliationSnapshot(
+      windowStart = windowStart,
+      windowSize = windowSize,
+      whenWritten = now,
+      state = EdgeReconciliationState.Inconsistent
+    )
 
   /** The state is unknown. This is not typically something that we expect to write, and it would normally be
     * represented as a gap in the table.
     */
-  def unknown(windowStart: Long, windowSize: Long): EdgeReconciliationSnapshot =
-    EdgeReconciliationSnapshot(windowStart, windowSize, Unknown)
+  def unknown(windowStart: Long, windowSize: Long, now: Long): EdgeReconciliationSnapshot =
+    EdgeReconciliationSnapshot(
+      windowStart = windowStart,
+      windowSize = windowSize,
+      whenWritten = now,
+      state = EdgeReconciliationState.Unknown
+    )

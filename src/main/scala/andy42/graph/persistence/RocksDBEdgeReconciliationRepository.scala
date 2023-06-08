@@ -19,7 +19,7 @@ case class RocksDBEdgeReconciliationRepositoryLive(db: RocksDB, cfHandle: Column
     keyBytesBuffer.putLong(edgeReconciliation.windowSize)
     val keyBytes = keyBytesBuffer.array()
 
-    val valueBytes: Array[Byte] = Array(edgeReconciliation.state)
+    val valueBytes: Array[Byte] = Array(edgeReconciliation.state.ordinal.toByte)
 
     ZIO
       .attemptBlocking(db.put(cfHandle, keyBytes, valueBytes))
@@ -27,7 +27,7 @@ case class RocksDBEdgeReconciliationRepositoryLive(db: RocksDB, cfHandle: Column
         RocksEdgeReconciliationMarkWindowFailure(
           windowStart = edgeReconciliation.windowStart,
           windowSize = edgeReconciliation.windowStart,
-          state = edgeReconciliation.state,
+          state = edgeReconciliation.state.ordinal.toByte,
           ex = e
         )
       }
@@ -51,9 +51,15 @@ case class RocksDBEdgeReconciliationRepositoryLive(db: RocksDB, cfHandle: Column
           val keyBuffer = ByteBuffer.wrap(it.key())
           val windowStart = keyBuffer.getLong
           val windowSize = keyBuffer.getLong
-          val state = it.value()(0)
+          val whenWritten = keyBuffer.getLong
+          val state = it.value()(0).toInt
 
-          val next = EdgeReconciliationSnapshot(windowStart, windowSize, state)
+          val next = EdgeReconciliationSnapshot(
+            windowStart = windowStart,
+            windowSize = windowSize,
+            whenWritten = whenWritten,
+            state = EdgeReconciliationState.fromOrdinal(state)
+          )
           it.next()
           ZIO.succeed(next)
         else ZIO.fail(None)
@@ -62,10 +68,11 @@ case class RocksDBEdgeReconciliationRepositoryLive(db: RocksDB, cfHandle: Column
 
 object RocksDBEdgeReconciliationRepository:
 
-  val windowStartLength: RuntimeFlags = java.lang.Long.BYTES
-  val windowSizeLength: RuntimeFlags = java.lang.Long.BYTES
+  val windowStartLength: Int = java.lang.Long.BYTES
+  val windowSizeLength: Int = java.lang.Long.BYTES
+  val whenWrittenLength: Int = java.lang.Long.BYTES
 
-  val keyLength: RuntimeFlags = windowStartLength + windowSizeLength
+  val keyLength: Int = windowStartLength + windowSizeLength + whenWrittenLength
 
   private val cfDescriptor: ColumnFamilyDescriptor =
     new ColumnFamilyDescriptor(

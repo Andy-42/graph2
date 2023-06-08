@@ -14,6 +14,11 @@ final case class PostgresEdgeReconciliationRepositoryLive(ds: DataSource) extend
   val ctx: PostgresZioJdbcContext[Literal] = PostgresZioJdbcContext(Literal)
   import ctx.*
 
+  implicit val reconciliationStateDecoder: MappedEncoding[EdgeReconciliationState, Byte] =
+    MappedEncoding[EdgeReconciliationState, Byte](_.ordinal.toByte)
+  implicit val reconciliationStateEncoder: MappedEncoding[Byte, EdgeReconciliationState] =
+    MappedEncoding[Byte, EdgeReconciliationState]((x: Byte) => EdgeReconciliationState.fromOrdinal(x.toInt))
+
   private inline def edgeReconciliationTable: Quoted[EntityQuery[EdgeReconciliationSnapshot]] = quote {
     query[EdgeReconciliationSnapshot]
   }
@@ -43,7 +48,7 @@ final case class PostgresEdgeReconciliationRepositoryLive(ds: DataSource) extend
         SQLEdgeReconciliationMarkWindowFailure(
           windowStart = edgeReconciliation.windowStart,
           windowSize = edgeReconciliation.windowSize,
-          state = edgeReconciliation.state,
+          state = edgeReconciliation.state.ordinal.toByte,
           ex = e
         )
       }
