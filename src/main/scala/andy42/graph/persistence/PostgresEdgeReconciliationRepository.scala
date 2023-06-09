@@ -17,7 +17,7 @@ final case class PostgresEdgeReconciliationRepositoryLive(ds: DataSource) extend
   implicit val reconciliationStateDecoder: MappedEncoding[EdgeReconciliationState, Byte] =
     MappedEncoding[EdgeReconciliationState, Byte](_.ordinal.toByte)
   implicit val reconciliationStateEncoder: MappedEncoding[Byte, EdgeReconciliationState] =
-    MappedEncoding[Byte, EdgeReconciliationState]((x: Byte) => EdgeReconciliationState.fromOrdinal(x.toInt))
+    MappedEncoding[Byte, EdgeReconciliationState](EdgeReconciliationState.fromOrdinal(_))
 
   private inline def edgeReconciliationTable: Quoted[EntityQuery[EdgeReconciliationSnapshot]] = quote {
     query[EdgeReconciliationSnapshot]
@@ -42,7 +42,7 @@ final case class PostgresEdgeReconciliationRepositoryLive(ds: DataSource) extend
 
   override def markWindow(
       edgeReconciliation: EdgeReconciliationSnapshot
-  ): IO[SQLEdgeReconciliationMarkWindowFailure, Unit] =
+  ): IO[PersistenceFailure, Unit] =
     run(quotedMarkWindow(edgeReconciliation)).implicitly
       .refineOrDie { case e: SQLException =>
         SQLEdgeReconciliationMarkWindowFailure(
@@ -52,10 +52,16 @@ final case class PostgresEdgeReconciliationRepositoryLive(ds: DataSource) extend
           ex = e
         )
       }
-      .retry(Schedule.recurs(5)) // TODO: Configure retry policy - either exponential or fibonacci
-      // TODO: Check that exactly one row is changed, otherwise log error
-      // TODO: Log if retries fails
+      // Since this is on a forked fiber (not the fiber Graph.append was called on), failing quickly is undesirable.
+      // .retry(Schedule.recurs(5)) // TODO: Configure retry policy - either exponential or fibonacci
+
+      // Expect exactly one row to be affected by an append
+      .foldZIO(
+        failure = ZIO.fail,
+        success = rowsAffected => ZIO.fail(EdgeReconciliationAppendCountFailure(rowsAffected)).unless(rowsAffected == 1)
+      )
       .unit
+    // TODO: Log failure
 
   def contents: Stream[PersistenceFailure | UnpackFailure, EdgeReconciliationSnapshot] =
     stream(contentsQuery).implicitly

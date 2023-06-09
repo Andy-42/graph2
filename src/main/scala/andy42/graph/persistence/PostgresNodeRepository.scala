@@ -61,12 +61,12 @@ final case class PostgresNodeRepository(ds: DataSource) extends NodeRepository:
   override def append(id: NodeId, eventsAtTime: EventsAtTime): IO[PersistenceFailure, Unit] =
     run(quotedAppend(eventsAtTime.toGraphEventsAtTime(id))).implicitly
       .mapError(SQLNodeEntryAppendFailure(id, eventsAtTime.time, eventsAtTime.sequence, _))
-      .flatMap { rowsInsertedOrUpdated =>
-        ZIO
-          .fail(CountPersistenceFailure(id, expected = 1, was = rowsInsertedOrUpdated))
-          .unless(rowsInsertedOrUpdated == 1)
-          .unit // ???
-      }
+      .foldZIO(
+        failure = ZIO.fail,
+        success =
+          rowsAffected => ZIO.fail(NodeAppendCountPersistenceFailure(id, rowsAffected)).unless(rowsAffected == 1)
+      )
+      .unit
 
   override def contents: Stream[PersistenceFailure | UnpackFailure, NodeRepositoryEntry] = ???
 

@@ -28,14 +28,15 @@ final case class SQLEdgeReconciliationMarkWindowFailure(
     ex: SQLException
 ) extends SQLFailure
 
-final case class CountPersistenceFailure(id: NodeId, expected: Long, was: Long) extends PersistenceFailure:
-  override val message = s"Expected $expected row(s) to be affected by write, but was $was."
+final case class EdgeReconciliationAppendCountFailure(rowsAffected: Long) extends PersistenceFailure:
+  override val message = s"Expected one row to be affected by insert, but was $rowsAffected."
+
+final case class NodeAppendCountPersistenceFailure(id: NodeId, rowsAffected: Long) extends PersistenceFailure:
+  override val message = s"Expected one row to be affected by insert for node $id, but was $rowsAffected."
 
 trait RocksDBFailure extends PersistenceFailure:
   val ex: RocksDBException
   override def message: String = ex.getMessage
-  
-// Note that RockDB does not throw any exceptions on reading  
 
 final case class RocksDBPutFailure(id: NodeId, ex: RocksDBException) extends RocksDBFailure
 
