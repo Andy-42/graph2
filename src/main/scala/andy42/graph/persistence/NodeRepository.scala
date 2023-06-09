@@ -7,6 +7,19 @@ import zio.stream.Stream
 
 import javax.sql.DataSource
 
+/** NodeRepositoryEntry is one row in the persistent data store.
+  *
+  * TODO: Define a canonical ordering that should be the same as the repository ordering
+  *
+  * @param id
+  *   The Node identifier; clustering key.
+  * @param time
+  *   The epoch millis time when the events were appended to in the history; sort key.
+  * @param sequence
+  *   A disambiguator if multiple appends happen to the same event and time; sort key.
+  * @param events
+  *   The events written as a counted sequence of packed Events.
+  */
 case class NodeRepositoryEntry(id: NodeId, time: EventTime, sequence: Int, events: Vector[Event])
 
 trait NodeRepository:

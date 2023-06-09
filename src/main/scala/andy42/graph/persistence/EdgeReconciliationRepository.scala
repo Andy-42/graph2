@@ -6,19 +6,20 @@ import zio.stream.Stream
 
 import javax.sql.DataSource
 
-trait EdgeReconciliationRepository:
-  def markWindow(edgeReconciliation: EdgeReconciliationSnapshot): IO[PersistenceFailure, Unit]
-  def contents: Stream[PersistenceFailure | UnpackFailure, EdgeReconciliationSnapshot]
-
-enum EdgeReconciliationState:
-  case Reconciled, Inconsistent, Unknown
-
+// TODO: Rename to EdgeReconciliationEntry
 final case class EdgeReconciliationSnapshot(
     windowStart: Long, // epoch millis
     windowSize: Long, // millis
     whenWritten: Long, // epoch millis
     state: EdgeReconciliationState
 )
+
+enum EdgeReconciliationState:
+  case Reconciled, Inconsistent, Unknown
+
+trait EdgeReconciliationRepository:
+  def markWindow(edgeReconciliation: EdgeReconciliationSnapshot): IO[PersistenceFailure, Unit]
+  def contents: Stream[PersistenceFailure | UnpackFailure, EdgeReconciliationSnapshot]
 
 object EdgeReconciliationSnapshot:
 

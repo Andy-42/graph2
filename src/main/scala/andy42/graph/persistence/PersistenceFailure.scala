@@ -16,6 +16,8 @@ trait SQLFailure extends PersistenceFailure:
 
 final case class SQLNodeGetFailure(id: NodeId, ex: SQLException) extends SQLFailure
 
+final case class SQLNodeContentsFailure(ex: SQLException) extends SQLFailure
+
 final case class SQLEdgeReconciliationContentsFailure(ex: SQLException) extends SQLFailure
 
 final case class SQLNodeEntryAppendFailure(id: NodeId, time: EventTime, sequence: Int, ex: SQLException)
