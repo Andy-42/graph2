@@ -40,11 +40,9 @@ final case class EventsAtTime(
 object EventsAtTime extends Unpackable[EventsAtTime]:
 
   override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, EventsAtTime] =
-    UnpackSafely {
-      for
-        time <- ZIO.attempt(unpacker.unpackLong())
-        sequence <- ZIO.attempt(unpacker.unpackInt())
-        length <- ZIO.attempt(unpacker.unpackInt())
-        events <- unpackCountedToSeq(Event.unpack, length)
-      yield EventsAtTime(time, sequence, events.toVector)
-    }
+    for
+      time <- UnpackSafely { unpacker.unpackLong() }
+      sequence <- UnpackSafely { unpacker.unpackInt() }
+      length <- UnpackSafely { unpacker.unpackInt() }
+      events <- unpackCountedToSeq(Event.unpack, length)
+    yield EventsAtTime(time, sequence, events.toVector)

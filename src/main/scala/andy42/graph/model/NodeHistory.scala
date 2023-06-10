@@ -23,10 +23,8 @@ object NodeHistory extends Unpackable[NodeHistory]:
   val empty: NodeHistory = Vector.empty
 
   override def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, NodeHistory] =
-    UnpackSafely {
-      for a <- unpackUncountedToSeq(EventsAtTime.unpack, unpacker.hasNext)
-      yield a.toVector
-    }
+    for a <- unpackUncountedToSeq(EventsAtTime.unpack, unpacker.hasNext)
+    yield a.toVector
 
   def unpackNodeHistory(packed: PackedNodeHistory): IO[UnpackFailure, NodeHistory] =
     NodeHistory.unpack(using MessagePack.newDefaultUnpacker(packed))

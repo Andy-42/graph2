@@ -41,9 +41,10 @@ final case class PostgresNodeRepository(ds: DataSource) extends NodeRepository:
   given MappedEncoding[NodeId, Array[Byte]](_.toArray)
   given MappedEncoding[Array[Byte], NodeId](NodeId(_))
 
-  override def get(id: NodeId): NodeIO[Node] = {
+  override def get(id: NodeId): NodeIO[Node] =
     for
       historyWithPackedEvents <- run(quotedGet(id)).implicitly
+        .refineOrDie { case e: SQLException => SQLNodeGetFailure(id, e) }
       historyWithPackedEventsArray = historyWithPackedEvents.toArray
       nodeHistory <- ZIO.foreach(historyWithPackedEventsArray)(_.unpackToEventsAtTime)
     yield
@@ -54,9 +55,6 @@ final case class PostgresNodeRepository(ds: DataSource) extends NodeRepository:
           history = nodeHistory.toVector,
           packed = historyWithPackedEventsArray.flatMap(_.packedEvents)
         )
-  }.refineOrDie { case e: SQLException =>
-    SQLNodeGetFailure(id, e)
-  }
 
   override def append(id: NodeId, eventsAtTime: EventsAtTime): IO[PersistenceFailure, Unit] =
     run(quotedAppend(eventsAtTime.toNodeRepositoryEntryWithPackedEvents(id))).implicitly

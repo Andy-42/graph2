@@ -10,6 +10,7 @@ import javax.sql.DataSource
 /** NodeRepositoryEntry is one row in the persistent data store.
   *
   * TODO: Define a canonical ordering that should be the same as the repository ordering
+  * TODO: Describe how this relates to EventsAtTime and NodeHistory
   *
   * @param id
   *   The Node identifier; clustering key.

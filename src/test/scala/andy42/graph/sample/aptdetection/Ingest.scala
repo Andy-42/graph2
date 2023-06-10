@@ -147,20 +147,20 @@ object IngestSpec extends ZIOAppDefault:
   val appConfigLayer: ULayer[AppConfig] = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = true)))
 
   val myApp: ZIO[Graph, Throwable | UnpackFailure | PersistenceFailure, Unit] =
-      for
-        _ <- ZIO.unit.withParallelism(2) // TODO: Configure for each parallel operation
-        matches <- ingest
-        _ <- ZIO.debug(matches) // TODO: Produce nice display output for each match
-      yield ()
+    for
+      _ <- ZIO.unit.withParallelism(2) // TODO: Configure for each parallel operation
+      matches <- ingest
+      _ <- ZIO.debug(matches) // TODO: Produce nice display output for each match
+    yield ()
 
-  override def run: ZIO[Any, Throwable | PersistenceFailure, Unit] =
-      myApp.provide(
-        appConfigLayer,
-        TemporaryRocksDB.layer,
-        RocksDBNodeRepository.layer,
-        TestNodeCache.layer, // TODO: Use real service
-        TestMatchSink.layer,
-        TestEdgeSynchronization.layer, // TODO: Use real service
-        TracingService.live,
-        Graph.layer
-      )
+  override def run: ZIO[Any, Throwable | UnpackFailure | PersistenceFailure, Unit] =
+    myApp.provide(
+      appConfigLayer,
+      TemporaryRocksDB.layer,
+      RocksDBNodeRepository.layer,
+      TestNodeCache.layer, // TODO: Use real service
+      TestMatchSink.layer,
+      TestEdgeSynchronization.layer, // TODO: Use real service
+      TracingService.live,
+      Graph.layer
+    )

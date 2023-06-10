@@ -69,22 +69,21 @@ object FarEdge extends Unpackable[Edge]:
     Edge.unpack(isFar = true)
 
 object Edge:
-  
+
   def apply(k: String, other: NodeId, direction: EdgeDirection): Edge =
     NearEdge(k, other, direction)
 
   def unpack(isFar: Boolean)(using unpacker: MessageUnpacker): IO[UnpackFailure, Edge] =
-    UnpackSafely {
-      for
-        k <- ZIO.attempt(unpacker.unpackString())
-        // The other NodeId is read/written without a length header to save two bytes
-        other <- ZIO.attempt(NodeId(unpacker.readPayload(NodeId.byteLength)))
-        directionOrdinal <- ZIO.attempt(unpacker.unpackInt())
-        direction <- ZIO
-          .attempt(EdgeDirection.fromOrdinal(directionOrdinal))
-          .orElseFail(UnexpectedEventDiscriminator(directionOrdinal))
-      yield if isFar then FarEdge(k, other, direction) else NearEdge(k, other, direction)
-    }
+    for
+      k <- UnpackSafely { unpacker.unpackString() }
+      // The other NodeId is read/written without a length header to save two bytes
+      otherIdBytes <- UnpackSafely { unpacker.readPayload(NodeId.byteLength) }
+      other = NodeId(otherIdBytes)
+      directionOrdinal <- UnpackSafely { unpacker.unpackInt() }
+      direction <- ZIO
+        .attempt(EdgeDirection.fromOrdinal(directionOrdinal))
+        .orElseFail(UnexpectedEventDiscriminator(directionOrdinal))
+    yield if isFar then FarEdge(k, other, direction) else NearEdge(k, other, direction)
 
 type EdgeHash = Long // Correctly balanced edges will reconcile to zero
 

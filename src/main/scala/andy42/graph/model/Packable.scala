@@ -42,46 +42,42 @@ trait UncountedSeqPacker[T <: Packable]:
 
 trait Unpackable[T: ClassTag]: // IDEA generates a bogus "Traits cannot have type parameters with context bounds" here
   self: Unpackable[T] =>
-    def unpacked(packed: Array[Byte]): IO[UnpackFailure, T] =
-      given unpacker: MessageUnpacker = MessagePack.newDefaultUnpacker(packed)
-      unpack
-  
-    def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, T]
+  def unpacked(packed: Array[Byte]): IO[UnpackFailure, T] =
+    given unpacker: MessageUnpacker = MessagePack.newDefaultUnpacker(packed)
+    unpack
+
+  def unpack(using unpacker: MessageUnpacker): IO[UnpackFailure, T]
 
 object UnpackOperations:
 
   def unpackCountedToSeq[T: ClassTag](
-      unpackElement: => IO[UnpackFailure | Throwable, T],
+      unpackElement: => IO[UnpackFailure, T],
       length: Int
   ): IO[UnpackFailure, Seq[T]] =
-    UnpackSafely {
-      val a: Array[T] = Array.ofDim[T](length)
+    val a: Array[T] = Array.ofDim[T](length)
 
-      def accumulate(i: Int = 0): IO[UnpackFailure | Throwable, Seq[T]] =
-        if i == length then ZIO.succeed(ArraySeq.unsafeWrapArray(a))
-        else
-          unpackElement.flatMap { t =>
-            a(i) = t
-            accumulate(i + 1)
-          }
+    def accumulate(i: Int = 0): IO[UnpackFailure, Seq[T]] =
+      if i == length then ZIO.succeed(ArraySeq.unsafeWrapArray(a))
+      else
+        unpackElement.flatMap { t =>
+          a(i) = t
+          accumulate(i + 1)
+        }
 
-      accumulate()
-    }
+    accumulate()
 
   def unpackUncountedToSeq[T: ClassTag](
-      unpackElement: => IO[UnpackFailure | Throwable, T],
+      unpackElement: => IO[UnpackFailure, T],
       hasNext: => Boolean
   ): IO[UnpackFailure, Seq[T]] =
-    UnpackSafely {
-      val buf = ArrayBuffer.empty[T]
+    val buf = ArrayBuffer.empty[T]
 
-      def accumulate(): IO[UnpackFailure | Throwable, Seq[T]] =
-        if hasNext then
-          unpackElement.flatMap { t =>
-            buf.addOne(t)
-            accumulate()
-          }
-        else ZIO.succeed(buf.toSeq)
+    def accumulate(): IO[UnpackFailure, Seq[T]] =
+      if hasNext then
+        unpackElement.flatMap { t =>
+          buf.addOne(t)
+          accumulate()
+        }
+      else ZIO.succeed(buf.toSeq)
 
-      accumulate()
-    }
+    accumulate()
