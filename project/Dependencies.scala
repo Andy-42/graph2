@@ -4,7 +4,7 @@ object Dependencies {
   object Versions {
     val openTelemetry = "1.26.0"
     val openTelemetryNoop = "1.17.0-alpha"
-    val zio = "2.0.10"
+    val zio = "2.0.13"
     val zioLogging = "2.1.13"
     val zioOpentelemetry = "3.0.0-RC10"
     val zioJson = "0.3.0-RC10"
@@ -14,10 +14,10 @@ object Dependencies {
     val quill = "4.6.0.1"
     val msgPack = "0.9.3"
     val cats = "2.7.0"
-    val jaeger = "1.8.0"
+    val jaeger = "1.8.1"
     val zipkin = "2.16.3"
     val scalaCollectionCompat = "2.10.0"
-    val commonsIo = "2.12.0"
+    val commonsIo = "20030203.000550"
   }
 
   object Orgs {
