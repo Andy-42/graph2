@@ -23,6 +23,11 @@ import javax.sql.DataSource
   */
 case class NodeRepositoryEntry(id: NodeId, time: EventTime, sequence: Int, events: Vector[Event])
 
+implicit val nodeRepositoryEntryOrdering: Ordering[NodeRepositoryEntry] =
+    Ordering.by[NodeRepositoryEntry, NodeId](_.id)
+      .orElseBy(_.time)
+      .orElseBy(_.sequence)
+
 trait NodeRepository:
 
   /** Get a Node from persistent store.
