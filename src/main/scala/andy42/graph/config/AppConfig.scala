@@ -1,11 +1,11 @@
-package andy42.graph.services
+package andy42.graph.config
 
 import eu.timepit.refined.api.Refined
 import eu.timepit.refined.auto.autoUnwrap
 import eu.timepit.refined.boolean.And
 import eu.timepit.refined.numeric.{GreaterEqual, LessEqual, Positive}
-import zio.config.magnolia.deriveConfig
 import zio.*
+import zio.config.magnolia.deriveConfig
 
 // TODO: The the Refined integration with ZIO 2/Scala 3 is incomplete (4.0.0-RC13) - substitute refined types when fixed
 
@@ -30,13 +30,20 @@ final case class EdgeReconciliationConfig(
     maxChunkSize: Int = 10000 // Refined Positive
 )
 
-final case class TracerConfig(enabled: Boolean = false,
-                              host: String = "http://localhost:14250",
-                              instrumentationScopeName: String = "streaming-graph")
+final case class MatcherConfig(
+    combinationGenerator: String = "do-not-reuse-elements" // all | do-not-reuse-elements
+)
+
+final case class TracerConfig(
+    enabled: Boolean = false,
+    host: String = "http://localhost:14250",
+    instrumentationScopeName: String = "streaming-graph"
+)
 
 final case class AppConfig(
     nodeCache: NodeCacheConfig = NodeCacheConfig(),
     edgeReconciliation: EdgeReconciliationConfig = EdgeReconciliationConfig(),
+    matcherConfig: MatcherConfig = MatcherConfig(),
     tracer: TracerConfig = TracerConfig()
 )
 

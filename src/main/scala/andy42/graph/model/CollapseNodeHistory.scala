@@ -31,7 +31,7 @@ object CollapseNodeHistory:
       event match
         case Event.NodeRemoved =>
           properties = Map.empty
-          edges = Set.empty
+          edges = Vector.empty
 
         case Event.PropertyAdded(k, value) =>
           properties = properties + (k -> value)
@@ -40,16 +40,16 @@ object CollapseNodeHistory:
           properties = properties - k
 
         case Event.EdgeAdded(edge) =>
-          edges = edges + edge
+          edges = if edges.contains(edge) then edges else edges :+ edge
 
         case Event.FarEdgeAdded(edge) =>
-          edges = edges + edge
+          edges = if edges.contains(edge) then edges else edges :+ edge
 
         case Event.EdgeRemoved(edge) =>
-          edges = edges - edge
+          edges = if edges.contains(edge) then edges.filter(_ != edge) else edges
 
         case Event.FarEdgeRemoved(edge) =>
-          edges = edges - edge
+          edges = if edges.contains(edge) then edges.filter(_ != edge) else edges
 
     NodeSnapshot(
       time = history.lastOption.fold(StartOfTime)(_.time),

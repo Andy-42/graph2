@@ -1,5 +1,6 @@
 package andy42.graph.services
 
+import andy42.graph.config.{AppConfig, TracerConfig}
 import andy42.graph.model.*
 import andy42.graph.persistence.{TestNodeRepository, TestNodeRepositoryLive}
 import io.opentelemetry.api.trace.Tracer
@@ -93,7 +94,7 @@ object GraphSpec extends ZIOSpecDefault:
 
           val expectedEventsAtTime = EventsAtTime(time = time, sequence = 0, events = inputEvents)
           val expectedCurrent =
-            NodeSnapshot(time = time, sequence = 0, properties = Map("p1" -> p1Value), edges = Set(edge))
+            NodeSnapshot(time = time, sequence = 0, properties = Map("p1" -> p1Value), edges = Vector(edge))
           val expectedHistory = Vector(expectedEventsAtTime)
           val expectedNode = Node.fromHistory(id, expectedHistory)
           val expectedMutationOutput = Vector(time -> Vector(NodeMutationOutput(expectedNode, inputEvents)))

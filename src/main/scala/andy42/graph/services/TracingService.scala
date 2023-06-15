@@ -1,6 +1,7 @@
 package andy42.graph.services
 
 import andy42.graph
+import andy42.graph.config.{AppConfig, TracerConfig}
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.exporter.jaeger.JaegerGrpcSpanExporter

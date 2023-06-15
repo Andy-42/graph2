@@ -141,12 +141,13 @@ case class SubgraphSpec(
       )
       .toMap
 
-  val outgoingEdges: Map[NodeSpecName, List[EdgeSpec]] =
+  val outgoingEdges: Map[NodeSpecName, Vector[EdgeSpec]] =
     allNodeSpecNames
       .map(nodeSpecName =>
         nodeSpecName -> allHalfEdges
           .filter(_.direction.from.name == nodeSpecName)
           .sortBy(_.direction.to.name)
+          .toVector
       )
       .toMap
 

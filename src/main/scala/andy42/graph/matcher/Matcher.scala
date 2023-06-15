@@ -1,5 +1,6 @@
 package andy42.graph.matcher
 
+import andy42.graph.config.{AppConfig, MatcherConfig}
 import andy42.graph.model.*
 import andy42.graph.persistence.PersistenceFailure
 import andy42.graph.services.{Graph, TracingService}
@@ -9,22 +10,42 @@ import zio.telemetry.opentelemetry.tracing.Tracing
 import scala.annotation.tailrec
 
 type NodeSpecName = String
-case class SpecNodeMatch(specName: NodeSpecName, id: NodeId):
-  override def toString: String = s"$specName -> $id"
-
-type ResolvedMatches = Set[SpecNodeMatch]
+type SpecNodeMatch = (NodeSpecName, NodeId)
+type ResolvedMatches = Map[NodeSpecName, NodeId]
 
 object ResolvedMatches:
-  val empty: ResolvedMatches = Set.empty
+  val empty: ResolvedMatches = Map.empty
 
 trait Matcher:
 
   def matchNodes(ids: Vector[NodeId]): NodeIO[Vector[ResolvedMatches]]
 
-case class MatcherLive(subgraphSpec: SubgraphSpec, nodeSnapshotCache: MatcherSnapshotCache, tracing: Tracing)
-    extends Matcher:
+final case class MatcherLive(
+    config: MatcherConfig,
+    subgraphSpec: SubgraphSpec,
+    nodeSnapshotCache: MatcherSnapshotCache,
+    tracing: Tracing
+) extends Matcher:
 
-  import tracing.aspects.*
+  /* The input to these combination generators will be a vector containing one element for each edge spec,
+   * for a node that is being matched to some node spec.
+   * Each element of that vector enumerates all the edges on that node that shallow match the corresponding
+   * edge spec. An edge can match multiple edge specs, so there can be multiple combinations can be generated
+   * that produce a valid match
+   *
+   * The output of the combination generator is
+   */
+
+  type PossibleMatchesForEdgeSpec = Vector[SpecNodeMatch]
+  type PossibleMatchesToProveForThisNode = Vector[SpecNodeMatch]
+
+  private val combinationGenerator: Vector[PossibleMatchesForEdgeSpec] => Vector[PossibleMatchesToProveForThisNode] =
+    config.combinationGenerator match {
+      case "all"                   => CombinationGenerator.all[SpecNodeMatch]
+      case "do-not-reuse-elements" => CombinationGenerator.doNotReuseElements[SpecNodeMatch]
+    }
+
+  import tracing.aspects.{span, root}
 
   /** Match the given nodes using each node spec in the subgraph spec as a starting point.
     * @param ids
@@ -33,49 +54,30 @@ case class MatcherLive(subgraphSpec: SubgraphSpec, nodeSnapshotCache: MatcherSna
     *   The successfully resolved matches between the given nodes and the nodes in the spec. This result may contain
     *   duplicate matches.
     */
-  override def matchNodes(ids: Vector[NodeId]): NodeIO[Vector[ResolvedMatches]] =
-    (
-      for
-        _ <- tracing.setAttribute("nodeSpecs", subgraphSpec.allUniqueNodeSpecs.map(_.name))
-        _ <- tracing.setAttribute("ids", ids.map(_.toString))
-
-        snapshots <- ZIO.foreachPar(ids)(nodeSnapshotCache.get) @@ span("Matcher.matchNodes.fetch snapshots for ids")
-
-        potentialMatches <- ZIO.succeed(shallowMatchesInCrossProduct(ids, snapshots)) @@ span(
-          "Matcher.matchNodes.shallow match ids cross product node spec"
-        )
-
-        provenMatches <- ZIO.foreachPar(potentialMatches) { (provenMatch, dependencies) =>
-          prove(Set(provenMatch), dependencies)
-        } @@ span("Matcher.matchNodes.prove potential matches")
-      yield provenMatches.flatten
-    ) @@ root("Matcher.matchNodes")
-
-  /** Create an initial match for each spec-node pair that shallow matches.
-    *
-    * Unconstrained nodes never need to be examined as a starting point, and doing so would result in very poor matching
-    * performance.
-    *
-    * @param ids
-    *   The ids of the nodes to be evaluated.
-    * @param snapshots
-    *   The corresponding node snapshot for node id.
-    * @return
-    *   An initial match, where the key is the spec-node that shallow matched, and the value is the node-id pair
-    *   dependencies that must also match for this spec-node pair to be proven true.
-    */
-  def shallowMatchesInCrossProduct(
-      ids: Vector[NodeId],
-      snapshots: Vector[NodeSnapshot]
-  ): Vector[(SpecNodeMatch, Dependencies)] =
+  override def matchNodes(ids: Vector[NodeId]): NodeIO[Vector[ResolvedMatches]] = {
     for
-      (id, snapshot) <- ids.zip(snapshots)
-      nodeSpec <- subgraphSpec.allUniqueNodeSpecs
-      if !nodeSpec.isUnconstrained
-      dependencies <- nodeSpec.shallowMatchNode(using snapshot)
-      if dependencies.nonEmpty // empty indicates a failed match
-      specNodeMatch = SpecNodeMatch(nodeSpec.name, id)
-    yield specNodeMatch -> dependencies.filter(_ != specNodeMatch)
+      _ <- tracing.setAttribute("nodeSpecs", subgraphSpec.allUniqueNodeSpecs.map(_.name))
+      _ <- tracing.setAttribute("ids", ids.map(_.toString))
+
+      snapshots <- ZIO.foreachPar(ids)(nodeSnapshotCache.get) @@ span("Matcher.matchNodes fetch snapshots")
+
+      resolvedMatches <- ZIO.mergeAllPar {
+        for
+          idAndSnapshot <- ids.zip(snapshots)
+          (id, snapshot) = idAndSnapshot
+          nodeSpec <- subgraphSpec.allUniqueNodeSpecs
+          if !nodeSpec.isUnconstrained
+
+          possibleMatchForThisNode <- shallowMatch(nodeSpec, Map.empty, snapshot)
+
+          nextResolvedMatches = Map(nodeSpec.name -> id)
+          unresolved = possibleMatchForThisNode.filter { case (nodeSpecName, _) => nodeSpecName != nodeSpec.name }
+        yield
+          if unresolved.isEmpty then ZIO.succeed(Vector(nextResolvedMatches))
+          else prove(nextResolvedMatches, unresolved)
+      }(Vector.empty[ResolvedMatches])(_ ++ _) @@ span("Matcher.matchNodes resolve matches")
+    yield resolvedMatches.distinct
+  } @@ root("Matcher.matchNodes")
 
   /** Expand the proof for a node by traversing its unproven dependencies.
     *
@@ -100,106 +102,65 @@ case class MatcherLive(subgraphSpec: SubgraphSpec, nodeSnapshotCache: MatcherSna
   def prove(
       resolvedMatches: ResolvedMatches,
       dependencies: Vector[SpecNodeMatch]
-  ): NodeIO[Vector[ResolvedMatches]] =
-    require(dependencies.forall(!resolvedMatches.contains(_)))
+  ): NodeIO[Vector[ResolvedMatches]] = {
+    for
+      _ <- ZIO.unit
+      _ <- tracing.setAttribute("resolvedMatches.size", resolvedMatches.size)
+      _ <- tracing.setAttribute("dependencies.length", dependencies.length)
+      _ <- tracing.setAttribute("dependencies", dependencies.map(_.toString))
 
-    if dependencies.isEmpty then
-      ZIO.succeed(Vector(resolvedMatches)) @@ span("Matcher.prove succeed with empty dependencies")
-    else
-      (
+      snapshots <- nodeSnapshotCache.fetchSnapshots(dependencies.map(_._2)) @@ span(
+        "Matcher.prove fetch snapshots"
+      )
+      withDependenciesResolved <- ZIO.mergeAllPar {
         for
-          _ <- tracing.setAttribute("resolvedMatches.size", resolvedMatches.size)
-          _ <- tracing.setAttribute("dependencies.length", dependencies.length)
-          _ <- tracing.setAttribute("dependencies", dependencies.map(_.toString))
+          tuple <- dependencies.zip(snapshots)
+          ((nodeSpecName, id), snapshot) = tuple
+          nodeSpec = subgraphSpec.nameToNodeSpec(nodeSpecName)
 
-          snapshots <- nodeSnapshotCache.fetchSnapshots(dependencies.map(_.id)) @@ span(
-            "Matcher.prove fetch dependencies snapshots"
-          )
-          withDependenciesResolved <- resolveDependencies(resolvedMatches, dependencies, snapshots) @@ span(
-            "Matcher.prove dependencies"
-          )
-        yield withDependenciesResolved
-      ) @@ span("Matcher.prove")
+          possibleMatches <- shallowMatch(nodeSpec, resolvedMatches, snapshot)
 
-  def resolveDependencies(
+          nextResolvedMatches = resolvedMatches.updated(nodeSpecName, id)
+          unresolved = possibleMatches.filter { case (nodeSpecName, _) => !nextResolvedMatches.contains(nodeSpecName) }
+        yield
+          if unresolved.isEmpty then ZIO.succeed(Vector(nextResolvedMatches))
+          else prove(nextResolvedMatches, unresolved)
+
+      }(Vector.empty[ResolvedMatches])(_ ++ _) @@ span("Matcher.prove resolve matches")
+    yield withDependenciesResolved
+  } @@ span("Matcher.prove")
+
+  def shallowMatch(
+      nodeSpec: NodeSpec,
       resolvedMatches: ResolvedMatches,
-      dependencies: Vector[SpecNodeMatch],
-      snapshots: Vector[NodeSnapshot]
-  ): NodeIO[Vector[ResolvedMatches]] =
+      snapshot: NodeSnapshot
+  ): Vector[PossibleMatchesToProveForThisNode] =
 
-    // Shallow matching each dependency-snapshot produces a Vector[Vector[NodeSpecMatch]] where the
-    // the outer vector represents a node, and the inner vector represents all the matches for each
-    // edge. If an inner vector is empty, then that edge spec did not match any edges; but if the
-    // edge spec matched multiple nodes, then there are multiple combinations that satisfy the node constraints.
-
-    val dependenciesMatchedToNodes: Vector[Vector[Dependencies]] = dependencies
-      .zip(snapshots)
-      .map((dependency, snapshot) => subgraphSpec.nameToNodeSpec(dependency.specName).shallowMatchNode(using snapshot))
-
-    // Applying the combination generator to it produces another Vector[Vector[NodeSpecMatch]],
-    // but in this case, the other vector represents a possible resolution, and each element in the
-    // inner vector represents the dependent node that must be matched for this combination to succeed.
-    val matchCombinations: Vector[Vector[Dependencies]] = generator(dependenciesMatchedToNodes)
-
-    if matchCombinations.isEmpty then tracing.addEvent("prove fails") *> ZIO.succeed(Vector.empty)
-    else
-      val nextResolvedMatches: ResolvedMatches = resolvedMatches ++ dependencies
-
-      ZIO
-        .foreachPar(matchCombinations) { combination =>
-          val unresolvedDependencies = combination.flatten.distinct.filter(!nextResolvedMatches.contains(_))
-
-          if unresolvedDependencies.isEmpty then
-            tracing.addEvent("prove succeeds with one resolved match") *> ZIO.succeed(Vector(nextResolvedMatches))
-          else
-            tracing.addEvent(s"prove continues with ${unresolvedDependencies.length} unresolved dependencies") *>
-              prove(nextResolvedMatches, unresolvedDependencies)
-
+    /** Match the edges in the snapshot to an EdgeSpec. If target (other id) of the edgeSpec.direction.to.name already
+      * appears in resolvedMatches, then the only edges that can be matched must have that other id. If the target does
+      * not appear in resolvedMatches yet, then all edges can be considered.
+      */
+    def shallowMatchEdges(edgeSpec: EdgeSpec): Vector[SpecNodeMatch] =
+      resolvedMatches
+        .get(edgeSpec.direction.to.name)
+        .fold(snapshot.edges)(previouslyMatchedNode => snapshot.edges.filter(_.other == previouslyMatchedNode))
+        .collect {
+          case edge if edgeSpec.isShallowMatch(edge)(using snapshot) => edgeSpec.direction.to.name -> edge.other
         }
-        .map(_.flatten)
 
-  /** Generate combinations.
-    *
-    * This is the method from StackOverflow via Micaela Martino's version (re-formatted)
-    * https://stackoverflow.com/questions/23425930/generating-all-possible-combinations-from-a-listlistint-in-scala
-    *
-    * @param xs
-    *   A list of lists of A
-    * @return
-    *   A list of all the combinations that can be generated using one value from each of the lists.
-    */
-  def generator[A](xs: Vector[Vector[A]]): Vector[Vector[A]] =
-    xs.foldRight(Vector(Vector.empty[A])) { (next, combinations) =>
-      for
-        a <- next
-        as <- combinations
-      yield a +: as
-    }
+    if !nodeSpec.allNodePredicatesMatch(using snapshot) then Vector.empty
+    else
+      val x = subgraphSpec
+        .outgoingEdges(nodeSpec.name)
+        .map(shallowMatchEdges)
 
-  type Dependencies = Vector[SpecNodeMatch]
-
-  extension (nodeSpec: NodeSpec)
-    def shallowMatchNode(using snapshot: NodeSnapshot): Vector[Dependencies] =
-      if !nodeSpec.allNodePredicatesMatch then Vector.empty
-      else
-        // All the matches for each edge.
-        // Outer: edge spec; Inner: all edges in the node that shallow match the spec
-        generator(
-          subgraphSpec
-            .outgoingEdges(nodeSpec.name)
-            .toVector // TODO: Change SubgraphSpec.outgoingEdges to Vector representation?
-            .map(_.shallowMatchEdges(using snapshot))
-        )
-
-  extension (edgeSpec: EdgeSpec)
-    def shallowMatchEdges(using snapshot: NodeSnapshot): Vector[SpecNodeMatch] =
-      snapshot.edges.view.collect {
-        case edge if edgeSpec.isShallowMatch(edge) => SpecNodeMatch(edgeSpec.direction.to.name, edge.other)
-      }.toVector
+      if x.exists(_.isEmpty) then Vector.empty
+      else combinationGenerator(x)
 
 object Matcher:
 
   def make(
+      config: MatcherConfig,
       time: EventTime,
       graph: Graph,
       tracing: Tracing,
@@ -209,4 +170,4 @@ object Matcher:
     for
       nodeCache <- MatcherNodeCache.make(graph, nodes, tracing)
       dataViewCache <- MatcherSnapshotCache.make(time, nodeCache, tracing)
-    yield MatcherLive(subgraphSpec, dataViewCache, tracing)
+    yield MatcherLive(config, subgraphSpec, dataViewCache, tracing)

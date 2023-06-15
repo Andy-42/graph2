@@ -1,9 +1,11 @@
 package andy42.graph.matcher
 
+import andy42.graph.config.{AppConfig, TracerConfig, MatcherConfig}
 import andy42.graph.matcher.EdgeSpecs.{directedEdge, undirectedEdge}
 import andy42.graph.model.*
 import andy42.graph.model.Generators.*
-import andy42.graph.services.{AppConfig, TracerConfig, TracingService}
+import andy42.graph.persistence.PersistenceFailure
+import andy42.graph.services.TracingService
 import io.opentelemetry.api.trace.Tracer
 import zio.*
 import zio.telemetry.opentelemetry.context.ContextStorage
@@ -34,9 +36,11 @@ object MatcherSpec extends ZIOSpecDefault:
         tracer: Tracing,
         graphNodes: Vector[Node],
         matchStartingAt: Vector[NodeId]
-    ): NodeIO[Vector[ResolvedMatches]] =
+    ): ZIO[AppConfig, PersistenceFailure | UnpackFailure, Vector[ResolvedMatches]] =
       for
+        config <- ZIO.service[AppConfig]
         matcher <- Matcher.make(
+          config = config.matcherConfig,
           time = time,
           graph = UnimplementedGraph(), // unused - all nodes will be fetched from the cache
           tracing = tracer,
@@ -91,13 +95,13 @@ object MatcherSpec extends ZIOSpecDefault:
       // However, two of these pairs are duplicates.
       // Matching starting at node3 never produces any matches since node3 has no edges.
       val expectedMatches = Set(
-        Set(
-          SpecNodeMatch(specName = "a", nodeId1),
-          SpecNodeMatch(specName = "b", nodeId2)
+        Map(
+          "a" -> nodeId1,
+          "b" -> nodeId2
         ),
-        Set(
-          SpecNodeMatch(specName = "b", nodeId1),
-          SpecNodeMatch(specName = "a", nodeId2)
+        Map(
+          "b" -> nodeId1,
+          "a" -> nodeId2
         )
       )
 
@@ -120,7 +124,7 @@ object MatcherSpec extends ZIOSpecDefault:
           matchStartingAt = Vector(nodeId2)
         )
       yield assertTrue(
-        matchesStartingAtAllThreeNodes.length == 4,
+        matchesStartingAtAllThreeNodes.length == 2,
         matchesStartingAtAllThreeNodes.toSet == expectedMatches,
         matchesStartingAtNode1.length == 2,
         matchesStartingAtNode1.toSet == expectedMatches,
@@ -145,7 +149,7 @@ object MatcherSpec extends ZIOSpecDefault:
 
       // There is only one possible match
       val expectedMatches = Set(
-        Set(SpecNodeMatch(specName = "a", nodeId1))
+        Map("a" -> nodeId1)
       )
 
       for
@@ -160,4 +164,4 @@ object MatcherSpec extends ZIOSpecDefault:
         matches.toSet == expectedMatches
       )
     }
-  ).provide(trace)
+  ).provide(trace, appConfigLayer)

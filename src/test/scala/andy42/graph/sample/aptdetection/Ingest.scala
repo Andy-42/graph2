@@ -1,5 +1,6 @@
 package andy42.graph.sample.aptdetection
 
+import andy42.graph.config.{AppConfig, TracerConfig}
 import andy42.graph.model.*
 import andy42.graph.persistence.{PersistenceFailure, RocksDBNodeRepository, TemporaryRocksDB}
 import andy42.graph.sample.IngestableJson

@@ -1,5 +1,6 @@
 package andy42.graph.services
 
+import andy42.graph.config.{AppConfig, MatcherConfig}
 import andy42.graph.matcher.{Matcher, SubgraphSpec}
 import andy42.graph.model.*
 import andy42.graph.persistence.{NodeRepository, PersistenceFailure}
@@ -83,6 +84,7 @@ extension (changes: Vector[NodeMutationInput])
 final case class NodeMutationOutput(node: Node, events: Vector[Event])
 
 final case class GraphLive(
+    config: MatcherConfig,
     inFlight: TSet[NodeId],
     cache: NodeCache,
     nodeRepositoryService: NodeRepository,
@@ -217,6 +219,7 @@ final case class GraphLive(
   )(subgraphSpec: SubgraphSpec): NodeIO[Unit] =
     for
       matcher <- Matcher.make(
+        config = config,
         time = time,
         graph = this,
         tracing = tracing,
@@ -245,9 +248,10 @@ final case class GraphLive(
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
 object Graph:
-  val layer: URLayer[NodeCache & NodeRepository & EdgeSynchronization & MatchSink & Tracing, Graph] =
+  val layer: URLayer[AppConfig & NodeCache & NodeRepository & EdgeSynchronization & MatchSink & Tracing, Graph] =
     ZLayer {
       for
+        config <- ZIO.service[AppConfig]
         nodeCache <- ZIO.service[NodeCache]
         nodeDataService <- ZIO.service[NodeRepository]
         edgeSynchronization <- ZIO.service[EdgeSynchronization]
@@ -257,6 +261,7 @@ object Graph:
         standingQueries <- Ref.make(Set.empty[SubgraphSpec])
         inFlight <- TSet.empty[NodeId].commit
       yield GraphLive(
+        config = config.matcherConfig,
         inFlight = inFlight,
         cache = nodeCache,
         nodeRepositoryService = nodeDataService,

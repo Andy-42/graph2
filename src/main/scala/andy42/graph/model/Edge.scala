@@ -101,7 +101,7 @@ enum EdgeDirection:
     case Outgoing   => Incoming
     case Undirected => Undirected
 
-type EdgeSnapshot = Set[Edge] // Collapsed properties at some point in time
+type EdgeSnapshot = Vector[Edge] // Collapsed properties at some point in time
 
 object EdgeSnapshot:
-  val empty: EdgeSnapshot = Set.empty[Edge]
+  val empty: EdgeSnapshot = Vector.empty[Edge]
