@@ -6,6 +6,7 @@ import andy42.graph.model.*
 import andy42.graph.persistence.{NodeRepository, PersistenceFailure}
 import zio.*
 import zio.stm.*
+import zio.telemetry.opentelemetry.context.ContextStorage
 import zio.telemetry.opentelemetry.tracing.Tracing
 
 /** The Graph service represents the entire state of a graph.
@@ -91,7 +92,8 @@ final case class GraphLive(
     edgeSynchronization: EdgeSynchronization,
     matchSink: MatchSink,
     tracing: Tracing,
-    standingQueries: Ref[Set[SubgraphSpec]]
+    standingQueries: Ref[Set[SubgraphSpec]],
+    contextStorage: ContextStorage
 ) extends Graph:
 
   override def get(
@@ -224,7 +226,8 @@ final case class GraphLive(
         graph = this,
         tracing = tracing,
         subgraphSpec = subgraphSpec,
-        nodes = changedNodes
+        nodes = changedNodes,
+        contextStorage = contextStorage
       ) // TODO: Fix order of parameters
       nodeMatches <- matcher.matchNodes(changedNodes.map(_.id))
       _ <- matchSink.offer(SubgraphMatchAtTime(time, subgraphSpec, nodeMatches)).when(nodeMatches.nonEmpty)
@@ -247,8 +250,13 @@ final case class GraphLive(
   private def withNodePermit(id: => NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
+type GraphEnvironment =  AppConfig & 
+  NodeCache & NodeRepository & EdgeSynchronization & 
+  MatchSink & 
+  Tracing & ContextStorage
+
 object Graph:
-  val layer: URLayer[AppConfig & NodeCache & NodeRepository & EdgeSynchronization & MatchSink & Tracing, Graph] =
+  val layer: URLayer[GraphEnvironment, Graph] =
     ZLayer {
       for
         config <- ZIO.service[AppConfig]
@@ -257,6 +265,7 @@ object Graph:
         edgeSynchronization <- ZIO.service[EdgeSynchronization]
         matchSink <- ZIO.service[MatchSink]
         tracing <- ZIO.service[Tracing]
+        contextStorage <- ZIO.service[ContextStorage]
 
         standingQueries <- Ref.make(Set.empty[SubgraphSpec])
         inFlight <- TSet.empty[NodeId].commit
@@ -268,6 +277,7 @@ object Graph:
         edgeSynchronization = edgeSynchronization,
         matchSink = matchSink,
         tracing = tracing,
-        standingQueries = standingQueries
+        standingQueries = standingQueries,
+        contextStorage = contextStorage
       )
     }

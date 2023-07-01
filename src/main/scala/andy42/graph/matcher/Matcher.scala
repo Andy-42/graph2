@@ -4,7 +4,9 @@ import andy42.graph.config.{AppConfig, MatcherConfig}
 import andy42.graph.model.*
 import andy42.graph.persistence.PersistenceFailure
 import andy42.graph.services.{Graph, TracingService}
+import io.opentelemetry.context.Context
 import zio.*
+import zio.telemetry.opentelemetry.context.ContextStorage
 import zio.telemetry.opentelemetry.tracing.Tracing
 
 import scala.annotation.tailrec
@@ -24,7 +26,8 @@ final case class MatcherLive(
     config: MatcherConfig,
     subgraphSpec: SubgraphSpec,
     nodeSnapshotCache: MatcherSnapshotCache,
-    tracing: Tracing
+    tracing: Tracing,
+    contextStorage: ContextStorage
 ) extends Matcher:
 
   /* The input to these combination generators will be a vector containing one element for each edge spec,
@@ -45,7 +48,23 @@ final case class MatcherLive(
       case "do-not-reuse-elements" => CombinationGenerator.doNotReuseElements[SpecNodeMatch]
     }
 
-  import tracing.aspects.{span, root}
+  import tracing.aspects.{root, span}
+
+  /** Execute a ZIO effect within a given tracing context. The ZIO open telemetry context is maintained for the current
+    * fiber, but if we want to maintain the tracing context across parallel invocations where the effects are run on a
+    * different fiber (ZIO.foreachPar, ZIO.mergeAllPar), then we have to explicitly propagate the context.
+    */
+  private def inTraceContext[A](context: Context)(zio: => NodeIO[A])(implicit trace: Trace): NodeIO[A] =
+    ZIO.acquireReleaseWith(contextStorage.getAndSet(context))(contextStorage.set(_))(_ => zio)
+
+  /** Evaluate match resolution proofs in parallel, flattening the results. */
+  private def resolvePotentialMatchesInParallel(
+      proofs: Vector[NodeIO[Vector[ResolvedMatches]]]
+  ): NodeIO[Vector[ResolvedMatches]] =
+    ZIO.mergeAllPar(proofs)(Vector.empty[ResolvedMatches])(_ ++ _)
+
+  private def fetchSnapshots(ids: Vector[NodeId], currentContext: Context): NodeIO[Vector[NodeSnapshot]] =
+    ZIO.foreachPar(ids) { id => inTraceContext(currentContext)(nodeSnapshotCache.get(id)) }
 
   /** Match the given nodes using each node spec in the subgraph spec as a starting point.
     * @param ids
@@ -54,30 +73,39 @@ final case class MatcherLive(
     *   The successfully resolved matches between the given nodes and the nodes in the spec. This result may contain
     *   duplicate matches.
     */
-  override def matchNodes(ids: Vector[NodeId]): NodeIO[Vector[ResolvedMatches]] = {
+  override def matchNodes(ids: Vector[NodeId]): NodeIO[Vector[ResolvedMatches]] =
+    tracing.root("Matcher.matchNodes") {
+      for
+        currentContext <- tracing.getCurrentContext
+        _ <- tracing.setAttribute("nodeSpecs", subgraphSpec.allUniqueNodeSpecs.map(_.name))
+        _ <- tracing.setAttribute("ids", ids.map(_.toString))
+
+        snapshots <- fetchSnapshots(ids, currentContext)
+
+        resolvedMatches <- resolvePotentialMatchesInParallel {
+          initialRoundOfProofs(ids, snapshots, currentContext)
+        }
+      yield resolvedMatches.distinct
+    }
+
+  def initialRoundOfProofs(
+      ids: Vector[NodeId],
+      snapshots: Vector[NodeSnapshot],
+      context: Context
+  ): Vector[NodeIO[Vector[ResolvedMatches]]] =
     for
-      _ <- tracing.setAttribute("nodeSpecs", subgraphSpec.allUniqueNodeSpecs.map(_.name))
-      _ <- tracing.setAttribute("ids", ids.map(_.toString))
+      idAndSnapshot <- ids.zip(snapshots)
+      (id, snapshot) = idAndSnapshot
+      nodeSpec <- subgraphSpec.allUniqueNodeSpecs
+      if !nodeSpec.isUnconstrained
 
-      snapshots <- ZIO.foreachPar(ids)(nodeSnapshotCache.get) @@ span("Matcher.matchNodes fetch snapshots")
+      possibleMatchForThisNode <- shallowMatch(nodeSpec, Map.empty, snapshot)
 
-      resolvedMatches <- ZIO.mergeAllPar {
-        for
-          idAndSnapshot <- ids.zip(snapshots)
-          (id, snapshot) = idAndSnapshot
-          nodeSpec <- subgraphSpec.allUniqueNodeSpecs
-          if !nodeSpec.isUnconstrained
-
-          possibleMatchForThisNode <- shallowMatch(nodeSpec, Map.empty, snapshot)
-
-          nextResolvedMatches = Map(nodeSpec.name -> id)
-          unresolved = possibleMatchForThisNode.filter { case (nodeSpecName, _) => nodeSpecName != nodeSpec.name }
-        yield
-          if unresolved.isEmpty then ZIO.succeed(Vector(nextResolvedMatches))
-          else prove(nextResolvedMatches, unresolved)
-      }(Vector.empty[ResolvedMatches])(_ ++ _) @@ span("Matcher.matchNodes resolve matches")
-    yield resolvedMatches.distinct
-  } @@ root("Matcher.matchNodes")
+      nextResolvedMatches = Map(nodeSpec.name -> id)
+      unresolved = possibleMatchForThisNode.filter { case (nodeSpecName, _) => nodeSpecName != nodeSpec.name }
+    yield
+      if unresolved.isEmpty then ZIO.succeed(Vector(nextResolvedMatches))
+      else inTraceContext(context)(prove(nextResolvedMatches, unresolved))
 
   /** Expand the proof for a node by traversing its unproven dependencies.
     *
@@ -102,33 +130,41 @@ final case class MatcherLive(
   def prove(
       resolvedMatches: ResolvedMatches,
       dependencies: Vector[SpecNodeMatch]
-  ): NodeIO[Vector[ResolvedMatches]] = {
+  ): NodeIO[Vector[ResolvedMatches]] =
+    tracing.span("Matcher.prove") {
+      for
+        context <- tracing.getCurrentContext
+        _ <- tracing.setAttribute("resolvedMatches", resolvedMatches.toSeq.map((spec, id) => s"$spec -> $id"))
+        _ <- tracing.setAttribute("dependencies", dependencies.map(_.toString))
+
+        snapshots <- fetchSnapshots(dependencies.map(_._2), context)
+
+        withDependenciesResolved <- resolvePotentialMatchesInParallel {
+          nextRoundOfProofs(resolvedMatches, dependencies, snapshots, context)
+        }
+      yield withDependenciesResolved
+    }
+
+  def nextRoundOfProofs(
+      resolvedMatches: ResolvedMatches,
+      dependencies: Vector[SpecNodeMatch],
+      snapshots: Vector[NodeSnapshot],
+      context: Context
+  ): Vector[NodeIO[Vector[ResolvedMatches]]] =
     for
-      _ <- ZIO.unit
-      _ <- tracing.setAttribute("resolvedMatches.size", resolvedMatches.size)
-      _ <- tracing.setAttribute("dependencies.length", dependencies.length)
-      _ <- tracing.setAttribute("dependencies", dependencies.map(_.toString))
+      tuple <- dependencies.zip(snapshots)
+      ((nodeSpecName, id), snapshot) = tuple
+      nodeSpec = subgraphSpec.nameToNodeSpec(nodeSpecName)
 
-      snapshots <- nodeSnapshotCache.fetchSnapshots(dependencies.map(_._2)) @@ span(
-        "Matcher.prove fetch snapshots"
-      )
-      withDependenciesResolved <- ZIO.mergeAllPar {
-        for
-          tuple <- dependencies.zip(snapshots)
-          ((nodeSpecName, id), snapshot) = tuple
-          nodeSpec = subgraphSpec.nameToNodeSpec(nodeSpecName)
+      possibleMatches <- shallowMatch(nodeSpec, resolvedMatches, snapshot)
 
-          possibleMatches <- shallowMatch(nodeSpec, resolvedMatches, snapshot)
-
-          nextResolvedMatches = resolvedMatches.updated(nodeSpecName, id)
-          unresolved = possibleMatches.filter { case (nodeSpecName, _) => !nextResolvedMatches.contains(nodeSpecName) }
-        yield
-          if unresolved.isEmpty then ZIO.succeed(Vector(nextResolvedMatches))
-          else prove(nextResolvedMatches, unresolved)
-
-      }(Vector.empty[ResolvedMatches])(_ ++ _) @@ span("Matcher.prove resolve matches")
-    yield withDependenciesResolved
-  } @@ span("Matcher.prove")
+      nextResolvedMatches = resolvedMatches.updated(nodeSpecName, id)
+      unresolved = possibleMatches.filter { case (nodeSpecName, _) =>
+        !nextResolvedMatches.contains(nodeSpecName)
+      }
+    yield
+      if unresolved.isEmpty then ZIO.succeed(Vector(nextResolvedMatches))
+      else inTraceContext(context)(prove(nextResolvedMatches, unresolved))
 
   def shallowMatch(
       nodeSpec: NodeSpec,
@@ -165,9 +201,10 @@ object Matcher:
       graph: Graph,
       tracing: Tracing,
       subgraphSpec: SubgraphSpec,
-      nodes: Vector[Node]
+      nodes: Vector[Node],
+      contextStorage: ContextStorage
   ): UIO[MatcherLive] =
     for
       nodeCache <- MatcherNodeCache.make(graph, nodes, tracing)
       dataViewCache <- MatcherSnapshotCache.make(time, nodeCache, tracing)
-    yield MatcherLive(config, subgraphSpec, dataViewCache, tracing)
+    yield MatcherLive(config, subgraphSpec, dataViewCache, tracing, contextStorage)

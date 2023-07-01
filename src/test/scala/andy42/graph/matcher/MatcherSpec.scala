@@ -36,16 +36,18 @@ object MatcherSpec extends ZIOSpecDefault:
         tracer: Tracing,
         graphNodes: Vector[Node],
         matchStartingAt: Vector[NodeId]
-    ): ZIO[AppConfig, PersistenceFailure | UnpackFailure, Vector[ResolvedMatches]] =
+    ): ZIO[AppConfig & ContextStorage, PersistenceFailure | UnpackFailure, Vector[ResolvedMatches]] =
       for
         config <- ZIO.service[AppConfig]
+        contextStorage <- ZIO.service[ContextStorage]
         matcher <- Matcher.make(
           config = config.matcherConfig,
           time = time,
           graph = UnimplementedGraph(), // unused - all nodes will be fetched from the cache
           tracing = tracer,
           subgraphSpec = subgraphSpec,
-          nodes = graphNodes
+          nodes = graphNodes,
+          contextStorage = contextStorage
         )
         subgraphMatches <- matcher.matchNodes(matchStartingAt)
       yield subgraphMatches
@@ -164,4 +166,4 @@ object MatcherSpec extends ZIOSpecDefault:
         matches.toSet == expectedMatches
       )
     }
-  ).provide(trace, appConfigLayer)
+  ).provide(trace, appConfigLayer, ContextStorage.fiberRef)

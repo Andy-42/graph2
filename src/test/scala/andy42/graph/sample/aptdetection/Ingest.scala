@@ -163,5 +163,6 @@ object IngestSpec extends ZIOAppDefault:
       TestMatchSink.layer,
       TestEdgeSynchronization.layer, // TODO: Use real service
       TracingService.live,
-      Graph.layer
+      Graph.layer,
+      ContextStorage.fiberRef
     )

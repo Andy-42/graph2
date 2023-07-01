@@ -8,8 +8,6 @@ import zio.telemetry.opentelemetry.tracing.Tracing
 trait MatcherSnapshotCache:
   def get(id: NodeId): NodeIO[NodeSnapshot]
 
-  def fetchSnapshots(ids: Vector[NodeId]): NodeIO[Vector[NodeSnapshot]]
-
 type NodeIOFailure = UnpackFailure | PersistenceFailure
 type NodeIOSnapshotPromise = Promise[NodeIOFailure, NodeSnapshot]
 
@@ -50,12 +48,6 @@ case class MatcherSnapshotCacheLive(
       node <- nodeCache.get(id)
       snapshot <- node.atTime(time)
     yield snapshot
-
-  override def fetchSnapshots(ids: Vector[NodeId]): NodeIO[Vector[NodeSnapshot]] =
-    for
-      _ <- tracing.setAttribute("ids", ids.map(_.toString))
-      snapshots <- ZIO.foreachPar(ids)(get)
-    yield snapshots
 
 object MatcherSnapshotCache:
   def make(
