@@ -162,7 +162,7 @@ case class SubgraphSpec(
         nameToNodeSpec: Map[NodeSpecName, NodeSpec] = Map.empty[NodeSpecName, NodeSpec],
         duplicates: List[NodeSpecName] = Nil
     ): List[NodeSpecName] =
-      nodeSpecs match {
+      nodeSpecs match
         case nodeSpec :: xs =>
           if !nameToNodeSpec.contains(nodeSpec.name) then
             accumulate(xs, nameToNodeSpec.updated(nodeSpec.name, nodeSpec), duplicates)
@@ -170,7 +170,6 @@ case class SubgraphSpec(
           else accumulate(xs, nameToNodeSpec, nodeSpec.name :: duplicates)
 
         case _ => duplicates.distinct.sorted
-      }
 
     accumulate()
 

@@ -2,7 +2,7 @@ package andy42.graph.matcher
 
 object CombinationGenerator:
 
-  /** Generate all  combinations that use one item from the outer vector.
+  /** Generate all combinations that use one item from the outer vector.
     *
     * This is the generator method from StackOverflow via Micaela Martino's version (re-formatted)
     * https://stackoverflow.com/questions/23425930/generating-all-possible-combinations-from-a-listlistint-in-scala
