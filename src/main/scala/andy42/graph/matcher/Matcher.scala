@@ -31,17 +31,7 @@ final case class MatcherLive(
     contextStorage: ContextStorage
 ) extends Matcher:
 
-  /* The input to these combination generators will be a vector containing one element for each edge spec,
-   * for a node that is being matched to some node spec.
-   * Each element of that vector enumerates all the edges on that node that shallow match the corresponding
-   * edge spec. An edge can match multiple edge specs, so there can be multiple combinations can be generated
-   * that produce a valid match
-   */
-  type PossibleMatchesForEdgeSpec = Vector[SpecNodeMatch]
-  type PossibleMatchesForThisNode = Vector[SpecNodeMatch]
-
-//  //                     edgeSpec               combo
-//  private val combination: Vector[Vector[T]] => Vector[Vector[T]] =
+//  private val combination: Vector[Vector[_]] => Vector[Vector[_]] =
 //    config.combinationGenerator match
 //      case "all"                   => CombinationGenerator.all
 //      case "do-not-reuse-elements" => CombinationGenerator.doNotReuseElements
@@ -104,14 +94,12 @@ final case class MatcherLive(
 
   def filterResolution(
       resolvedMatches: ResolvedMatches,
-      possibleCombinationOfEdgeMatchesForOneNode: Vector[(NodeSpecName, NodeId)]
+      unresolvedMatches: Vector[SpecNodeMatch]
   ): Option[Vector[SpecNodeMatch]] =
-
-    @tailrec
-    def accumulate(i: Int = 0, r: Vector[SpecNodeMatch] = Vector.empty): Option[Vector[SpecNodeMatch]] =
-      if i >= possibleCombinationOfEdgeMatchesForOneNode.length then Some(r)
+    @tailrec def accumulate(i: Int = 0, r: Vector[SpecNodeMatch] = Vector.empty): Option[Vector[SpecNodeMatch]] =
+      if i >= unresolvedMatches.length then Some(r)
       else
-        val current = possibleCombinationOfEdgeMatchesForOneNode(i)
+        val current = unresolvedMatches(i)
 
         resolvedMatches.get(current._1) match
           case Some(matchedId) =>
@@ -119,9 +107,7 @@ final case class MatcherLive(
             else accumulate(i + 1, r) // already matched
           case None =>
             accumulate(i + 1, r :+ current)
-
-    if possibleCombinationOfEdgeMatchesForOneNode.isEmpty then None
-    else accumulate()
+    accumulate()
 
   /** Expand the proof for a node by traversing its unproven dependencies.
     *
@@ -137,7 +123,7 @@ final case class MatcherLive(
     *
     * @param resolvedMatches
     *   The set of all spec-node pairs that have been resolve (or presumed resolved) at this point.
-    * @param dependencies
+    * @param unresolvedMatches
     *   The spec-node pairs that must be proven on this step for the resolvedMatches to be true.
     * @return
     *   All the possible resolved matches. More than one possible solution may be possible if an edge spec matches more
@@ -145,104 +131,100 @@ final case class MatcherLive(
     */
   def prove(
       resolvedMatches: ResolvedMatches,
-      dependencies: Vector[SpecNodeMatch]
+      unresolvedMatches: Vector[SpecNodeMatch]
   ): NodeIO[Vector[ResolvedMatches]] =
     tracing.span("Matcher.prove") {
       for
         context <- tracing.getCurrentContext
         _ <- tracing.setAttribute("resolvedMatches", resolvedMatches.toSeq.map((spec, id) => s"$spec -> $id"))
-        _ <- tracing.setAttribute("dependencies", dependencies.map(_.toString))
+        _ <- tracing.setAttribute("unresolvedMatches", unresolvedMatches.map((spec, id) => s"$spec -> $id"))
 
-        snapshots <- fetchSnapshots(dependencies.map(_._2), context)
+        snapshots <- fetchSnapshots(unresolvedMatches.map(_._2), context)
+
+        (fullyResolved, partiallyResolved) = nextRoundOfProofs(resolvedMatches, unresolvedMatches, snapshots)
+
+        _ <- tracing.setAttribute("fullyResolved", fullyResolved.length)
+        _ <- tracing.setAttribute("partiallyResolved", partiallyResolved.length)
 
         withDependenciesResolved <- resolvePotentialMatchesInParallel {
-          nextRoundOfProofs(resolvedMatches, dependencies, snapshots, context)
+          partiallyResolved.map { (resolvedMatches, unresolvedMatches) =>
+            inTraceContext(context)(prove(resolvedMatches, unresolvedMatches))
+          }
         }
-      yield withDependenciesResolved
+      yield fullyResolved ++ withDependenciesResolved
     }
 
   def nextRoundOfProofs(
       resolvedMatches: ResolvedMatches,
-      dependencies: Vector[SpecNodeMatch],
-      snapshots: Vector[NodeSnapshot],
-      context: Context
-  ): Vector[NodeIO[Vector[ResolvedMatches]]] =
-    //                         depend / combo/ matches to prove this combo
-    val dependencyComboMatches: Vector[Vector[Vector[SpecNodeMatch]]] =
-      for
-        tuple <- dependencies.zip(snapshots)
-        ((nodeSpecName, _), snapshot) = tuple
-        nodeSpec = subgraphSpec.nameToNodeSpec(nodeSpecName)
-      yield shallowMatch(nodeSpec, snapshot, resolvedMatches)
+      unresolvedMatches: Vector[(NodeSpecName, NodeId)],
+      snapshots: Vector[NodeSnapshot]
+  ): (Vector[ResolvedMatches], Vector[(ResolvedMatches, Vector[SpecNodeMatch])]) =
 
-    // If any dependency has no viable combinations that match, then the overall match fails.
-    if dependencyComboMatches.exists(_.isEmpty) then Vector(ZIO.succeed(Vector.empty)) // match fails
-    else
-      // for each combo, we create a result that is more or less a flattening of the inner two vectors,
-      // but taking into account that combinations should be rejected if they have two matches to the
-      // same nodeSpec but with different ids.
-
-      // At each step, use filterResolution to combine the possible matches for that combination.
-
-      // This flattens out the dependency level
-      // The option represents that a match may fail
-
-      def combineMatchesForOneCombination(
-          comboDependencyMatches: Vector[Vector[SpecNodeMatch]]
+    def combineMatches(
+        dependencyMatches: Vector[Vector[SpecNodeMatch]] // dependency / spec-node matches
+    ): Option[(ResolvedMatches, Vector[SpecNodeMatch])] =
+      require(dependencyMatches.length == unresolvedMatches.length)
+      @tailrec def accumulate(
+          i: Int = 0,
+          nextResolvedMatches: ResolvedMatches = resolvedMatches,
+          nextDependencies: Vector[SpecNodeMatch] = Vector.empty
       ): Option[(ResolvedMatches, Vector[SpecNodeMatch])] =
-        require(comboDependencyMatches.length == dependencies.length)
+        if i >= unresolvedMatches.length then Some(nextResolvedMatches -> nextDependencies)
+        else
+          filterResolution(nextResolvedMatches, dependencyMatches(i)) match
+            case None => None
+            case Some(specNodeMatch) =>
+              accumulate(
+                i = i + 1,
+                nextResolvedMatches = nextResolvedMatches + unresolvedMatches(i),
+                nextDependencies ++ specNodeMatch
+              )
+      accumulate()
 
-        @tailrec
-        def accumulate(
-            i: Int = 0,
-            nextResolvedMatches: ResolvedMatches = resolvedMatches,
-            nextDependencies: Vector[SpecNodeMatch] = Vector.empty
-        ): Option[(ResolvedMatches, Vector[SpecNodeMatch])] =
-          if i >= dependencies.length then Some(nextResolvedMatches -> nextDependencies)
-          else
-            filterResolution(nextResolvedMatches, comboDependencyMatches(i)) match
-              case None => None
-              case Some(specNodeMatch) =>
-                accumulate(
-                  i = i + 1,
-                  nextResolvedMatches = nextResolvedMatches + dependencies(i),
-                  nextDependencies ++ specNodeMatch
-                )
+    def x =
+      CombinationGenerator.doNotReuseElements(
+        unresolvedMatches
+          .zip(snapshots)
+          .map { (unresolvedMatch, snapshot) =>
+            val nodeSpec = subgraphSpec.nameToNodeSpec(unresolvedMatch._1)
+            // combo / unresolved matches
+            shallowMatch(nodeSpec, snapshot, resolvedMatches)
+          }
+      )
 
-        accumulate()
+    val (fullyResolved, partiallyResolved) = x
+      .flatMap(combineMatches)
+      .partition(_._2.isEmpty)
 
-      // Since each dependency might have more than one combination, combining those dependencies
-      // requires applying the combination generator again.
-      // dependency/combo/matches => combo/dependency/matches
-      CombinationGenerator
-        .doNotReuseElements[Vector[SpecNodeMatch]](dependencyComboMatches)
-        // Combine all the dependencies for one combination into a single Vector[SpecNodeMatch]
-        .map(combineMatchesForOneCombination)
-        .map {
-          case Some((resolvedMatches, Vector())) => // match is proven
-            ZIO.succeed(Vector(resolvedMatches))
-          case Some((resolvedMatches, unresolvedMatches)) => // more more dependencies to resolve
-            inTraceContext(context)(prove(resolvedMatches, unresolvedMatches))
-          case None => // match is disproven
-            ZIO.succeed(Vector.empty)
-        }
+    (fullyResolved.map(_._1).distinct, partiallyResolved)
 
   def shallowMatch(
       nodeSpec: NodeSpec,
       snapshot: NodeSnapshot,
       resolvedMatches: ResolvedMatches
-  ): Vector[PossibleMatchesForThisNode] = // combination / edges that must be proven for this combination to succeed
+  ): Vector[Vector[SpecNodeMatch]] = // combination / edges that must be proven for this combination to succeed
 
-    /** Match the edges in the snapshot to an EdgeSpec. If target (other id) of the edgeSpec.direction.to.name already
-      * appears in resolvedMatches, then the only edges that can be matched must have that other id. If the target edge
-      * name does not appear in resolvedMatches yet, then all edges can be considered.
+    val edgesThatAreNotAlreadyBoundToSomethingElse: Vector[Edge] =
+      snapshot.edges.filter(edge => resolvedMatches.values.exists(_ == edge.other))
+
+    def edgeBindsToId(id: NodeId): Vector[Edge] = snapshot.edges.filter(edge => edge.other == id)
+
+    /** Match the edges in the snapshot to an EdgeSpec.
+      *
+      * If the nodeSpec that is the target of this edgeSpec is already bound, then the only possible match is that
+      * already-bound node.
+      *
+      * Otherwise, we can only bind the node to nodes that have not already been resolved, because it is not allowed to
+      * bind the same nodeSpec to more than one node.
       */
     def shallowMatchEdges(edgeSpec: EdgeSpec): Vector[SpecNodeMatch] =
+      val toName = edgeSpec.direction.to.name
+
       resolvedMatches
-        .get(edgeSpec.direction.to.name)
-        .fold(snapshot.edges)(previouslyMatchedNode => snapshot.edges.filter(_.other == previouslyMatchedNode))
+        .get(toName)
+        .fold(edgesThatAreNotAlreadyBoundToSomethingElse)(edgeBindsToId)
         .collect {
-          case edge if edgeSpec.isShallowMatch(edge)(using snapshot) => edgeSpec.direction.to.name -> edge.other
+          case edge if edgeSpec.isShallowMatch(edge)(using snapshot) => toName -> edge.other
         }
 
     if !nodeSpec.allNodePredicatesMatch(using snapshot) then Vector.empty
@@ -251,12 +233,8 @@ final case class MatcherLive(
       val possibleMatchesForEachEdgeSpec: Vector[Vector[SpecNodeMatch]] =
         subgraphSpec.outgoingEdges(nodeSpec.name).map(shallowMatchEdges)
 
-      if possibleMatchesForEachEdgeSpec.exists(_.isEmpty) then
-        // All edges must have at least one possible match, or the match fails
-        Vector.empty
-      else
-        // Combination: combo / all the spec-node matches needed to prove this combination
-        CombinationGenerator.doNotReuseElements[SpecNodeMatch](possibleMatchesForEachEdgeSpec)
+      // Combination: combo / all the spec-node matches needed to prove this combination
+      CombinationGenerator.doNotReuseElements[SpecNodeMatch](possibleMatchesForEachEdgeSpec)
 
 object Matcher:
 
