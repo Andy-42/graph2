@@ -213,9 +213,9 @@ object Node:
 
     new NodeImplementation(
       id = id,
-      version = history.length,
-      lastTime = history.last.time,
-      lastSequence = history.last.sequence,
+      version = if history == null then 0 else history.length,
+      lastTime = if history == null then StartOfTime else history.last.time,
+      lastSequence = if history == null then 0 else history.last.sequence,
       reifiedCurrent = if current != null then current else CollapseNodeHistory(history),
       reifiedHistory = history,
       packedHistory = packed

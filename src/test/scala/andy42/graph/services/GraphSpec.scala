@@ -77,7 +77,7 @@ object GraphSpec extends ZIOSpecDefault:
       TestNodeCache.layer ++
       TestMatchSink.layer ++
       TestEdgeSynchronization.layer ++
-      trace) >>> Graph.layer
+      trace ++ ContextStorage.fiberRef) >>> Graph.layer
 
   val genNodeId: Gen[Any, NodeId] =
     for id <- Gen.vectorOfN(NodeId.byteLength)(Gen.byte)

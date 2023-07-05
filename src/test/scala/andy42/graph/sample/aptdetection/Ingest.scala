@@ -159,7 +159,7 @@ object IngestSpec extends ZIOAppDefault:
       appConfigLayer,
       TemporaryRocksDB.layer,
       RocksDBNodeRepository.layer,
-      TestNodeCache.layer, // TODO: Use real service
+      NodeCache.layer,
       TestMatchSink.layer,
       TestEdgeSynchronization.layer, // TODO: Use real service
       TracingService.live,
