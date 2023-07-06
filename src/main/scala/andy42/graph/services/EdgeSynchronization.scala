@@ -12,15 +12,12 @@ trait EdgeSynchronizationFactory:
   def make(graph: Graph): UIO[EdgeSynchronization]
 
 case class EdgeSynchronizationFactoryLive(
-                                           config: AppConfig,
-                                           edgeReconciliationService: EdgeReconciliationProcessor
-                                         ) extends EdgeSynchronizationFactory:
+    config: AppConfig,
+    edgeReconciliationService: EdgeReconciliation
+) extends EdgeSynchronizationFactory:
   override def make(graph: Graph): UIO[EdgeSynchronization] =
-    for
-      queue <- Queue.unbounded[EdgeReconciliationEvent] // TODO: s/b bounded?
-      live = EdgeSynchronizationLive(config.edgeReconciliation, edgeReconciliationService, graph, queue)
-      _ <- live.startReconciliation
-    yield live
+    for queue <- Queue.unbounded[EdgeReconciliationEvent] // TODO: s/b bounded?
+    yield EdgeSynchronizationLive(config.edgeReconciliation, edgeReconciliationService, graph, queue)
 
 trait EdgeSynchronization:
 
@@ -64,7 +61,7 @@ extension (mutations: NodeMutationInput)
 
 final case class EdgeSynchronizationLive(
     config: EdgeReconciliationConfig,
-    edgeReconciliationService: EdgeReconciliationProcessor,
+    edgeReconciliation: EdgeReconciliation,
     graph: Graph,
     queue: Queue[EdgeReconciliationEvent]
 ) extends EdgeSynchronization:
@@ -144,7 +141,7 @@ final case class EdgeSynchronizationLive(
       // Ensure that a chunk is processed at regular intervals for window expiry processing
       .groupedWithin(chunkSize = config.maxChunkSize, within = config.maximumIntervalBetweenChunks)
       // For each chunk processed, add new events into time window reconciliations, and report on state of expired windows
-      .scanZIO(edgeReconciliationService.zero)((state, chunk) => edgeReconciliationService.addChunk(state, chunk))
+      .scanZIO(edgeReconciliation.zero)((state, chunk) => edgeReconciliation.addChunk(state, chunk))
       .runDrain
       .catchAllCause(cause =>
         ZIO.logCause("Unexpected failure scanning edge reconciliation event stream", cause)
@@ -155,11 +152,10 @@ final case class EdgeSynchronizationLive(
 
 object EdgeSynchronizationFactory:
 
-  val layer: URLayer[AppConfig & EdgeReconciliationProcessor, EdgeSynchronizationFactory] =
+  val layer: URLayer[AppConfig & EdgeReconciliation, EdgeSynchronizationFactory] =
     ZLayer {
       for
         config <- ZIO.service[AppConfig]
-        edgeReconciliationService <- ZIO.service[EdgeReconciliationProcessor]
+        edgeReconciliationService <- ZIO.service[EdgeReconciliation]
       yield EdgeSynchronizationFactoryLive(config, edgeReconciliationService)
     }
-

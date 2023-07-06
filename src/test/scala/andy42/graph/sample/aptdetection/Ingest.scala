@@ -1,6 +1,6 @@
 package andy42.graph.sample.aptdetection
 
-import andy42.graph.config.{AppConfig, TracerConfig}
+import andy42.graph.config.{AppConfig, GraphConfig, MatcherConfig, TracerConfig}
 import andy42.graph.model.*
 import andy42.graph.persistence.{PersistenceFailure, PostgresEdgeReconciliationRepository, RocksDBEdgeReconciliationRepository, RocksDBNodeRepository, TemporaryRocksDB}
 import andy42.graph.sample.IngestableJson
@@ -145,15 +145,22 @@ object IngestSpec extends ZIOAppDefault:
       matches <- testMatchSink.matches
     yield matches
 
-  val appConfigLayer: ULayer[AppConfig] = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = true)))
+  val appConfigLayer: ULayer[AppConfig] = ZLayer.succeed {
+    AppConfig(
+      matcher = MatcherConfig(resolveBindingsParallelism = 2),
+      tracer = TracerConfig(enabled = true)
+    )
+  }
 
   val myApp: ZIO[Graph, Throwable | UnpackFailure | PersistenceFailure, Unit] =
     for
       graph <- ZIO.service[Graph]
       _ <- graph.start
 
-      _ <- ZIO.unit.withParallelism(2) // TODO: Configure for each parallel operation
       matches <- ingest
+
+      _ <- graph.stop
+
       _ <- ZIO.debug(matches) // TODO: Produce nice display output for each match
     yield ()
 

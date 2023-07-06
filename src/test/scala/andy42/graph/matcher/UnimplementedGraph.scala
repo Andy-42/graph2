@@ -7,6 +7,7 @@ import zio.{UIO, ZIO}
 case class UnimplementedGraph() extends Graph:
 
   def start: UIO[Unit] = ZIO.unit
+  def stop: UIO[Unit] = ZIO.unit
 
   override def get(id: NodeId): NodeIO[Node] = ???
 

@@ -42,6 +42,7 @@ import zio.telemetry.opentelemetry.tracing.Tracing
 trait Graph:
 
   def start: UIO[Unit]
+  def stop: UIO[Unit]
 
   /** Get a node from the graph.
     *
@@ -102,18 +103,26 @@ final case class GraphLive(
   override def start: UIO[Unit] =
     for
       edgeSynchronizationInstance <- edgeSynchronizationFactory.make(this)
+      _ <- edgeSynchronizationInstance.startReconciliation
       _ <- edgeSynchronizationRef.set(Some(edgeSynchronizationInstance))
+    yield ()
+
+  override def stop: UIO[Unit] =
+    for
+      maybeEdgeSynchronizationInstance <- edgeSynchronizationRef.getAndSet(None)
+      edgeSynchronizationInstance <- maybeEdgeSynchronizationInstance.fold(
+        ZIO.dieMessage("Graph is not started")
+      ) (ZIO.succeed)
+      // _ <- edgeSynchronizationInstance.stop // TODO: Implement stop to drain queue and shut down daemon
     yield ()
 
   private def getEdgeSynchronization: UIO[EdgeSynchronization] =
     for
       maybeEdgeSynchronization <- edgeSynchronizationRef.get
       edgeSynchronization <- maybeEdgeSynchronization.fold(
-        ZIO.die(new IllegalStateException("Graph has not been started"))
+        ZIO.dieMessage("Graph has not been started")
       )(ZIO.succeed)
     yield edgeSynchronization
-
-  // TODO: Need a stop method as well that can disconnect edge synchronization and drain its queue
 
   override def get(
       id: NodeId
@@ -244,7 +253,7 @@ final case class GraphLive(
   )(subgraphSpec: SubgraphSpec): NodeIO[Unit] =
     for
       matcher <- Matcher.make(
-        config = config.matcherConfig,
+        config = config.matcher,
         time = time,
         graph = this,
         tracing = tracing,

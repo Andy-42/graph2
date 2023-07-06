@@ -41,7 +41,7 @@ object MatcherSpec extends ZIOSpecDefault:
         config <- ZIO.service[AppConfig]
         contextStorage <- ZIO.service[ContextStorage]
         matcher <- Matcher.make(
-          config = config.matcherConfig,
+          config = config.matcher,
           time = time,
           graph = UnimplementedGraph(), // unused - all nodes will be fetched from the cache
           tracing = tracer,

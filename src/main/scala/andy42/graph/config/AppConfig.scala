@@ -34,8 +34,12 @@ final case class EdgeReconciliationConfig(
     maxChunkSize: Int = 10000 // Refined Positive
 )
 
+// parallelism:
+//   > 0 => with that level of parallelism;
+//   <= 0 => unbounded parallelism
 final case class MatcherConfig(
-    // TODO: Parallelism
+    fetchSnapshotsParallelism: Int = 0, // default is unbounded
+    resolveBindingsParallelism: Int = 4 // TODO: Determine what a suitable default is
 )
 
 final case class TracerConfig(
@@ -48,12 +52,13 @@ final case class AppConfig(
     graph: GraphConfig = GraphConfig(),
     nodeCache: NodeCacheConfig = NodeCacheConfig(),
     edgeReconciliation: EdgeReconciliationConfig = EdgeReconciliationConfig(),
-    matcherConfig: MatcherConfig = MatcherConfig(),
+    matcher: MatcherConfig = MatcherConfig(),
     tracer: TracerConfig = TracerConfig()
 )
 
 object AppConfig:
   val appConfigDescriptor: Config[AppConfig] = deriveConfig[AppConfig]
+  val matcherConfig: Config[MatcherConfig] = deriveConfig[MatcherConfig]
   val graphConfigDescriptor: Config[GraphConfig] = deriveConfig[GraphConfig]
   val lruCacheDescriptor: Config[NodeCacheConfig] = deriveConfig[NodeCacheConfig]
   val edgeReconciliationDescriptor: Config[EdgeReconciliationConfig] = deriveConfig[EdgeReconciliationConfig]

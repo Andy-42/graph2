@@ -43,10 +43,18 @@ final case class MatcherLive(
   private def resolveBindingsInParallel(
       proofs: Vector[NodeIO[Vector[SpecNodeBindings]]]
   ): NodeIO[Vector[SpecNodeBindings]] =
-    ZIO.mergeAllPar(proofs)(ResolvedBindings.empty)(_ ++ _)
+    withConfiguredParallelism(config.resolveBindingsParallelism) {
+      ZIO.mergeAllPar(proofs)(ResolvedBindings.empty)(_ ++ _)
+    }
 
-  private def fetchSnapshots(ids: Vector[NodeId], currentContext: Context): NodeIO[Vector[NodeSnapshot]] =
-    ZIO.foreachPar(ids) { id => inTraceContext(currentContext)(nodeSnapshotCache.get(id)) }
+  private def fetchSnapshotsInParallel(ids: Vector[NodeId], currentContext: Context): NodeIO[Vector[NodeSnapshot]] =
+    withConfiguredParallelism(config.fetchSnapshotsParallelism) {
+      ZIO.foreachPar(ids) { id => inTraceContext(currentContext)(nodeSnapshotCache.get(id)) }
+    }
+
+  private def withConfiguredParallelism[A](parallelism: Int)(zio: => NodeIO[A]): NodeIO[A] =
+    if (parallelism < 1) ZIO.withParallelismUnbounded(zio)
+    else ZIO.withParallelism(parallelism)(zio)
 
   /** Match the given nodes using each node spec in the subgraph spec as a starting point.
     * @param ids
@@ -62,7 +70,7 @@ final case class MatcherLive(
         _ <- tracing.setAttribute("nodeSpecs", subgraphSpec.allUniqueNodeSpecs.map(_.name))
         _ <- tracing.setAttribute("ids", ids.map(_.toString))
 
-        snapshots <- fetchSnapshots(ids, currentContext)
+        snapshots <- fetchSnapshotsInParallel(ids, currentContext)
 
         agenda = initialRoundOfProofs(ids, snapshots)
 
@@ -148,7 +156,7 @@ final case class MatcherLive(
         _ <- tracing.setAttribute("resolvedMatches", resolvedBindings.toSeq.map((spec, id) => s"$spec -> $id"))
         _ <- tracing.setAttribute("unresolvedMatches", unresolvedBindings.map((spec, id) => s"$spec -> $id"))
 
-        snapshots <- fetchSnapshots(unresolvedBindings.map(_._2), context)
+        snapshots <- fetchSnapshotsInParallel(unresolvedBindings.map(_._2), context)
 
         nextRound = nextRoundOfProofs(resolvedBindings, unresolvedBindings, snapshots)
 

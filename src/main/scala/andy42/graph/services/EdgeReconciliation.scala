@@ -15,7 +15,7 @@ type WindowStart = Long
 type WindowEnd = Long
 type MillisecondDuration = Long
 
-trait EdgeReconciliationProcessor:
+trait EdgeReconciliation:
 
   def zero: EdgeReconciliationWindowState
 
@@ -31,10 +31,10 @@ case class EdgeReconciliationWindowState(
 
 // TODO: Need to have retry and logging for persistence failures
 
-case class EdgeReconciliationProcessorLive(
+case class EdgeReconciliationLive(
     config: EdgeReconciliationConfig,
     edgeReconciliationDataService: EdgeReconciliationRepository
-) extends EdgeReconciliationProcessor:
+) extends EdgeReconciliation:
 
   val windowSize: Long = config.windowSize.toMillis
   val windowExpiry: Long = config.windowExpiry.toMillis
@@ -58,8 +58,10 @@ case class EdgeReconciliationProcessorLive(
       expiryThreshold = toWindowEnd(now - windowExpiry)
       currentEvents <- handleAndRemoveExpiredEvents(edgeReconciliationEvents, expiryThreshold, now)
       stateWithExpiredWindowsRemoved <- expireReconciliationWindows(state, expiryThreshold, now)
-      stateWithNewEvents = mergeInNewEvents(stateWithExpiredWindowsRemoved, currentEvents)
-    yield stateWithNewEvents
+      nextState =
+        if currentEvents.isEmpty then stateWithExpiredWindowsRemoved
+        else mergeInNewEvents(stateWithExpiredWindowsRemoved, currentEvents)
+    yield nextState
 
   def handleAndRemoveExpiredEvents(
       edgeReconciliationEvents: Chunk[EdgeReconciliationEvent],
@@ -172,13 +174,13 @@ case class EdgeReconciliationProcessorLive(
         edgeHashes = edgeHashes
       )
 
-end EdgeReconciliationProcessorLive
+end EdgeReconciliationLive
 
 object EdgeReconciliation:
-  val layer: RLayer[AppConfig & EdgeReconciliationRepository, EdgeReconciliationProcessor] =
+  val layer: RLayer[AppConfig & EdgeReconciliationRepository, EdgeReconciliation] =
     ZLayer {
       for
         config <- ZIO.service[AppConfig]
         dataService <- ZIO.service[EdgeReconciliationRepository]
-      yield EdgeReconciliationProcessorLive(config.edgeReconciliation, dataService)
+      yield EdgeReconciliationLive(config.edgeReconciliation, dataService)
     }
