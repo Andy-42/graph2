@@ -76,6 +76,8 @@ The services that *Graph* collaborates with are:
 that the other corresponding half-edge is also added to the graph model. This is done in an eventually-consistent
 way, so the edge synchronization service collaborates with the edge reconciliation processor to provide an audit
 trail of reconciliation (i.e., to ensure that the graph reaches consistency).
+Note that the lines between *Graph* and *Edge Synchronization* are shown as dotted lines
+since the circular reference cannot be be implemented as a normal ZIO service dependency.
 * *Matcher* - As the graph changes, changed nodes are matched against a subgraph specification
 and any subgraphs that match the subgraph spec are emitted to the Match Sink, which is
 the output for this system.
@@ -102,8 +104,7 @@ flowchart TD
         matcher --> matchSink
 
         g --> nodeCache
-        g --> edgeSynchronization
-        %% g --> matchSink
+        g -.-> edgeSynchronization
         g --> matcher
         g --> nodeRepository
 
@@ -117,7 +118,7 @@ flowchart TD
     %% nodeCache --> config
 
         edgeSynchronization --> edgeReconciliationProcessor
-        edgeSynchronization --> g
+        edgeSynchronization -.-> g
 
         nodeRepository --> dataSource
 
