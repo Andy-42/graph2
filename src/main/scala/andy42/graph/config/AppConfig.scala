@@ -11,6 +11,10 @@ import zio.config.magnolia.deriveConfig
 
 type CacheRetainFraction = Double Refined GreaterEqual[0.0] And LessEqual[1.0]
 
+final case class GraphConfig(
+    forkOnEdgeSynchronization: Boolean = true
+)
+
 final case class NodeCacheConfig(
     capacity: Int = 1000, // Refined Positive
 
@@ -31,7 +35,7 @@ final case class EdgeReconciliationConfig(
 )
 
 final case class MatcherConfig(
-    // TODO: Parallelism 
+    // TODO: Parallelism
 )
 
 final case class TracerConfig(
@@ -41,6 +45,7 @@ final case class TracerConfig(
 )
 
 final case class AppConfig(
+    graph: GraphConfig = GraphConfig(),
     nodeCache: NodeCacheConfig = NodeCacheConfig(),
     edgeReconciliation: EdgeReconciliationConfig = EdgeReconciliationConfig(),
     matcherConfig: MatcherConfig = MatcherConfig(),
@@ -49,6 +54,7 @@ final case class AppConfig(
 
 object AppConfig:
   val appConfigDescriptor: Config[AppConfig] = deriveConfig[AppConfig]
+  val graphConfigDescriptor: Config[GraphConfig] = deriveConfig[GraphConfig]
   val lruCacheDescriptor: Config[NodeCacheConfig] = deriveConfig[NodeCacheConfig]
   val edgeReconciliationDescriptor: Config[EdgeReconciliationConfig] = deriveConfig[EdgeReconciliationConfig]
   val tracerConfigDescriptor: Config[TracerConfig] = deriveConfig[TracerConfig]

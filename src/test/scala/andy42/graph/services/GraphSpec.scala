@@ -1,6 +1,6 @@
 package andy42.graph.services
 
-import andy42.graph.config.{AppConfig, TracerConfig}
+import andy42.graph.config.{AppConfig, GraphConfig, TracerConfig}
 import andy42.graph.model.*
 import andy42.graph.persistence.{TestNodeRepository, TestNodeRepositoryLive}
 import io.opentelemetry.api.trace.Tracer
@@ -72,7 +72,13 @@ object GraphSpec extends ZIOSpecDefault:
       edgeSynchronizationParameters.toVector == expectedOutputEvents
     )
 
-  val appConfigLayer: ULayer[AppConfig] = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = true)))
+  val appConfigLayer: ULayer[AppConfig] =
+    ZLayer.succeed(
+      AppConfig(
+        graph = GraphConfig(forkOnEdgeSynchronization = false),
+        tracer = TracerConfig(enabled = true)
+      )
+    )
   val trace: TaskLayer[Tracing & Tracer] = appConfigLayer >>> TracingService.live
 
   val graphLayer: TaskLayer[Graph] =

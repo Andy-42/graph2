@@ -87,7 +87,7 @@ extension (changes: Vector[NodeMutationInput])
 final case class NodeMutationOutput(node: Node, events: Vector[Event])
 
 final case class GraphLive(
-    config: MatcherConfig,
+    config: AppConfig,
     inFlight: TSet[NodeId],
     cache: NodeCache,
     nodeRepositoryService: NodeRepository,
@@ -146,9 +146,11 @@ final case class GraphLive(
 
       edgeSynchronization <- getEdgeSynchronization
 
-      // TODO: Should fork here since the design edge reconciliation is explicitly eventually consistent.
-      // TODO: This complicates testing so there should be a way to configure this to fork or not.
-      _ <- edgeSynchronization.graphChanged(time, output) // .fork
+      // We don't want to wait for edge synchronization, so this will normally fork.
+      // However, this can be enabled to facilitate testing.
+      _ <-
+        if config.graph.forkOnEdgeSynchronization then edgeSynchronization.graphChanged(time, output).fork
+        else edgeSynchronization.graphChanged(time, output)
 
       // Expect that all changes are far edge events or all not far edge events.
       // When the events don't include far edge events, this is an externally-driven mutation and needs
@@ -242,7 +244,7 @@ final case class GraphLive(
   )(subgraphSpec: SubgraphSpec): NodeIO[Unit] =
     for
       matcher <- Matcher.make(
-        config = config,
+        config = config.matcherConfig,
         time = time,
         graph = this,
         tracing = tracing,
@@ -290,7 +292,7 @@ object Graph:
         standingQueries <- Ref.make(Set.empty[SubgraphSpec])
         inFlight <- TSet.empty[NodeId].commit
       yield GraphLive(
-        config = config.matcherConfig,
+        config = config,
         inFlight = inFlight,
         cache = nodeCache,
         nodeRepositoryService = nodeDataService,
