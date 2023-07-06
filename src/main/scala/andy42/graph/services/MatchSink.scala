@@ -1,10 +1,10 @@
 package andy42.graph.services
 
-import andy42.graph.matcher.{ResolvedMatches, SubgraphSpec}
+import andy42.graph.matcher.{SpecNodeBindings, SubgraphSpec}
 import andy42.graph.model.EventTime
 import zio.*
 
-case class SubgraphMatchAtTime(time: EventTime, subgraphSpec: SubgraphSpec, nodeMatches: Vector[ResolvedMatches])
+case class SubgraphMatchAtTime(time: EventTime, subgraphSpec: SubgraphSpec, nodeMatches: Vector[SpecNodeBindings])
 
 /** Accepts the matched subgraph specs.
   *

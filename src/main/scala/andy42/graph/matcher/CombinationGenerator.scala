@@ -20,7 +20,7 @@ object CombinationGenerator:
       yield a +: as
     }
 
-  def doNotReuseElements[A](xs: Vector[Vector[A]]): Vector[Vector[A]] =
+  def combinationsSingleUse[A](xs: Vector[Vector[A]]): Vector[Vector[A]] =
     xs.foldRight(Vector(Vector.empty[A])) { (next, combinations) =>
       for
         a <- next

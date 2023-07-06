@@ -35,7 +35,7 @@ object CombinationGeneratorSpec extends ZIOSpecDefault:
         Vector(1, 3)
       )
 
-      assertTrue(CombinationGenerator.doNotReuseElements(x) == expected)
+      assertTrue(CombinationGenerator.combinationsSingleUse(x) == expected)
     },
     test("Any input with zero elements at the second level will generate zero elements") {
 
@@ -47,6 +47,6 @@ object CombinationGeneratorSpec extends ZIOSpecDefault:
 
       val expected = Vector.empty
 
-      assertTrue(CombinationGenerator.doNotReuseElements(x) == expected)
+      assertTrue(CombinationGenerator.combinationsSingleUse(x) == expected)
     }
   )

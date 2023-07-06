@@ -1,6 +1,7 @@
 package andy42.graph.matcher
 
 import andy42.graph.config.{AppConfig, MatcherConfig}
+import andy42.graph.matcher.CombinationGenerator.combinationsSingleUse
 import andy42.graph.model.*
 import andy42.graph.persistence.PersistenceFailure
 import andy42.graph.services.{Graph, TracingService}
@@ -8,20 +9,20 @@ import io.opentelemetry.context.Context
 import zio.*
 import zio.telemetry.opentelemetry.context.ContextStorage
 import zio.telemetry.opentelemetry.tracing.Tracing
-import scala.collection.mutable
 
 import scala.annotation.tailrec
+import scala.collection.mutable
 
 type NodeSpecName = String
-type SpecNodeMatch = (NodeSpecName, NodeId)
-type ResolvedMatches = Map[NodeSpecName, NodeId]
+type SpecNodeBinding = (NodeSpecName, NodeId)
+type SpecNodeBindings = Map[NodeSpecName, NodeId]
 
-object ResolvedMatches:
-  val empty: ResolvedMatches = Map.empty
+object ResolvedBindings:
+  val empty: Vector[SpecNodeBindings] = Vector.empty
 
 trait Matcher:
 
-  def matchNodes(ids: Vector[NodeId]): NodeIO[Vector[ResolvedMatches]]
+  def matchNodes(ids: Vector[NodeId]): NodeIO[Vector[SpecNodeBindings]]
 
 final case class MatcherLive(
     config: MatcherConfig,
@@ -31,11 +32,6 @@ final case class MatcherLive(
     contextStorage: ContextStorage
 ) extends Matcher:
 
-//  private val combination: Vector[Vector[_]] => Vector[Vector[_]] =
-//    config.combinationGenerator match
-//      case "all"                   => CombinationGenerator.all
-//      case "do-not-reuse-elements" => CombinationGenerator.doNotReuseElements
-
   /** Execute a ZIO effect within a given tracing context. The ZIO open telemetry context is maintained for the current
     * fiber, but if we want to maintain the tracing context across parallel invocations where the effects are run on a
     * different fiber (ZIO.foreachPar, ZIO.mergeAllPar), then we have to explicitly propagate the context.
@@ -44,10 +40,10 @@ final case class MatcherLive(
     ZIO.acquireReleaseWith(contextStorage.getAndSet(context))(contextStorage.set(_))(_ => zio)
 
   /** Evaluate match resolution proofs in parallel, flattening the results. */
-  private def resolvePotentialMatchesInParallel(
-      proofs: Vector[NodeIO[Vector[ResolvedMatches]]]
-  ): NodeIO[Vector[ResolvedMatches]] =
-    ZIO.mergeAllPar(proofs)(Vector.empty[ResolvedMatches])(_ ++ _)
+  private def resolveBindingsInParallel(
+      proofs: Vector[NodeIO[Vector[SpecNodeBindings]]]
+  ): NodeIO[Vector[SpecNodeBindings]] =
+    ZIO.mergeAllPar(proofs)(ResolvedBindings.empty)(_ ++ _)
 
   private def fetchSnapshots(ids: Vector[NodeId], currentContext: Context): NodeIO[Vector[NodeSnapshot]] =
     ZIO.foreachPar(ids) { id => inTraceContext(currentContext)(nodeSnapshotCache.get(id)) }
@@ -59,7 +55,7 @@ final case class MatcherLive(
     *   The successfully resolved matches between the given nodes and the nodes in the spec. This result may contain
     *   duplicate matches.
     */
-  override def matchNodes(ids: Vector[NodeId]): NodeIO[Vector[ResolvedMatches]] =
+  override def matchNodes(ids: Vector[NodeId]): NodeIO[Vector[SpecNodeBindings]] =
     tracing.root("Matcher.matchNodes") {
       for
         currentContext <- tracing.getCurrentContext
@@ -68,42 +64,55 @@ final case class MatcherLive(
 
         snapshots <- fetchSnapshots(ids, currentContext)
 
-        resolvedMatches <- resolvePotentialMatchesInParallel {
-          initialRoundOfProofs(ids, snapshots, currentContext)
+        agenda = initialRoundOfProofs(ids, snapshots)
+
+        alreadyResolved = agenda collect {
+          case (resolvedBindings, unresolvedBindings) if unresolvedBindings.isEmpty => resolvedBindings
         }
-      yield resolvedMatches.distinct
+
+        resolvedRecursively <- resolveBindingsInParallel {
+          agenda collect {
+            case (resolvedBindings, unresolvedBindings) if unresolvedBindings.nonEmpty =>
+              inTraceContext(currentContext) {
+                prove(resolvedBindings, unresolvedBindings)
+              }
+          }
+        }
+      yield (alreadyResolved ++ resolvedRecursively).distinct
     }
 
   def initialRoundOfProofs(
       ids: Vector[NodeId],
-      snapshots: Vector[NodeSnapshot],
-      context: Context
-  ): Vector[NodeIO[Vector[ResolvedMatches]]] =
-    for
-      idAndSnapshot <- ids.zip(snapshots)
-      (id, snapshot) = idAndSnapshot
-      nodeSpec <- subgraphSpec.allUniqueNodeSpecs
-      if !nodeSpec.isUnconstrained
+      snapshots: Vector[NodeSnapshot]
+  ): Vector[(SpecNodeBindings, Vector[SpecNodeBinding])] =
+    (
+      for
+        idAndSnapshot <- ids.zip(snapshots)
+        (id, snapshot) = idAndSnapshot
+        nodeSpec <- subgraphSpec.allUniqueNodeSpecs
+        if !nodeSpec.isUnconstrained
 
-      nextResolvedMatches = Map(nodeSpec.name -> id)
-      edgeMatchesToProve <- shallowMatch(nodeSpec, snapshot, nextResolvedMatches)
-    yield filterResolution(nextResolvedMatches, edgeMatchesToProve) match
-      case Some(Vector())              => ZIO.succeed(Vector(nextResolvedMatches)) // Match is proven
-      case Some(unresolvedEdgeMatches) => inTraceContext(context)(prove(nextResolvedMatches, unresolvedEdgeMatches))
-      case None                        => ZIO.succeed(Vector.empty) // Match is disproven
+        nextResolvedMatches = Map(nodeSpec.name -> id)
+        edgeMatchesToProve <- shallowMatch(nodeSpec, snapshot, nextResolvedMatches)
+      yield filterResolution(nextResolvedMatches, edgeMatchesToProve).map(nextResolvedMatches -> _)
+    ).flatten
 
   def filterResolution(
-      resolvedMatches: ResolvedMatches,
-      unresolvedMatches: Vector[SpecNodeMatch]
-  ): Option[Vector[SpecNodeMatch]] =
-    @tailrec def accumulate(i: Int = 0, r: Vector[SpecNodeMatch] = Vector.empty): Option[Vector[SpecNodeMatch]] =
-      if i >= unresolvedMatches.length then Some(r)
+      resolvedBindings: SpecNodeBindings,
+      unresolvedBindings: Vector[SpecNodeBinding]
+  ): Option[Vector[SpecNodeBinding]] =
+    @tailrec def accumulate(
+        i: Int = 0,
+        r: Vector[SpecNodeBinding] = Vector.empty
+    ): Option[Vector[SpecNodeBinding]] =
+      if i >= unresolvedBindings.length then Some(r)
       else
-        val current = unresolvedMatches(i)
+        val current = unresolvedBindings(i)
+        val (currentName, currentId) = current
 
-        resolvedMatches.get(current._1) match
+        resolvedBindings.get(currentName) match
           case Some(matchedId) =>
-            if current._2 != matchedId then None // Failed match - ids in the two matches conflict
+            if currentId != matchedId then None // Failed match - ids in the two matches conflict
             else accumulate(i + 1, r) // already matched
           case None =>
             accumulate(i + 1, r :+ current)
@@ -121,93 +130,98 @@ final case class MatcherLive(
     * If the match has not failed, then the proven spec-node pairs are added to resolvedMatches. This may add new
     * unproven matches that are proven on the next recursion.
     *
-    * @param resolvedMatches
+    * @param resolvedBindings
     *   The set of all spec-node pairs that have been resolve (or presumed resolved) at this point.
-    * @param unresolvedMatches
+    * @param unresolvedBindings
     *   The spec-node pairs that must be proven on this step for the resolvedMatches to be true.
     * @return
     *   All the possible resolved matches. More than one possible solution may be possible if an edge spec matches more
     *   than one edge.
     */
   def prove(
-      resolvedMatches: ResolvedMatches,
-      unresolvedMatches: Vector[SpecNodeMatch]
-  ): NodeIO[Vector[ResolvedMatches]] =
+      resolvedBindings: SpecNodeBindings,
+      unresolvedBindings: Vector[SpecNodeBinding]
+  ): NodeIO[Vector[SpecNodeBindings]] =
     tracing.span("Matcher.prove") {
       for
         context <- tracing.getCurrentContext
-        _ <- tracing.setAttribute("resolvedMatches", resolvedMatches.toSeq.map((spec, id) => s"$spec -> $id"))
-        _ <- tracing.setAttribute("unresolvedMatches", unresolvedMatches.map((spec, id) => s"$spec -> $id"))
+        _ <- tracing.setAttribute("resolvedMatches", resolvedBindings.toSeq.map((spec, id) => s"$spec -> $id"))
+        _ <- tracing.setAttribute("unresolvedMatches", unresolvedBindings.map((spec, id) => s"$spec -> $id"))
 
-        snapshots <- fetchSnapshots(unresolvedMatches.map(_._2), context)
+        snapshots <- fetchSnapshots(unresolvedBindings.map(_._2), context)
 
-        (fullyResolved, partiallyResolved) = nextRoundOfProofs(resolvedMatches, unresolvedMatches, snapshots)
+        nextRound = nextRoundOfProofs(resolvedBindings, unresolvedBindings, snapshots)
+
+        fullyResolved = nextRound collect {
+          case (resolvedBindings, unresolvedBindings) if unresolvedBindings.isEmpty => resolvedBindings
+        }
+
+        partiallyResolved = nextRound collect {
+          case (resolvedBindings, unresolvedBindings) if unresolvedBindings.nonEmpty =>
+            inTraceContext(context)(prove(resolvedBindings, unresolvedBindings))
+        }
 
         _ <- tracing.setAttribute("fullyResolved", fullyResolved.length)
         _ <- tracing.setAttribute("partiallyResolved", partiallyResolved.length)
 
-        withDependenciesResolved <- resolvePotentialMatchesInParallel {
-          partiallyResolved.map { (resolvedMatches, unresolvedMatches) =>
-            inTraceContext(context)(prove(resolvedMatches, unresolvedMatches))
-          }
-        }
+        withDependenciesResolved <- resolveBindingsInParallel(partiallyResolved)
       yield fullyResolved ++ withDependenciesResolved
     }
 
   def nextRoundOfProofs(
-      resolvedMatches: ResolvedMatches,
-      unresolvedMatches: Vector[(NodeSpecName, NodeId)],
+      resolvedBindings: SpecNodeBindings,
+      unresolvedBindings: Vector[(NodeSpecName, NodeId)],
       snapshots: Vector[NodeSnapshot]
-  ): (Vector[ResolvedMatches], Vector[(ResolvedMatches, Vector[SpecNodeMatch])]) =
+  ): Vector[(SpecNodeBindings, Vector[SpecNodeBinding])] =
 
-    def combineMatches(
-        dependencyMatches: Vector[Vector[SpecNodeMatch]] // dependency / spec-node matches
-    ): Option[(ResolvedMatches, Vector[SpecNodeMatch])] =
-      require(dependencyMatches.length == unresolvedMatches.length)
+    def combine(
+        bindingsForEachOfTheUnresolvedBindings: Vector[Vector[SpecNodeBinding]]
+    ): Option[(SpecNodeBindings, Vector[SpecNodeBinding])] =
+      require(bindingsForEachOfTheUnresolvedBindings.length == unresolvedBindings.length)
+
       @tailrec def accumulate(
           i: Int = 0,
-          nextResolvedMatches: ResolvedMatches = resolvedMatches,
-          nextDependencies: Vector[SpecNodeMatch] = Vector.empty
-      ): Option[(ResolvedMatches, Vector[SpecNodeMatch])] =
-        if i >= unresolvedMatches.length then Some(nextResolvedMatches -> nextDependencies)
+          nextResolvedBindings: SpecNodeBindings = resolvedBindings,
+          nextUnresolvedBindings: Vector[SpecNodeBinding] = Vector.empty
+      ): Option[(SpecNodeBindings, Vector[SpecNodeBinding])] =
+        if i >= bindingsForEachOfTheUnresolvedBindings.length then Some(nextResolvedBindings -> nextUnresolvedBindings)
         else
-          filterResolution(nextResolvedMatches, dependencyMatches(i)) match
+          filterResolution(nextResolvedBindings, bindingsForEachOfTheUnresolvedBindings(i)) match
             case None => None
-            case Some(specNodeMatch) =>
+            case Some(bindings) =>
               accumulate(
                 i = i + 1,
-                nextResolvedMatches = nextResolvedMatches + unresolvedMatches(i),
-                nextDependencies ++ specNodeMatch
+                nextResolvedBindings = nextResolvedBindings + unresolvedBindings(i),
+                nextUnresolvedBindings ++ bindings
               )
       accumulate()
 
-    def x =
-      CombinationGenerator.doNotReuseElements(
-        unresolvedMatches
-          .zip(snapshots)
-          .map { (unresolvedMatch, snapshot) =>
-            val nodeSpec = subgraphSpec.nameToNodeSpec(unresolvedMatch._1)
-            // combo / unresolved matches
-            shallowMatch(nodeSpec, snapshot, resolvedMatches)
-          }
-      )
-
-    val (fullyResolved, partiallyResolved) = x
-      .flatMap(combineMatches)
-      .partition(_._2.isEmpty)
-
-    (fullyResolved.map(_._1).distinct, partiallyResolved)
+    combinationsSingleUse(
+      unresolvedBindings
+        .zip(snapshots)
+        .map { case ((nodeSpecName, _), snapshot) =>
+          shallowMatch(
+            nodeSpec = subgraphSpec.nameToNodeSpec(nodeSpecName),
+            snapshot = snapshot,
+            resolvedBindings = resolvedBindings
+          )
+        }
+    )
+      .flatMap(combine)
 
   def shallowMatch(
       nodeSpec: NodeSpec,
       snapshot: NodeSnapshot,
-      resolvedMatches: ResolvedMatches
-  ): Vector[Vector[SpecNodeMatch]] = // combination / edges that must be proven for this combination to succeed
+      resolvedBindings: SpecNodeBindings
+  ): Vector[Vector[SpecNodeBinding]] =
 
-    val edgesThatAreNotAlreadyBoundToSomethingElse: Vector[Edge] =
-      snapshot.edges.filter(edge => resolvedMatches.values.exists(_ == edge.other))
+    // Will be used
+    lazy val edgesThatAreNotAlreadyBoundToSomethingElse: Vector[Edge] =
+      snapshot.edges.filter { edge =>
+        !resolvedBindings.values.exists(_ == edge.other)
+      }
 
-    def edgeBindsToId(id: NodeId): Vector[Edge] = snapshot.edges.filter(edge => edge.other == id)
+    def edgeBindsToId(id: NodeId): Vector[Edge] = snapshot.edges.filter(_.other == id)
 
     /** Match the edges in the snapshot to an EdgeSpec.
       *
@@ -217,24 +231,21 @@ final case class MatcherLive(
       * Otherwise, we can only bind the node to nodes that have not already been resolved, because it is not allowed to
       * bind the same nodeSpec to more than one node.
       */
-    def shallowMatchEdges(edgeSpec: EdgeSpec): Vector[SpecNodeMatch] =
-      val toName = edgeSpec.direction.to.name
+    def shallowMatchEdges(edgeSpec: EdgeSpec): Vector[SpecNodeBinding] =
+      val targetNodeSpecName = edgeSpec.direction.to.name
 
-      resolvedMatches
-        .get(toName)
+      resolvedBindings
+        .get(targetNodeSpecName)
         .fold(edgesThatAreNotAlreadyBoundToSomethingElse)(edgeBindsToId)
         .collect {
-          case edge if edgeSpec.isShallowMatch(edge)(using snapshot) => toName -> edge.other
+          case edge if edgeSpec.isShallowMatch(edge)(using snapshot) => targetNodeSpecName -> edge.other
         }
 
     if !nodeSpec.allNodePredicatesMatch(using snapshot) then Vector.empty
     else
-      // edgeSpec / all the nodeSpec-node matches that must be proven for this this node to match
-      val possibleMatchesForEachEdgeSpec: Vector[Vector[SpecNodeMatch]] =
+      combinationsSingleUse(
         subgraphSpec.outgoingEdges(nodeSpec.name).map(shallowMatchEdges)
-
-      // Combination: combo / all the spec-node matches needed to prove this combination
-      CombinationGenerator.doNotReuseElements[SpecNodeMatch](possibleMatchesForEachEdgeSpec)
+      )
 
 object Matcher:
 

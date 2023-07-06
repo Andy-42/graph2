@@ -31,7 +31,7 @@ final case class EdgeReconciliationConfig(
 )
 
 final case class MatcherConfig(
-    combinationGenerator: String = "do-not-reuse-elements" // all | do-not-reuse-elements
+    // TODO: Parallelism 
 )
 
 final case class TracerConfig(

@@ -36,7 +36,7 @@ object MatcherSpec extends ZIOSpecDefault:
         tracer: Tracing,
         graphNodes: Vector[Node],
         matchStartingAt: Vector[NodeId]
-    ): ZIO[AppConfig & ContextStorage, PersistenceFailure | UnpackFailure, Vector[ResolvedMatches]] =
+    ): ZIO[AppConfig & ContextStorage, PersistenceFailure | UnpackFailure, Vector[SpecNodeBindings]] =
       for
         config <- ZIO.service[AppConfig]
         contextStorage <- ZIO.service[ContextStorage]
