@@ -2,7 +2,7 @@ package andy42.graph.sample.aptdetection
 
 import andy42.graph.config.{AppConfig, TracerConfig}
 import andy42.graph.model.*
-import andy42.graph.persistence.{PersistenceFailure, RocksDBNodeRepository, TemporaryRocksDB}
+import andy42.graph.persistence.{PersistenceFailure, PostgresEdgeReconciliationRepository, RocksDBEdgeReconciliationRepository, RocksDBNodeRepository, TemporaryRocksDB}
 import andy42.graph.sample.IngestableJson
 import andy42.graph.services.*
 import io.opentelemetry.api.trace.Tracer
@@ -149,6 +149,9 @@ object IngestSpec extends ZIOAppDefault:
 
   val myApp: ZIO[Graph, Throwable | UnpackFailure | PersistenceFailure, Unit] =
     for
+      graph <- ZIO.service[Graph]
+      _ <- graph.start
+
       _ <- ZIO.unit.withParallelism(2) // TODO: Configure for each parallel operation
       matches <- ingest
       _ <- ZIO.debug(matches) // TODO: Produce nice display output for each match
@@ -161,7 +164,9 @@ object IngestSpec extends ZIOAppDefault:
       RocksDBNodeRepository.layer,
       NodeCache.layer,
       TestMatchSink.layer,
-      TestEdgeSynchronization.layer, // TODO: Use real service
+      EdgeSynchronizationFactory.layer,
+      EdgeReconciliation.layer,
+      RocksDBEdgeReconciliationRepository.layer,
       TracingService.live,
       Graph.layer,
       ContextStorage.fiberRef

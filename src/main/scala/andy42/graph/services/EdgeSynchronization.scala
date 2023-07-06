@@ -8,6 +8,20 @@ import zio.stream.ZStream
 
 import java.time.temporal.ChronoUnit.MILLIS
 
+trait EdgeSynchronizationFactory:
+  def make(graph: Graph): UIO[EdgeSynchronization]
+
+case class EdgeSynchronizationFactoryLive(
+                                           config: AppConfig,
+                                           edgeReconciliationService: EdgeReconciliationProcessor
+                                         ) extends EdgeSynchronizationFactory:
+  override def make(graph: Graph): UIO[EdgeSynchronization] =
+    for
+      queue <- Queue.unbounded[EdgeReconciliationEvent] // TODO: s/b bounded?
+      live = EdgeSynchronizationLive(config.edgeReconciliation, edgeReconciliationService, graph, queue)
+      _ <- live.startReconciliation
+    yield live
+
 trait EdgeSynchronization:
 
   /** Ensure any far edges are synchronized. When an edge is set, a near edge event that represents a half-edge that is
@@ -139,16 +153,13 @@ final case class EdgeSynchronizationLive(
       .forkDaemon
       .unit
 
-object EdgeSynchronization:
+object EdgeSynchronizationFactory:
 
-  val layer: URLayer[AppConfig & Graph & EdgeReconciliationProcessor, EdgeSynchronization] =
+  val layer: URLayer[AppConfig & EdgeReconciliationProcessor, EdgeSynchronizationFactory] =
     ZLayer {
       for
         config <- ZIO.service[AppConfig]
         edgeReconciliationService <- ZIO.service[EdgeReconciliationProcessor]
-        graph <- ZIO.service[Graph]
-        queue <- Queue.unbounded[EdgeReconciliationEvent] // TODO: s/b bounded?
-        live = EdgeSynchronizationLive(config.edgeReconciliation, edgeReconciliationService, graph, queue)
-        _ <- live.startReconciliation
-      yield live
+      yield EdgeSynchronizationFactoryLive(config, edgeReconciliationService)
     }
+

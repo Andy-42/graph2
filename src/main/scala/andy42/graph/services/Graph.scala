@@ -41,6 +41,8 @@ import zio.telemetry.opentelemetry.tracing.Tracing
   */
 trait Graph:
 
+  def start: UIO[Unit]
+
   /** Get a node from the graph.
     *
     * The returned node will contain the full history of the node.
@@ -89,12 +91,29 @@ final case class GraphLive(
     inFlight: TSet[NodeId],
     cache: NodeCache,
     nodeRepositoryService: NodeRepository,
-    edgeSynchronization: EdgeSynchronization,
+    edgeSynchronizationFactory: EdgeSynchronizationFactory,
+    edgeSynchronizationRef: Ref[Option[EdgeSynchronization]],
     matchSink: MatchSink,
     tracing: Tracing,
     standingQueries: Ref[Set[SubgraphSpec]],
     contextStorage: ContextStorage
 ) extends Graph:
+
+  override def start: UIO[Unit] =
+    for
+      edgeSynchronizationInstance <- edgeSynchronizationFactory.make(this)
+      _ <- edgeSynchronizationRef.set(Some(edgeSynchronizationInstance))
+    yield ()
+
+  private def getEdgeSynchronization: UIO[EdgeSynchronization] =
+    for
+      maybeEdgeSynchronization <- edgeSynchronizationRef.get
+      edgeSynchronization <- maybeEdgeSynchronization.fold(
+        ZIO.die(new IllegalStateException("Graph has not been started"))
+      )(ZIO.succeed)
+    yield edgeSynchronization
+
+  // TODO: Need a stop method as well that can disconnect edge synchronization and drain its queue
 
   override def get(
       id: NodeId
@@ -124,6 +143,8 @@ final case class GraphLive(
   ): NodeIO[Unit] =
     for
       output <- ZIO.foreachPar(changes)(processChangesForOneNode(time, _))
+
+      edgeSynchronization <- getEdgeSynchronization
 
       // TODO: Should fork here since the design edge reconciliation is explicitly eventually consistent.
       // TODO: This complicates testing so there should be a way to configure this to fork or not.
@@ -250,10 +271,8 @@ final case class GraphLive(
   private def withNodePermit(id: => NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
-type GraphEnvironment =  AppConfig & 
-  NodeCache & NodeRepository & EdgeSynchronization & 
-  MatchSink & 
-  Tracing & ContextStorage
+type GraphEnvironment = AppConfig & NodeCache & NodeRepository & EdgeSynchronizationFactory & MatchSink & Tracing &
+  ContextStorage
 
 object Graph:
   val layer: URLayer[GraphEnvironment, Graph] =
@@ -262,7 +281,8 @@ object Graph:
         config <- ZIO.service[AppConfig]
         nodeCache <- ZIO.service[NodeCache]
         nodeDataService <- ZIO.service[NodeRepository]
-        edgeSynchronization <- ZIO.service[EdgeSynchronization]
+        edgeSynchronizationFactory <- ZIO.service[EdgeSynchronizationFactory]
+        edgeSynchronizationRef <- Ref.make[Option[EdgeSynchronization]](None)
         matchSink <- ZIO.service[MatchSink]
         tracing <- ZIO.service[Tracing]
         contextStorage <- ZIO.service[ContextStorage]
@@ -274,7 +294,8 @@ object Graph:
         inFlight = inFlight,
         cache = nodeCache,
         nodeRepositoryService = nodeDataService,
-        edgeSynchronization = edgeSynchronization,
+        edgeSynchronizationFactory = edgeSynchronizationFactory,
+        edgeSynchronizationRef = edgeSynchronizationRef,
         matchSink = matchSink,
         tracing = tracing,
         standingQueries = standingQueries,

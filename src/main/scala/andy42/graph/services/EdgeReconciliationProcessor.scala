@@ -36,8 +36,8 @@ case class EdgeReconciliationProcessorLive(
     edgeReconciliationDataService: EdgeReconciliationRepository
 ) extends EdgeReconciliationProcessor:
 
-  val windowSize: Long = config.windowSize.get(MILLIS)
-  val windowExpiry: Long = config.windowExpiry.get(MILLIS)
+  val windowSize: Long = config.windowSize.toMillis
+  val windowExpiry: Long = config.windowExpiry.toMillis
 
   extension (time: EventTime)
     def toWindowStart: EventTime = time - (time % windowSize)

@@ -26,12 +26,16 @@ object GraphSpec extends ZIOSpecDefault:
   ): ZIO[Graph, Any, TestResult] =
     for
       graph <- ZIO.service[Graph]
+      _ <- graph.start
 
       // Get mock services used for testing from GraphLive
       graphLive = graph.asInstanceOf[GraphLive]
       testNodeRepository = graphLive.nodeRepositoryService.asInstanceOf[TestNodeRepositoryLive]
       testNodeCache = graphLive.cache.asInstanceOf[TestNodeCacheLive]
-      testEdgeSynchronization = graphLive.edgeSynchronization.asInstanceOf[TestEdgeSynchronization]
+
+      maybeTestEdgeSynchronization <- graphLive.edgeSynchronizationRef.get
+      testEdgeSynchronization = maybeTestEdgeSynchronization.get.asInstanceOf[TestEdgeSynchronization]
+
       _ <- testNodeCache.clear() *> testNodeRepository.clear()
 
       // Observe graph state before the change
@@ -76,7 +80,7 @@ object GraphSpec extends ZIOSpecDefault:
       TestNodeRepository.layer ++
       TestNodeCache.layer ++
       TestMatchSink.layer ++
-      TestEdgeSynchronization.layer ++
+      TestEdgeSynchronizationFactory.layer ++
       trace ++ ContextStorage.fiberRef) >>> Graph.layer
 
   val genNodeId: Gen[Any, NodeId] =
