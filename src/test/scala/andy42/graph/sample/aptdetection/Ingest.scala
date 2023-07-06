@@ -8,6 +8,7 @@ import andy42.graph.services.*
 import io.opentelemetry.api.trace.Tracer
 import zio.*
 import zio.json.*
+import zio.logging.*
 import zio.telemetry.opentelemetry.context.ContextStorage
 import zio.telemetry.opentelemetry.tracing.Tracing
 import zio.test.*
@@ -163,6 +164,19 @@ object IngestSpec extends ZIOAppDefault:
 
       _ <- ZIO.debug(matches) // TODO: Produce nice display output for each match
     yield ()
+
+  override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
+
+    import zio.logging.LogFormat.*
+    val format: LogFormat =
+      label("timestamp", timestamp.fixed(32)).color(LogColor.BLUE) |-|
+        label("level", level).highlight |-|
+        label("thread", fiberId).color(LogColor.WHITE) |-|
+        label("annotations", allAnnotations).highlight |-|
+        label("message", quoted(line)).highlight +
+        (space + label("cause", cause).highlight).filter(LogFilter.causeNonEmpty)
+
+    Runtime.removeDefaultLoggers >>> consoleJsonLogger(ConsoleLoggerConfig(format, LogFilter.acceptAll))
 
   override def run: ZIO[Any, Throwable | UnpackFailure | PersistenceFailure, Unit] =
     myApp.provide(
