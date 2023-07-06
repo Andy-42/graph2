@@ -8,7 +8,7 @@ libraryDependencies ++=
   Dependencies.zio ++
     Dependencies.opentelemetry ++
     Dependencies.jaegertracing ++
-    Dependencies.core
+    Dependencies.persistence
 
 scalacOptions ++= Seq("-deprecation")
 
