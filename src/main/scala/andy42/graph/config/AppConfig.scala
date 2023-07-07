@@ -12,7 +12,6 @@ import zio.config.magnolia.deriveConfig
 type CacheRetainFraction = Double Refined GreaterEqual[0.0] And LessEqual[1.0]
 
 final case class GraphConfig(
-    forkOnEdgeSynchronization: Boolean = true
 )
 
 final case class NodeCacheConfig(
@@ -31,7 +30,7 @@ final case class EdgeReconciliationConfig(
     windowSize: Duration = 1.minute,
     windowExpiry: Duration = 5.minutes,
     maximumIntervalBetweenChunks: Duration = 1.minute,
-    maxChunkSize: Int = 10000 // Refined Positive
+    maxChunkSize: Int = 4096 // Refined Positive
 )
 
 // parallelism:

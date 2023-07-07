@@ -74,10 +74,7 @@ object GraphSpec extends ZIOSpecDefault:
 
   val appConfigLayer: ULayer[AppConfig] =
     ZLayer.succeed(
-      AppConfig(
-        graph = GraphConfig(forkOnEdgeSynchronization = false),
-        tracer = TracerConfig(enabled = true)
-      )
+      AppConfig(tracer = TracerConfig(enabled = true))
     )
   val trace: TaskLayer[Tracing & Tracer] = appConfigLayer >>> TracingService.live
 

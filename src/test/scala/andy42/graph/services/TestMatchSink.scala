@@ -8,7 +8,7 @@ case class TestMatchSinkLive(queue: Queue[SubgraphMatchAtTime]) extends MatchSin
   override def matches: UIO[Chunk[SubgraphMatchAtTime]] = queue.takeAll
 
   override def offer(matches: SubgraphMatchAtTime): UIO[Unit] =
-    ZIO.debug(matches) *> queue.offer(matches).unit
+    queue.offer(matches).unit
 
 object TestMatchSink:
 

@@ -154,12 +154,7 @@ final case class GraphLive(
       output <- ZIO.foreachPar(changes)(processChangesForOneNode(time, _))
 
       edgeSynchronization <- getEdgeSynchronization
-
-      // We don't want to wait for edge synchronization, so this will normally fork.
-      // However, this can be enabled to facilitate testing.
-      _ <-
-        if config.graph.forkOnEdgeSynchronization then edgeSynchronization.graphChanged(time, output).fork
-        else edgeSynchronization.graphChanged(time, output)
+      _ <- edgeSynchronization.graphChanged(time, output)
 
       // Expect that all changes are far edge events or all not far edge events.
       // When the events don't include far edge events, this is an externally-driven mutation and needs

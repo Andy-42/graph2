@@ -25,7 +25,7 @@ object IngestableJson:
         .via(ZPipeline.utf8Decode >>> ZPipeline.splitLines)
         .map(_.fromJson[T])
         .collect { case Right(endpoint) => endpoint } // FIXME: Discarding endpoint decode failures
-        .tap(ZIO.debug(_))
+//        .tap(ZIO.debug(_))
         .mapZIOPar(parallelism)(endpoint => graph.append(endpoint.eventTime, endpoint.produceEvents))
         .runDrain
     yield ()

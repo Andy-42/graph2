@@ -68,22 +68,22 @@ final case class EdgeSynchronizationLive(
 
   def graphChanged(time: EventTime, nodeMutations: Vector[NodeMutationOutput]): UIO[Unit] =
 
-    def gatherReversedEdgeEventsForOtherNode(other: NodeId): NodeMutationInput =
+    def collectReversedEdgeEventsForOtherNode(other: NodeId): NodeMutationInput =
       NodeMutationInput(
         id = other,
         events = for
           groupedGraphMutationOutput <- nodeMutations
           id = groupedGraphMutationOutput.node.id
           reversedEdgeEvent <- groupedGraphMutationOutput.events.collect {
-            case Event.EdgeAdded(edge: NearEdge)   => Event.FarEdgeAdded(edge.reverse(id))
-            case Event.EdgeRemoved(edge: NearEdge) => Event.FarEdgeRemoved(edge.reverse(id))
+            case Event.EdgeAdded(edge: NearEdge) if edge.other == other   => Event.FarEdgeAdded(edge.reverse(id))
+            case Event.EdgeRemoved(edge: NearEdge) if edge.other == other => Event.FarEdgeRemoved(edge.reverse(id))
           }
         yield reversedEdgeEvent
       )
 
     for
-      _ <- ZIO.foreachDiscard(nodeMutations.extractOtherIdFromNearEdgeEvents.toSet) { other =>
-        appendFarEdgeEventsFor(id = other, time = time, events = gatherReversedEdgeEventsForOtherNode(other))
+      _ <- ZIO.foreachParDiscard(nodeMutations.extractOtherIdFromNearEdgeEvents.toSet) { other =>
+        appendFarEdgeEventsForOtherNode(id = other, time = time, events = collectReversedEdgeEventsForOtherNode(other))
       }
 
       _ <- ZIO.foreachDiscard(nodeMutations) { nodeMutationOutput =>
@@ -112,11 +112,11 @@ final case class EdgeSynchronizationLive(
     * The Graph.append method will not run SQE if all the events being appended are far edges since that processing will
     * always have been done in the contents of the original append.
     */
-  private def appendFarEdgeEventsFor(
+  private def appendFarEdgeEventsForOtherNode(
       id: NodeId,
       time: EventTime,
       events: NodeMutationInput
-  ): UIO[Unit] =
+  ): UIO[Any] =
     import LogAnnotations.*
     graph
       .append(time, Vector(events))
@@ -128,7 +128,6 @@ final case class EdgeSynchronizationLive(
         @@ farNodeIdsAnnotation (events.extractOtherIdsNodeFromFarEdgeEvents)
       )
       .forkDaemon
-      .unit
 
   /** Start the fiber that consumes the edge synchronization events and reconciles them.
     *
@@ -138,16 +137,18 @@ final case class EdgeSynchronizationLive(
     import LogAnnotations.operationAnnotation
     ZStream
       .fromQueue(queue, maxChunkSize = config.maxChunkSize)
+
       // Ensure that a chunk is processed at regular intervals for window expiry processing
       .groupedWithin(chunkSize = config.maxChunkSize, within = config.maximumIntervalBetweenChunks)
-      // For each chunk processed, add new events into time window reconciliations, and report on state of expired windows
+
+      // For each chunk processed: add new events to the reconciliation, and report on expired windows
       .scanZIO(edgeReconciliation.zero)((state, chunk) => edgeReconciliation.addChunk(state, chunk))
       .runDrain
       .catchAllCause(cause =>
         ZIO.logCause("Unexpected failure scanning edge reconciliation event stream", cause)
         @@ operationAnnotation ("scan edge reconciliation event stream")
       )
-      .forkDaemon
+      .forkDaemon // TODO: Should  be forked into scope of this EdgeSynchronization
       .unit
 
 object EdgeSynchronizationFactory:

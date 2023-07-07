@@ -1,6 +1,6 @@
 package andy42.graph.sample.aptdetection
 
-import andy42.graph.config.{AppConfig, GraphConfig, MatcherConfig, TracerConfig}
+import andy42.graph.config.{AppConfig, EdgeReconciliationConfig, GraphConfig, MatcherConfig, TracerConfig}
 import andy42.graph.model.*
 import andy42.graph.persistence.*
 import andy42.graph.sample.IngestableJson
@@ -143,13 +143,15 @@ object IngestSpec extends ZIOAppDefault:
       testMatchSink = graphLive.matchSink.asInstanceOf[TestMatchSink]
 
       _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)(parallelism = 2)
+
       matches <- testMatchSink.matches
     yield matches
 
   val appConfigLayer: ULayer[AppConfig] = ZLayer.succeed {
     AppConfig(
-      matcher = MatcherConfig(resolveBindingsParallelism = 2),
-      tracer = TracerConfig(enabled = true)
+      edgeReconciliation = EdgeReconciliationConfig(windowSize = 1.minute, windowExpiry = 2.minutes, maximumIntervalBetweenChunks = 1.minute),
+      matcher = MatcherConfig(resolveBindingsParallelism = 16),
+      tracer = TracerConfig(enabled = false)
     )
   }
 
@@ -162,22 +164,12 @@ object IngestSpec extends ZIOAppDefault:
 
       _ <- graph.stop
 
-      _ <- ZIO.debug(matches) // TODO: Produce nice display output for each match
+      _ <- ZIO.debug(s"matches: $matches")
+
+      _ <- ZIO.sleep(2.minutes)
+
     yield ()
-
-  override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
-
-    import zio.logging.LogFormat.*
-    val format: LogFormat =
-      label("timestamp", timestamp.fixed(32)).color(LogColor.BLUE) |-|
-        label("level", level).highlight |-|
-        label("thread", fiberId).color(LogColor.WHITE) |-|
-        label("annotations", allAnnotations).highlight |-|
-        label("message", quoted(line)).highlight +
-        (space + label("cause", cause).highlight).filter(LogFilter.causeNonEmpty)
-
-    Runtime.removeDefaultLoggers >>> consoleJsonLogger(ConsoleLoggerConfig(format, LogFilter.acceptAll))
-
+  
   override def run: ZIO[Any, Throwable | UnpackFailure | PersistenceFailure, Unit] =
     myApp.provide(
       appConfigLayer,
