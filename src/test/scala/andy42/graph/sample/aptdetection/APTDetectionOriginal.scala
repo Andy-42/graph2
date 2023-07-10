@@ -1,9 +1,11 @@
 package andy42.graph.sample.aptdetection
 
-import andy42.graph.config.{AppConfig, EdgeReconciliationConfig, GraphConfig, MatcherConfig, TracerConfig}
+import andy42.graph.config.*
+import andy42.graph.matcher.*
+import andy42.graph.matcher.EdgeSpecs.*
 import andy42.graph.model.*
 import andy42.graph.persistence.*
-import andy42.graph.sample.IngestableJson
+import andy42.graph.sample.{Ingest, IngestableJson}
 import andy42.graph.services.*
 import io.opentelemetry.api.trace.Tracer
 import zio.*
@@ -14,6 +16,50 @@ import zio.telemetry.opentelemetry.tracing.Tracing
 import zio.test.*
 
 import java.nio.file.{Files, Paths}
+
+object APTDetectionOriginalQuery:
+
+  val p1 = node("p1")
+  val p2 = node("p2")
+
+  val f = node("f")
+
+  val writeEvent = node("e1")
+    .hasProperty("type", "WRITE")
+    .isLabeled("EndpointEvent")
+  val readEvent = node("e2")
+    .hasProperty("type", "READ")
+    .isLabeled("EndpointEvent")
+  val deleteEvent = node("e3")
+    .hasProperty("type", "DELETE")
+    .isLabeled("EndpointEvent")
+  val sendEvent = node("e4")
+    .hasProperty("type", "SEND")
+    .isLabeled("EndpointEvent")
+
+  val ip = node("ip")
+
+  val subgraphSpec = subgraph("APT Detection")(
+    directedEdge(from = p1, to = writeEvent).edgeKeyIs("EVENT"),
+    directedEdge(from = writeEvent, to = f).edgeKeyIs("EVENT"),
+    directedEdge(from = p2, to = readEvent).edgeKeyIs("EVENT"),
+    directedEdge(from = readEvent, to = f).edgeKeyIs("EVENT"),
+    directedEdge(from = p2, to = deleteEvent).edgeKeyIs("EVENT"),
+    directedEdge(from = deleteEvent, to = f).edgeKeyIs("EVENT"),
+    directedEdge(from = p2, to = sendEvent).edgeKeyIs("EVENT"),
+    directedEdge(from = sendEvent, to = ip).edgeKeyIs("EVENT")
+  ) where new SubgraphPostFilter:
+    override def description: String = "write.time <= read.time <= delete.time <= sendTime"
+
+    override def p: SnapshotProvider ?=> NodeIO[Boolean] =
+      for
+        writeTime <- writeEvent.epochMillis("time")
+        readTime <- readEvent.epochMillis("time")
+        deleteTime <- readEvent.epochMillis("time")
+        sendTime <- sendEvent.epochMillis("time")
+      // In the Quine APT Detection recipe, this expression uses '<',
+      // which would not match events happening within a 1 ms resolution.
+      yield writeTime <= readTime && readTime <= deleteTime && deleteTime <= sendTime
 
 case class Endpoint(
     pid: Int,
@@ -73,6 +119,16 @@ object Endpoint:
 
   implicit val decoder: JsonDecoder[Endpoint] = DeriveJsonDecoder.gen[Endpoint]
 
+object APTDetectionOriginalApp extends ZIOAppDefault:
+  // Currently using only the first 1000 lines of the original file to limit test runtime
+  val filePrefix = "src/test/scala/andy42/graph/sample/aptdetection"
+  //  val endpointPath = s"$filePrefix/endpoint-first-1000.json"
+  val endpointPath = s"$filePrefix/endpoint.json"
+
+  override def run: ZIO[Any with ZIOAppArgs with Scope, Any, Any] =
+    Ingest(endpointPath, APTDetectionOriginalQuery.subgraphSpec, Endpoint.decoder)
+
+
 case class Network(
     src_ip: String, // IPv4
     src_port: Int, // uint16
@@ -122,65 +178,3 @@ case class Network(
 
 object Network:
   implicit val decoder: JsonDecoder[Network] = DeriveJsonDecoder.gen[Network]
-
-object IngestSpec extends ZIOAppDefault:
-
-  given JsonDecoder[Endpoint] = Endpoint.decoder
-  given JsonDecoder[Network] = Network.decoder
-
-  // Currently using only the first 1000 lines of the original file to limit test runtime
-  val filePrefix = "src/test/scala/andy42/graph/sample/aptdetection"
-//  val endpointPath = s"$filePrefix/endpoint-first-1000.json"
-  val endpointPath = s"$filePrefix/endpoint.json"
-  // val networkPath = s"$filePrefix/network-first-1000.json"
-
-  val ingest: ZIO[Graph, Throwable | UnpackFailure | PersistenceFailure, Chunk[SubgraphMatchAtTime]] =
-    for
-      graph <- ZIO.service[Graph]
-      _ <- graph.registerStandingQuery(StandingQuery.subgraphSpec)
-
-      graphLive = graph.asInstanceOf[GraphLive]
-      testMatchSink = graphLive.matchSink.asInstanceOf[TestMatchSink]
-
-      _ <- IngestableJson.ingestFromFile[Endpoint](endpointPath)(parallelism = 2)
-
-      matches <- testMatchSink.matches
-    yield matches
-
-  val appConfigLayer: ULayer[AppConfig] = ZLayer.succeed {
-    AppConfig(
-      edgeReconciliation = EdgeReconciliationConfig(windowSize = 1.minute, windowExpiry = 2.minutes, maximumIntervalBetweenChunks = 1.minute),
-      matcher = MatcherConfig(resolveBindingsParallelism = 16),
-      tracer = TracerConfig(enabled = false)
-    )
-  }
-
-  val myApp: ZIO[Graph, Throwable | UnpackFailure | PersistenceFailure, Unit] =
-    for
-      graph <- ZIO.service[Graph]
-      _ <- graph.start
-
-      matches <- ingest
-
-      _ <- graph.stop
-
-      _ <- ZIO.debug(s"matches: $matches")
-
-      _ <- ZIO.sleep(2.minutes)
-
-    yield ()
-  
-  override def run: ZIO[Any, Throwable | UnpackFailure | PersistenceFailure, Unit] =
-    myApp.provide(
-      appConfigLayer,
-      TemporaryRocksDB.layer,
-      RocksDBNodeRepository.layer,
-      NodeCache.layer,
-      TestMatchSink.layer,
-      EdgeSynchronizationFactory.layer,
-      EdgeReconciliation.layer,
-      RocksDBEdgeReconciliationRepository.layer,
-      TracingService.live,
-      Graph.layer,
-      ContextStorage.fiberRef
-    )

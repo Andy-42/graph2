@@ -153,6 +153,8 @@ final class NodeImplementation(
       previousSnapshot = Some(currentSnapshot),
       time = time
     )
+    
+    // TODO: Need Could also append to append to packed history - can do this by appending directly to packed
 
     val nextNodeState = Node.fromHistory(id, history :+ eventsAtTime, current = nextCurrent)
 

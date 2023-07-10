@@ -135,13 +135,13 @@ final case class MatcherLive(
     * next recursion. If resolved matches becomes empty, then the original spec-node being proven has failed to be
     * proven, so the overall match fails.
     *
-    * If the match has not failed, then the proven spec-node pairs are added to resolvedMatches. This may add new
+    * If the match has not failed, then the proven spec-node pairs are added to resolvedBindings. This may add new
     * unproven matches that are proven on the next recursion.
     *
     * @param resolvedBindings
     *   The set of all spec-node pairs that have been resolve (or presumed resolved) at this point.
     * @param unresolvedBindings
-    *   The spec-node pairs that must be proven on this step for the resolvedMatches to be true.
+    *   The spec-node pairs that must be proven on this step for the resolvedBindings to be true.
     * @return
     *   All the possible resolved matches. More than one possible solution may be possible if an edge spec matches more
     *   than one edge.
@@ -153,12 +153,14 @@ final case class MatcherLive(
     tracing.span("Matcher.prove") {
       for
         context <- tracing.getCurrentContext
-        _ <- tracing.setAttribute("resolvedMatches", resolvedBindings.toSeq.map((spec, id) => s"$spec -> $id"))
-        _ <- tracing.setAttribute("unresolvedMatches", unresolvedBindings.map((spec, id) => s"$spec -> $id"))
+        _ <- tracing.setAttribute("resolvedBindings", resolvedBindings.toSeq.map((spec, id) => s"$spec -> $id"))
+        _ <- tracing.setAttribute("unresolvedBindings", unresolvedBindings.map((spec, id) => s"$spec -> $id"))
 
         snapshots <- fetchSnapshotsInParallel(unresolvedBindings.map(_._2), context)
 
         nextRound = nextRoundOfProofs(resolvedBindings, unresolvedBindings, snapshots)
+
+        _ <- tracing.setAttribute(s"nextRound.length", nextRound.length)
 
         fullyResolved = nextRound collect {
           case (resolvedBindings, unresolvedBindings) if unresolvedBindings.isEmpty => resolvedBindings
