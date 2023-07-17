@@ -2,23 +2,43 @@ package andy42.graph.matcher
 
 import andy42.graph.model.*
 import andy42.graph.persistence.PersistenceFailure
+import andy42.graph.services.Graph
 import zio.*
 import zio.telemetry.opentelemetry.tracing.Tracing
 
 trait MatcherSnapshotCache:
+
+  def prefetch(ids: Seq[NodeId]): NodeIO[Unit]
+
   def get(id: NodeId): NodeIO[NodeSnapshot]
 
-type NodeIOFailure = UnpackFailure | PersistenceFailure
 type NodeIOSnapshotPromise = Promise[NodeIOFailure, NodeSnapshot]
 
 case class MatcherSnapshotCacheLive(
     time: EventTime,
-    nodeCache: MatcherNodeCache,
+    graph: Graph,
     snapshotCache: Ref[Map[NodeId, NodeIOSnapshotPromise]],
     tracing: Tracing
 ) extends MatcherSnapshotCache:
 
   import tracing.aspects.*
+
+  override def prefetch(ids: Seq[NodeId]): NodeIO[Unit] =
+    (
+      for
+        promises <- ZIO.foreach(ids)(_ => Promise.make[NodeIOFailure, NodeSnapshot])
+
+        idPromiseToBeFetched <- snapshotCache.modify { existingMap =>
+          val idPromisesToBeFetched = ids.zip(promises).flatMap { (id, promise) =>
+            existingMap.get(id).fold(Some(id -> promise))(_ => None)
+          }
+
+          idPromisesToBeFetched -> (existingMap ++ idPromisesToBeFetched)
+        }
+
+        _ <- ZIO.forkAllDiscard(idPromiseToBeFetched.map(initiateFetch))
+      yield ()
+    ).unless(ids.isEmpty).unit
 
   override def get(id: NodeId): NodeIO[NodeSnapshot] =
     (
@@ -45,20 +65,32 @@ case class MatcherSnapshotCacheLive(
 
   private def fetchSnapshot(id: NodeId): NodeIO[NodeSnapshot] =
     for
-      node <- nodeCache.get(id)
+      node <- graph.get(id)
       snapshot <- node.atTime(time)
     yield snapshot
 
 object MatcherSnapshotCache:
   def make(
       time: EventTime,
-      nodeCache: MatcherNodeCache,
+      graph: Graph,
+      nodes: Vector[Node],
       tracing: Tracing
-  ): UIO[MatcherSnapshotCache] =
-    for snapshotCache <- Ref.make(Map.empty[NodeId, NodeIOSnapshotPromise])
+  ): IO[NodeIOFailure, MatcherSnapshotCache] =
+    for
+      snapshotCacheMap <-
+        ZIO
+          .foreach(nodes) { node =>
+            for
+              snapshot <- node.atTime(time)
+              promise <- Promise.make[NodeIOFailure, NodeSnapshot]
+              _ <- promise.succeed(snapshot)
+            yield node.id -> promise
+          }
+          .map(_.toMap)
+      snapshotCache <- Ref.make(snapshotCacheMap)
     yield MatcherSnapshotCacheLive(
       time = time,
-      nodeCache = nodeCache,
+      graph = graph,
       snapshotCache = snapshotCache,
       tracing = tracing
     )

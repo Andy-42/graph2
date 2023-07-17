@@ -14,8 +14,13 @@ type CacheRetainFraction = Double Refined GreaterEqual[0.0] And LessEqual[1.0]
 final case class GraphConfig(
 )
 
+// This is a generic ingestion configuration
+final case class IngestConfig(
+    parallelism: Int = 8 // The number of items to ingest in parallel
+)
+
 final case class NodeCacheConfig(
-    capacity: Int = 1000, // Refined Positive
+    capacity: Int = 10000, // Refined Positive
 
     // Balance more frequent trims against retaining a useful amount of information in the cache
     fractionToRetainOnNodeCacheTrim: Double /* CacheRetainFraction */ = 0.9,
@@ -26,19 +31,8 @@ final case class NodeCacheConfig(
     forkOnTrim: Boolean = true // Should always have this on at runtime, but false is useful for testing
 )
 
-final case class EdgeReconciliationConfig(
-    windowSize: Duration = 1.minute,
-    windowExpiry: Duration = 5.minutes,
-    maximumIntervalBetweenChunks: Duration = 1.minute,
-    maxChunkSize: Int = 4096 // Refined Positive
-)
-
-// parallelism:
-//   > 0 => with that level of parallelism;
-//   <= 0 => unbounded parallelism
 final case class MatcherConfig(
-    fetchSnapshotsParallelism: Int = 0, // default is unbounded
-    resolveBindingsParallelism: Int = 4 // TODO: Determine what a suitable default is
+    allNodesInMutationGroupMustMatch: Boolean = false
 )
 
 final case class TracerConfig(
@@ -50,9 +44,9 @@ final case class TracerConfig(
 final case class AppConfig(
     graph: GraphConfig = GraphConfig(),
     nodeCache: NodeCacheConfig = NodeCacheConfig(),
-    edgeReconciliation: EdgeReconciliationConfig = EdgeReconciliationConfig(),
     matcher: MatcherConfig = MatcherConfig(),
-    tracer: TracerConfig = TracerConfig()
+    tracer: TracerConfig = TracerConfig(),
+    ingestConfig: IngestConfig = IngestConfig()
 )
 
 object AppConfig:
@@ -60,5 +54,5 @@ object AppConfig:
   val matcherConfig: Config[MatcherConfig] = deriveConfig[MatcherConfig]
   val graphConfigDescriptor: Config[GraphConfig] = deriveConfig[GraphConfig]
   val lruCacheDescriptor: Config[NodeCacheConfig] = deriveConfig[NodeCacheConfig]
-  val edgeReconciliationDescriptor: Config[EdgeReconciliationConfig] = deriveConfig[EdgeReconciliationConfig]
   val tracerConfigDescriptor: Config[TracerConfig] = deriveConfig[TracerConfig]
+  val ingestConfigDescriptor: Config[IngestConfig] = deriveConfig[IngestConfig]

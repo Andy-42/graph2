@@ -11,7 +11,7 @@ import java.util.UUID
 final case class NodeId(msb: Long, lsb: Long) extends Ordered[NodeId]:
 
   override def toString: String = new UUID(msb, lsb).toString
-  
+
   override def hashCode: Int =
     val x = msb ^ lsb
     (x >> 32).toInt ^ x.toInt
@@ -98,19 +98,18 @@ object NodeId:
     val digest: MessageDigest = MessageDigest.getInstance("MD5")
     values.foreach(x => digest.update(bytesFor(x)))
     NodeId(digest.digest)
-  
+
   private def bytesFor(x: Any): ByteBuffer =
-    x match {
+    x match
       case x: Boolean => ByteBuffer.allocate(1).put(if x then 1.toByte else 0.toByte)
-      
-      case x: Byte    => ByteBuffer.allocate(1).put(x)
-      case x: Short   => ByteBuffer.allocate(java.lang.Short.BYTES).putShort(x)
-      case x: Int     => ByteBuffer.allocate(java.lang.Integer.BYTES).putInt(x)
-      case x: Long    => ByteBuffer.allocate(java.lang.Long.BYTES).putLong(x)
-      case x: Float   => ByteBuffer.allocate(java.lang.Float.BYTES).putFloat(x)
-      case x: Double  => ByteBuffer.allocate(java.lang.Double.BYTES).putDouble(x)
+
+      case x: Byte   => ByteBuffer.allocate(1).put(x)
+      case x: Short  => ByteBuffer.allocate(java.lang.Short.BYTES).putShort(x)
+      case x: Int    => ByteBuffer.allocate(java.lang.Integer.BYTES).putInt(x)
+      case x: Long   => ByteBuffer.allocate(java.lang.Long.BYTES).putLong(x)
+      case x: Float  => ByteBuffer.allocate(java.lang.Float.BYTES).putFloat(x)
+      case x: Double => ByteBuffer.allocate(java.lang.Double.BYTES).putDouble(x)
 
       case x: String => ByteBuffer.wrap(x.getBytes(UTF_8))
 
       case x => ByteBuffer.allocate(java.lang.Integer.BYTES).putInt(x.##)
-    }

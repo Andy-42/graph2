@@ -42,13 +42,7 @@ object CollapseNodeHistory:
         case Event.EdgeAdded(edge) =>
           edges = if edges.contains(edge) then edges else edges :+ edge
 
-        case Event.FarEdgeAdded(edge) =>
-          edges = if edges.contains(edge) then edges else edges :+ edge
-
         case Event.EdgeRemoved(edge) =>
-          edges = if edges.contains(edge) then edges.filter(_ != edge) else edges
-
-        case Event.FarEdgeRemoved(edge) =>
           edges = if edges.contains(edge) then edges.filter(_ != edge) else edges
 
     NodeSnapshot(

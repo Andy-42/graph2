@@ -1,9 +1,10 @@
 package andy42.graph.services
 
-import andy42.graph.config.{AppConfig, MatcherConfig}
-import andy42.graph.matcher.{Matcher, SubgraphSpec}
+import andy42.graph.config.AppConfig
+import andy42.graph.matcher.{Matcher, SpecNodeBindings, SubgraphSpec}
 import andy42.graph.model.*
 import andy42.graph.persistence.{NodeRepository, PersistenceFailure}
+import andy42.graph.services.NodeMutationCompletion.completeAndValidate
 import zio.*
 import zio.stm.*
 import zio.telemetry.opentelemetry.context.ContextStorage
@@ -41,9 +42,6 @@ import zio.telemetry.opentelemetry.tracing.Tracing
   */
 trait Graph:
 
-  def start: UIO[Unit]
-  def stop: UIO[Unit]
-
   /** Get a node from the graph.
     *
     * The returned node will contain the full history of the node.
@@ -76,53 +74,23 @@ trait Graph:
   def append(
       time: EventTime,
       changes: Vector[NodeMutationInput]
-  ): NodeIO[Unit]
-
-  def registerStandingQuery(subgraphSpec: SubgraphSpec): UIO[Unit]
+  ): IO[NodeIOFailure | InputValidationFailure, Seq[SubgraphMatchAtTime]]
 
 final case class NodeMutationInput(id: NodeId, events: Vector[Event])
 
-extension (changes: Vector[NodeMutationInput])
-  def hasEventsOtherThanFarEdge: Boolean = changes.exists(_.events.exists(!_.isFarEdgeEvent))
-
 final case class NodeMutationOutput(node: Node, events: Vector[Event])
+
+final case class SubgraphMatchAtTime(time: EventTime, subgraphSpec: SubgraphSpec, nodeMatch: SpecNodeBindings)
 
 final case class GraphLive(
     config: AppConfig,
     inFlight: TSet[NodeId],
     cache: NodeCache,
     nodeRepositoryService: NodeRepository,
-    edgeSynchronizationFactory: EdgeSynchronizationFactory,
-    edgeSynchronizationRef: Ref[Option[EdgeSynchronization]],
-    matchSink: MatchSink,
+    subgraphSpec: SubgraphSpec,
     tracing: Tracing,
-    standingQueries: Ref[Set[SubgraphSpec]],
     contextStorage: ContextStorage
 ) extends Graph:
-
-  override def start: UIO[Unit] =
-    for
-      edgeSynchronizationInstance <- edgeSynchronizationFactory.make(this)
-      _ <- edgeSynchronizationInstance.startReconciliation
-      _ <- edgeSynchronizationRef.set(Some(edgeSynchronizationInstance))
-    yield ()
-
-  override def stop: UIO[Unit] =
-    for
-      maybeEdgeSynchronizationInstance <- edgeSynchronizationRef.getAndSet(None)
-      edgeSynchronizationInstance <- maybeEdgeSynchronizationInstance.fold(
-        ZIO.dieMessage("Graph is not started")
-      ) (ZIO.succeed)
-      // _ <- edgeSynchronizationInstance.stop // TODO: Implement stop to drain queue and shut down daemon
-    yield ()
-
-  private def getEdgeSynchronization: UIO[EdgeSynchronization] =
-    for
-      maybeEdgeSynchronization <- edgeSynchronizationRef.get
-      edgeSynchronization <- maybeEdgeSynchronization.fold(
-        ZIO.dieMessage("Graph has not been started")
-      )(ZIO.succeed)
-    yield edgeSynchronization
 
   override def get(
       id: NodeId
@@ -130,135 +98,69 @@ final case class GraphLive(
     for
       optionNode <- cache.get(id)
       node <- optionNode.fold(
-        ZIO.scoped {
-          for
-            _ <- withNodePermit(id)
-            optionNodeTestAgain <- cache.get(id) // check again since another thread may have cached this id
-            node <- optionNodeTestAgain.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
-          yield node
-        }
+        for
+          node <- nodeRepositoryService.get(id)
+          _ <- cache.putIfAbsent(node)
+        yield node
       )(ZIO.succeed)
-    yield node
-
-  private def getNodeFromDataServiceAndAddToCache(id: NodeId): IO[PersistenceFailure | UnpackFailure, Node] =
-    for
-      node <- nodeRepositoryService.get(id)
-      _ <- cache.put(node)
     yield node
 
   override def append(
       time: EventTime,
       changes: Vector[NodeMutationInput]
-  ): NodeIO[Unit] =
+  ): IO[NodeIOFailure | InputValidationFailure, Seq[SubgraphMatchAtTime]] =
     for
-      output <- ZIO.foreachPar(changes)(processChangesForOneNode(time, _))
+      completedNodes <- completeAndValidate(changes)
 
-      edgeSynchronization <- getEdgeSynchronization
-      _ <- edgeSynchronization.graphChanged(time, output)
+      affectedNodes <-
+        if completedNodes.isEmpty then ZIO.succeed(Vector.empty)
+        else ZIO.foreachPar(completedNodes)(applyEventsToPersistentStoreAndCache(time, _))
 
-      // Expect that all changes are far edge events or all not far edge events.
-      // When the events don't include far edge events, this is an externally-driven mutation and needs
-      // to be matched against standing queries. If the events are all far edge events, then there is no
-      // need to match against standing queries since that will have been handled as part of the original
-      // append operation that appended the (near) edges.
-      _ <- (
-        for
-          // Expand the changed nodes to include the targets of any affected nodes
-          affectedNodes <- allAffectedNodes(time, output)
-          subgraphSpecs <- standingQueries.get
-          _ <- ZIO.foreachParDiscard(subgraphSpecs)(matchAgainstStandingQueries(time, affectedNodes))
-        yield ()
-      ).when(changes.hasEventsOtherThanFarEdge)
-    yield ()
-
-  private def processChangesForOneNode(
-      time: EventTime,
-      changes: NodeMutationInput
-  ): NodeIO[NodeMutationOutput] =
-    val deduplicatedEvents = EventDeduplication.deduplicateWithinEvents(changes.events)
-
-    for node <- applyEventsToPersistentStoreAndCache(changes.id, time, deduplicatedEvents)
-    yield NodeMutationOutput(node, deduplicatedEvents)
+      nodeMatches <-
+        if affectedNodes.isEmpty then ZIO.succeed(Vector.empty)
+        else
+          matchAgainstStandingQueries(time, affectedNodes)
+            .map(_.map(subgraphMatch => SubgraphMatchAtTime(time, subgraphSpec, subgraphMatch)))
+    yield nodeMatches
 
   private def applyEventsToPersistentStoreAndCache(
-      id: NodeId,
       time: EventTime,
-      events: Vector[Event]
+      changes: NodeMutationInput
   ): NodeIO[Node] =
+    val id = changes.id
+    val events = EventDeduplication.deduplicateWithinEvents(changes.events)
+
     ZIO.scoped {
       for
         _ <- withNodePermit(id)
-        optionCachedNode <- cache.get(id)
-        existingNode <- optionCachedNode.fold(getNodeFromDataServiceAndAddToCache(id))(ZIO.succeed)
 
-        tuple <- existingNode.appendWithEventsAtTime(time, events)
-        (nextNode, maybeEventsAtTime) = tuple
+        maybeCachedNode <- cache.get(id)
+        node <- maybeCachedNode.fold(nodeRepositoryService.get(id))(ZIO.succeed)
 
-        // Persist to the data store and cache, if there is new history to persist
+        x <- node.appendWithEventsAtTime(time, events)
+        (nextNode, maybeEventsAtTime) = x
+
         _ <- maybeEventsAtTime.fold(ZIO.unit)(nodeRepositoryService.append(nextNode.id, _))
-        _ <- cache.put(nextNode).unless(maybeEventsAtTime.isEmpty)
+
+        _ <- cache.put(nextNode).when(maybeEventsAtTime.nonEmpty || maybeCachedNode.isEmpty)
       yield nextNode
     }
 
-  override def registerStandingQuery(subgraphSpec: SubgraphSpec): UIO[Unit] = standingQueries.update(_ + subgraphSpec)
-
-  /** Get the new state for all nodes that were modified in this group of changes. The Graph will pass the new node
-    * states after the changes have been applied, but since it will not include any far edge events (since that is done
-    * in an eventually-consistent way), so we retrieve any nodes affected by edge events and patch them as though the
-    * far edges had been modified.
-    */
-  private def allAffectedNodes(
-      time: EventTime,
-      mutations: Vector[NodeMutationOutput]
-  ): NodeIO[Vector[Node]] =
-
-    def farEdgeEvents: Vector[(NodeId, Event)] =
-      for
-        mutation <- mutations
-        NodeMutationOutput(node, events) = mutation
-        referencedNodeAndFarEdgeEvent <- events.collect {
-          case event: Event.EdgeAdded   => event.edge.other -> Event.FarEdgeAdded(event.edge.reverse(node.id))
-          case event: Event.EdgeRemoved => event.edge.other -> Event.FarEdgeRemoved(event.edge.reverse(node.id))
-        }
-      yield referencedNodeAndFarEdgeEvent
-
-    val farEdgeEventsGroupedById: Map[NodeId, Vector[Event]] =
-      farEdgeEvents
-        .groupBy((id, _) => id)
-        .map((k, v) => k -> v.map(_._2))
-
-    // Nodes referenced in NearEdge Events that are not already part of this mutation
-    val additionalReferencedNodeIds = farEdgeEventsGroupedById.keys.filter { id =>
-      !mutations.exists(_.node.id == id)
-    }
-
-    def appendFarEdgeEvents(node: Node): NodeIO[Node] =
-      farEdgeEventsGroupedById
-        .get(node.id)
-        .fold(ZIO.succeed(node))(events => node.append(time, events))
-
-    for
-      additionalReferencedNodes <- ZIO.foreachPar(additionalReferencedNodeIds)(get)
-      updatedNodes <- ZIO.foreach(mutations.map(_.node) ++ additionalReferencedNodes)(appendFarEdgeEvents)
-    yield updatedNodes
-
   private def matchAgainstStandingQueries(
       time: EventTime,
-      changedNodes: Vector[Node]
-  )(subgraphSpec: SubgraphSpec): NodeIO[Unit] =
-    for
-      matcher <- Matcher.make(
+      nodes: Vector[Node]
+  ): NodeIO[Seq[SpecNodeBindings]] =
+    Matcher
+      .make(
         config = config.matcher,
         time = time,
         graph = this,
-        tracing = tracing,
         subgraphSpec = subgraphSpec,
-        nodes = changedNodes,
+        affectedNodes = nodes,
+        tracing = tracing,
         contextStorage = contextStorage
-      ) // TODO: Fix order of parameters
-      nodeMatches <- matcher.matchNodes(changedNodes.map(_.id))
-      _ <- matchSink.offer(SubgraphMatchAtTime(time, subgraphSpec, nodeMatches)).when(nodeMatches.nonEmpty)
-    yield ()
+      )
+      .flatMap(_.matchNodesToSubgraphSpec(nodes))
 
   private def acquirePermit(id: => NodeId): UIO[NodeId] =
     STM
@@ -277,8 +179,7 @@ final case class GraphLive(
   private def withNodePermit(id: => NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
-type GraphEnvironment = AppConfig & NodeCache & NodeRepository & EdgeSynchronizationFactory & MatchSink & Tracing &
-  ContextStorage
+type GraphEnvironment = AppConfig & NodeCache & NodeRepository & SubgraphSpec & Tracing & ContextStorage
 
 object Graph:
   val layer: URLayer[GraphEnvironment, Graph] =
@@ -287,24 +188,17 @@ object Graph:
         config <- ZIO.service[AppConfig]
         nodeCache <- ZIO.service[NodeCache]
         nodeDataService <- ZIO.service[NodeRepository]
-        edgeSynchronizationFactory <- ZIO.service[EdgeSynchronizationFactory]
-        edgeSynchronizationRef <- Ref.make[Option[EdgeSynchronization]](None)
-        matchSink <- ZIO.service[MatchSink]
         tracing <- ZIO.service[Tracing]
         contextStorage <- ZIO.service[ContextStorage]
-
-        standingQueries <- Ref.make(Set.empty[SubgraphSpec])
+        subgraphSpec <- ZIO.service[SubgraphSpec]
         inFlight <- TSet.empty[NodeId].commit
       yield GraphLive(
         config = config,
         inFlight = inFlight,
         cache = nodeCache,
         nodeRepositoryService = nodeDataService,
-        edgeSynchronizationFactory = edgeSynchronizationFactory,
-        edgeSynchronizationRef = edgeSynchronizationRef,
-        matchSink = matchSink,
+        subgraphSpec = subgraphSpec,
         tracing = tracing,
-        standingQueries = standingQueries,
         contextStorage = contextStorage
       )
     }

@@ -6,6 +6,8 @@ import scala.collection.mutable
 object EventDeduplication:
 
   // Mutation events are always ordered from newest to oldest
+  // TODO: Are events really ordered this way? Shouldn't events be compared against all other events (i.e., upper-triangular ex. diagonal)
+  // TODO: Can do a check for NodeRemoved, and then use the following algo.
 
   /** Remove any duplicate mutation events.
     *
@@ -51,5 +53,3 @@ object EventDeduplication:
       case Event.PropertyRemoved(k)   => isDuplicatePropertyEvent(k, laterEvent)
       case Event.EdgeAdded(edge)      => isDuplicateEdgeEvent(edge, laterEvent)
       case Event.EdgeRemoved(edge)    => isDuplicateEdgeEvent(edge, laterEvent)
-      case Event.FarEdgeAdded(edge)   => isDuplicateEdgeEvent(edge, laterEvent)
-      case Event.FarEdgeRemoved(edge) => isDuplicateEdgeEvent(edge, laterEvent)

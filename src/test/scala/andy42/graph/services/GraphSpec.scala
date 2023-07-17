@@ -1,18 +1,16 @@
 package andy42.graph.services
 
 import andy42.graph.config.{AppConfig, GraphConfig, TracerConfig}
+import andy42.graph.matcher.*
 import andy42.graph.model.*
 import andy42.graph.persistence.{TestNodeRepository, TestNodeRepositoryLive}
 import io.opentelemetry.api.trace.Tracer
 import zio.*
-import zio.config.*
 import zio.telemetry.opentelemetry.context.ContextStorage
 import zio.telemetry.opentelemetry.tracing.Tracing
 import zio.test.*
 import zio.test.Assertion.*
 import zio.test.TestAspect.timed
-
-import java.util.UUID
 
 object GraphSpec extends ZIOSpecDefault:
 
@@ -26,15 +24,11 @@ object GraphSpec extends ZIOSpecDefault:
   ): ZIO[Graph, Any, TestResult] =
     for
       graph <- ZIO.service[Graph]
-      _ <- graph.start
 
       // Get mock services used for testing from GraphLive
       graphLive = graph.asInstanceOf[GraphLive]
       testNodeRepository = graphLive.nodeRepositoryService.asInstanceOf[TestNodeRepositoryLive]
       testNodeCache = graphLive.cache.asInstanceOf[TestNodeCacheLive]
-
-      maybeTestEdgeSynchronization <- graphLive.edgeSynchronizationRef.get
-      testEdgeSynchronization = maybeTestEdgeSynchronization.get.asInstanceOf[TestEdgeSynchronization]
 
       _ <- testNodeCache.clear() *> testNodeRepository.clear()
 
@@ -53,9 +47,6 @@ object GraphSpec extends ZIOSpecDefault:
       // Services that are updated with the new node state
       nodeFromData <- testNodeRepository.get(id)
       nodeFromCacheAfter <- testNodeCache.get(id)
-      // Services that get notified of changes to the node state
-      edgeSynchronizationParameters <- testEdgeSynchronization.graphChangedParameters
-      _ = true
     yield
     // There are no nodes in progress by the graph either before or after
     assertTrue(
@@ -67,9 +58,7 @@ object GraphSpec extends ZIOSpecDefault:
       nodeCurrentAfter == expectedCurrent, // redundant test
       // The data service and the cache have been updated with the new node state
       nodeFromData == expectedNode,
-      nodeFromCacheAfter.get == expectedNode,
-      // The standing query evaluation and edge synchronization services have been notified of the changes
-      edgeSynchronizationParameters.toVector == expectedOutputEvents
+      nodeFromCacheAfter.get == expectedNode
     )
 
   val appConfigLayer: ULayer[AppConfig] =
@@ -78,12 +67,15 @@ object GraphSpec extends ZIOSpecDefault:
     )
   val trace: TaskLayer[Tracing & Tracer] = appConfigLayer >>> TracingService.live
 
+  val nodeSpecA: NodeSpec = node("a").hasProperty("x")
+  val subgraphSpec: SubgraphSpec =
+    subgraph("No matching")(EdgeSpecs.directedEdge(from = nodeSpecA, to = nodeSpecA))
+
   val graphLayer: TaskLayer[Graph] =
     (appConfigLayer ++
       TestNodeRepository.layer ++
       TestNodeCache.layer ++
-      TestMatchSink.layer ++
-      TestEdgeSynchronizationFactory.layer ++
+      ZLayer.succeed(subgraphSpec) ++
       trace ++ ContextStorage.fiberRef) >>> Graph.layer
 
   val genNodeId: Gen[Any, NodeId] =
@@ -95,7 +87,7 @@ object GraphSpec extends ZIOSpecDefault:
       test("Simplest possible test that touches all data flows")(
         check(genNodeId, Gen.long, Gen.long) { (id, time, p1Value) =>
 
-          val edge = NearEdge("e1", id, EdgeDirection.Outgoing) // Reflexive - points back to originating node
+          val edge = EdgeImpl("e1", id, EdgeDirection.Outgoing) // Reflexive - points back to originating node
           val inputEvents = Vector(Event.PropertyAdded("p1", p1Value), Event.EdgeAdded(edge))
           val inputMutations = Vector(NodeMutationInput(id, inputEvents))
 

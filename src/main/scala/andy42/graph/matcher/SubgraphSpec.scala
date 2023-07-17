@@ -92,7 +92,7 @@ case class SubgraphSpec(
 
   val nodeMermaid: String =
     edges
-      .flatMap { case edge: EdgeSpec => List(edge.direction.from, edge.direction.to) }
+      .flatMap { edge => List(edge.direction.from, edge.direction.to) }
       .map(spec => spec.name -> spec)
       .toMap
       .values

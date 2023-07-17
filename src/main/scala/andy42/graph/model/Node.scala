@@ -13,8 +13,8 @@ type EventTime = Long // Epoch Millis
 val StartOfTime: EventTime = Long.MinValue
 val EndOfTime: EventTime = Long.MaxValue
 
-/** Break ties when multiple groups of events are processed for the same EventTime 
-  * The ordering of the EventsAtTime corresponds to the time that the events are appended.
+/** Break ties when multiple groups of events are processed for the same EventTime The ordering of the EventsAtTime
+  * corresponds to the time that the events are appended.
   */
 type Sequence = Int
 
@@ -30,7 +30,8 @@ object NodeSnapshot:
   */
 type PackedNodeHistory = Packed
 
-type NodeIO[T] = IO[UnpackFailure | PersistenceFailure, T]
+type NodeIOFailure = UnpackFailure | PersistenceFailure
+type NodeIO[T] = IO[NodeIOFailure, T]
 
 sealed trait Node:
   val id: NodeId
@@ -60,7 +61,7 @@ sealed trait Node:
 
   def appendWithEventsAtTime(time: EventTime, events: Vector[Event]): IO[UnpackFailure, (Node, Option[EventsAtTime])]
 
-final class NodeImplementation(
+final class NodeImpl(
     val id: NodeId,
     val version: Int,
     val lastTime: EventTime,
@@ -92,6 +93,7 @@ final class NodeImplementation(
       events: Vector[Event]
   ): IO[UnpackFailure, (Node, Option[EventsAtTime])] =
     require(events.nonEmpty)
+    // require(events.length == EventDeduplication.deduplicateWithinEvents(events).length)
 
     if hasEmptyHistory then
       val eventsAtTime = EventsAtTime(time = time, sequence = 0, events = events)
@@ -153,7 +155,7 @@ final class NodeImplementation(
       previousSnapshot = Some(currentSnapshot),
       time = time
     )
-    
+
     // TODO: Need Could also append to append to packed history - can do this by appending directly to packed
 
     val nextNodeState = Node.fromHistory(id, history :+ eventsAtTime, current = nextCurrent)
@@ -165,9 +167,9 @@ final class NodeImplementation(
     id.hashCode * 41 + MurmurHash3.arrayHash(packedHistory)
 
   override def equals(other: Any): Boolean =
-    if !other.isInstanceOf[NodeImplementation] then false
+    if !other.isInstanceOf[NodeImpl] then false
     else
-      val otherNode = other.asInstanceOf[NodeImplementation]
+      val otherNode = other.asInstanceOf[NodeImpl]
 
       id == otherNode.id &&
       packedHistory.sameElements(otherNode.packedHistory)
@@ -179,7 +181,7 @@ object Node:
 
   // A node with an empty history
   def empty(id: NodeId): Node =
-    new NodeImplementation(
+    new NodeImpl(
       id = id,
       version = 0,
       lastTime = StartOfTime,
@@ -195,7 +197,7 @@ object Node:
   ): Node =
     if history.isEmpty then Node.empty(id)
     else
-      new NodeImplementation(
+      new NodeImpl(
         id = id,
         version = history.length,
         lastTime = history.last.time,
@@ -213,7 +215,7 @@ object Node:
   ): Node =
     require(packed.nonEmpty)
 
-    new NodeImplementation(
+    new NodeImpl(
       id = id,
       version = if history == null then 0 else history.length,
       lastTime = if history == null then StartOfTime else history.last.time,
@@ -225,7 +227,7 @@ object Node:
 
   // A node being created from the cache
   def fromCacheItem(id: NodeId, item: CacheItem): Node =
-    new NodeImplementation(
+    new NodeImpl(
       id = id,
       version = item.version,
       lastTime = item.lastTime,

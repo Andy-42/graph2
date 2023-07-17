@@ -20,24 +20,20 @@ object Generators:
   val genEdgeDirection: Gen[Any, EdgeDirection] =
     Gen.oneOf(Gen.const(EdgeDirection.Incoming), Gen.const(EdgeDirection.Outgoing), Gen.const(EdgeDirection.Undirected))
 
-  val genEdge: Gen[Any, NearEdge | FarEdge] =
+  val genEdge: Gen[Any, EdgeImpl] =
     for
       other <- genNodeId
       propertyName <- genPropertyName
       edgeDirection <- genEdgeDirection
-      isNear <- Gen.boolean
-    yield if isNear then NearEdge(propertyName, other, edgeDirection) else FarEdge(propertyName, other, edgeDirection)
+    yield EdgeImpl(propertyName, other, edgeDirection)
 
-  val genEdgeEvent: Gen[Any, Event.EdgeAdded | Event.EdgeRemoved | Event.FarEdgeAdded | Event.FarEdgeRemoved] =
+  val genEdgeEvent: Gen[Any, Event.EdgeAdded | Event.EdgeRemoved ] =
     for
       edge <- genEdge
       isAdded <- Gen.boolean
-    yield (edge, isAdded) match {
-      case (edge: NearEdge, true)  => Event.EdgeAdded(edge)
-      case (edge: FarEdge, true)   => Event.FarEdgeAdded(edge)
-      case (edge: NearEdge, false) => Event.EdgeRemoved(edge)
-      case (edge: FarEdge, false)  => Event.FarEdgeRemoved(edge)
-    }
+    yield (edge, isAdded) match
+      case (edge: EdgeImpl, true)  => Event.EdgeAdded(edge)
+      case (edge: EdgeImpl, false) => Event.EdgeRemoved(edge)
 
   val genNilProperty: Gen[Any, Unit] = Gen.const(())
   val genBooleanProperty: Gen[Any, Boolean] = Gen.boolean

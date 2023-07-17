@@ -78,7 +78,7 @@ object PropertyValue extends Unpackable[PropertyValueType]:
 
       case PropertyMapValue(v) =>
         packer.packMapHeader(v.size)
-        v.foreach { case (k, v) => packer.packString(k); pack(v) }
+        v.foreach { (k, v) => packer.packString(k); pack(v) }
         packer
 
   def unpackKeyValue(using unpacker: MessageUnpacker): IO[UnpackFailure, (String, ScalarType)] =

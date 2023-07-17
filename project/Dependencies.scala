@@ -2,19 +2,19 @@ import sbt.*
 object Dependencies {
 
   object Versions {
-    val zio = "2.0.13"
-    val zioLogging = "2.1.13"
-    val zioOpentelemetry = "3.0.0-RC10"
-    val zioJson = "0.5.0"
-    val zioConfig = "4.0.0-RC14"
-    val zioConfigRefined = "4.0.0-RC14"
-    val opentelemetry = "1.26.0"
+    val zio = "2.0.16"
+    val zioLogging = "2.1.14"
+    val zioOpentelemetry = "3.0.0-RC17"
+    val zioJson = "0.6.2"
+    val zioConfig = "4.0.0-RC16"
+    val zioConfigRefined = "4.0.0-RC16"
+    val opentelemetry = "1.29.0"
     val opentelemetryNoop = "1.17.0-alpha"
     val jaeger = "1.8.1"
-    val rocksDB = "8.1.1.1"
+    val rocksDB = "8.3.2"
     val quill = "4.6.0.1"
-    val msgPack = "0.9.3"
-    val commonsIo = "20030203.000550"
+    val msgPack = "0.9.5"
+    val commonsIo = "2.13.0"
   }
 
   object Orgs {
@@ -43,7 +43,7 @@ object Dependencies {
   lazy val opentelemetry: Seq[ModuleID] = Seq(
     Orgs.opentelemetry % "opentelemetry-api" % Versions.opentelemetry,
     Orgs.opentelemetry % "opentelemetry-context" % Versions.opentelemetry,
-    Orgs.opentelemetry % "opentelemetry-exporter-jaeger" % Versions.opentelemetry,
+    Orgs.opentelemetry % "opentelemetry-exporter-otlp" % Versions.opentelemetry,
     Orgs.opentelemetry % "opentelemetry-sdk" % Versions.opentelemetry,
     Orgs.opentelemetry % "opentelemetry-extension-noop-api" % Versions.opentelemetryNoop
   )

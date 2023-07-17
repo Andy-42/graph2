@@ -10,6 +10,7 @@ import java.time.temporal.ChronoUnit.MILLIS
 trait NodeCache:
   def get(id: NodeId): IO[UnpackFailure, Option[Node]]
   def put(node: Node): IO[UnpackFailure, Unit]
+  def putIfAbsent(node: Node): IO[UnpackFailure, Unit]
 
   def startCurrentSnapshotTrimDaemon: UIO[Unit]
 
@@ -92,6 +93,30 @@ final case class NodeCacheLive(
 
       _ <- trimIfOverCapacity(now) // TODO: fork - use the config!
     yield ()
+
+  override def putIfAbsent(node: Node): IO[UnpackFailure, Unit] =
+    for
+      now <- Clock.currentTime(MILLIS)
+
+      current <- node.current
+
+      _ <- items
+        .putIfAbsent(
+          k = node.id,
+          v = CacheItem(
+            version = node.version,
+            lastTime = node.lastTime,
+            lastSequence = node.lastSequence,
+            current = current,
+            packed = node.packedHistory,
+            lastAccess = now
+          )
+        )
+        .commit
+
+      _ <- trimIfOverCapacity(now) // TODO: fork - use the config!
+    yield ()
+
 
   // TODO: Avoid a cascade of trims by capturing the watermark and comparing before trim
 

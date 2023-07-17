@@ -15,6 +15,8 @@ final case class TestNodeCacheLive(cache: TMap[NodeId, Node]) extends NodeCache 
 
   override def put(node: Node): IO[UnpackFailure, Unit] = cache.put(node.id, node).commit
 
+  override def putIfAbsent(node: Node): IO[UnpackFailure, Unit] = cache.putIfAbsent(node.id, node).commit
+
   override def startCurrentSnapshotTrimDaemon: UIO[Unit] = ZIO.unit
 
   override def contents: UIO[Map[NodeId, Node]] = cache.toMap.commit

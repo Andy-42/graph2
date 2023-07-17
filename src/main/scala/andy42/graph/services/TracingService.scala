@@ -4,7 +4,7 @@ import andy42.graph
 import andy42.graph.config.{AppConfig, TracerConfig}
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Tracer
-import io.opentelemetry.exporter.jaeger.JaegerGrpcSpanExporter
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
 import io.opentelemetry.extension.noopapi.NoopOpenTelemetry
 import io.opentelemetry.sdk.OpenTelemetrySdk
 import io.opentelemetry.sdk.resources.Resource
@@ -37,7 +37,7 @@ object TracingService:
   def makeTracer(tracerConfig: TracerConfig): Task[Tracer] =
     // TODO: Should these be managed?
     for
-      spanExporter <- ZIO.attempt(JaegerGrpcSpanExporter.builder().setEndpoint(tracerConfig.host).build())
+      spanExporter <- ZIO.attempt(OtlpGrpcSpanExporter.builder().setEndpoint(tracerConfig.host).build())
       spanProcessor <- ZIO.attempt(SimpleSpanProcessor.create(spanExporter))
       tracerProvider <-
         ZIO.attempt(

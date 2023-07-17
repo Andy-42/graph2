@@ -20,33 +20,43 @@ object CombinationGeneratorSpec extends ZIOSpecDefault:
         Vector(1, 3)
       )
 
-      assertTrue(CombinationGenerator.all(x) == expected)
-    },
-    test("All combinations where an element is only used once") {
-
-      val x = Vector(
-        Vector(1),
-        Vector(1, 2, 3)
-      )
-
-      val expected = Vector(
-        // Vector(1, 1), // Not this one since 1 can only appear once in the result
-        Vector(1, 2),
-        Vector(1, 3)
-      )
-
-      assertTrue(CombinationGenerator.combinationsSingleUse(x) == expected)
+      assertTrue(CombinationGenerator.generateCombinations(x) == expected)
     },
     test("Any input with zero elements at the second level will generate zero elements") {
 
-      val x = Vector(
+      val x1 = Vector(
+        Vector(),
+        Vector(1, 2),
+        Vector(1, 2, 3)
+      )
+
+      val x2 = Vector(
         Vector(1),
         Vector(),
         Vector(1, 2, 3)
       )
 
+      val x3 = Vector(
+        Vector(1),
+        Vector(1, 2),
+        Vector()
+      )
+
       val expected = Vector.empty
 
-      assertTrue(CombinationGenerator.combinationsSingleUse(x) == expected)
+      assertTrue(
+        CombinationGenerator.generateCombinations(x1) == expected,
+        CombinationGenerator.generateCombinations(x2) == expected,
+        CombinationGenerator.generateCombinations(x3) == expected
+      )
+    },
+    test("Using emptyCombinations as an input produces an empty") {
+
+      // While any combination with an empty will produce an empty, it might
+      // involve the combination generator doing more work than it needs to.
+      // When the
+      val empty = CombinationGenerator.emptyInput[Int]
+
+      assertTrue(CombinationGenerator.generateCombinations(empty) == Vector.empty)
     }
   )
