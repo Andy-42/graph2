@@ -45,8 +45,7 @@ final case class AppConfig(
     graph: GraphConfig = GraphConfig(),
     nodeCache: NodeCacheConfig = NodeCacheConfig(),
     matcher: MatcherConfig = MatcherConfig(),
-    tracer: TracerConfig = TracerConfig(),
-    ingestConfig: IngestConfig = IngestConfig()
+    tracer: TracerConfig = TracerConfig()
 )
 
 object AppConfig:

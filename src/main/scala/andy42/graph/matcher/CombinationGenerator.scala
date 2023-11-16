@@ -21,5 +21,3 @@ object CombinationGenerator:
     }
 
   type GeneratorInput[A] = Seq[Seq[A]]
-
-  def emptyInput[A]: GeneratorInput[A] = Vector(Vector.empty[A])

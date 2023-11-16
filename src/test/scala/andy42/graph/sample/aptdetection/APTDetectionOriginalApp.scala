@@ -61,20 +61,15 @@ object APTDetectionOriginalApp extends APTDetectionApp:
   val config: ULayer[AppConfig] = ZLayer.succeed {
     AppConfig(
       matcher = MatcherConfig(allNodesInMutationGroupMustMatch = false),
-      tracer = TracerConfig(enabled = false),
-      ingestConfig = IngestConfig(parallelism = 8)
+      tracer = TracerConfig(enabled = false)
     )
   }
 
   override def run: ZIO[ZIOAppArgs with Scope, Any, Any] =
-    (for
-      config <- ZIO.service[AppConfig]
-      matches <- ingestJsonFromFile[Endpoint](path = endpointPath, parallelism = config.ingestConfig.parallelism)(using
-        Endpoint.decoder
-      )
+    (for matches <- ingestJsonFromFile[Endpoint](path = endpointPath, parallelism = 8)(using Endpoint.decoder)
         .tap(subgraphMatch => ZIO.debug(s"Match: $subgraphMatch"))
         .runCollect
-    // TODO: Deduplicate matches and sort matches into some canonical order
+      // TODO: Deduplicate matches and sort matches into some canonical order
     yield ()).provide(
       config,
       TemporaryRocksDB.layer,

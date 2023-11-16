@@ -49,14 +49,5 @@ object CombinationGeneratorSpec extends ZIOSpecDefault:
         CombinationGenerator.generateCombinations(x2) == expected,
         CombinationGenerator.generateCombinations(x3) == expected
       )
-    },
-    test("Using emptyCombinations as an input produces an empty") {
-
-      // While any combination with an empty will produce an empty, it might
-      // involve the combination generator doing more work than it needs to.
-      // When the
-      val empty = CombinationGenerator.emptyInput[Int]
-
-      assertTrue(CombinationGenerator.generateCombinations(empty) == Vector.empty)
     }
   )

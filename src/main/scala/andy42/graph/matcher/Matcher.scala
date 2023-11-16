@@ -46,17 +46,18 @@ final case class MatcherLive(
 
       for given NodeSnapshot <- snapshotCache.get(id)
       yield
-        if !nodeSpec.allNodePredicatesMatch then EmptyCombinationInput.shallowMatch
+        if !nodeSpec.allNodePredicatesMatch then Vector.empty
         else
-          optimizeIfEmpty(EmptyCombinationInput.shallowMatch) {
-            edgeSpecs.foldLeft(EmptyCombinationInput.shallowMatch) {
-              case (s, _) if s.nonEmpty && s.last.isEmpty => s
+          optimizeIfEmpty {
+            edgeSpecs
+              .foldLeft(Vector.empty[Seq[SpecNodeBinding]]) {
+                case (s, _) if s.nonEmpty && s.last.isEmpty => s
 
-              case (s, edgeSpec) =>
-                s :+ summon[NodeSnapshot].edges.collect {
-                  case edge if edgeSpec.isShallowMatch(edge) => nodeSpec.name -> edge.other
-                }
-            }
+                case (s, edgeSpec) =>
+                  s :+ summon[NodeSnapshot].edges.collect {
+                    case edge if edgeSpec.isShallowMatch(edge) => nodeSpec.name -> edge.other
+                  }
+              }
           }
 
     def possibleBindings: NodeIO[Seq[BindingInProgress]] =
@@ -93,8 +94,8 @@ final case class MatcherLive(
       binding.possibleBindings.map(s ++ _)
     }
 
-  def optimizeIfEmpty[T](optimizedEmpty: GeneratorInput[T])(a: GeneratorInput[T]): GeneratorInput[T] =
-    if a.nonEmpty && a.last.isEmpty then optimizedEmpty else a
+  def optimizeIfEmpty[T](a: GeneratorInput[T]): GeneratorInput[T] =
+    if a.nonEmpty && a.last.isEmpty then Vector.empty[Seq[T]] else a
 
   def initialMatchesWhereAllNodesMustMatch(
       mutations: Seq[NodeId]
@@ -105,19 +106,21 @@ final case class MatcherLive(
 
     for possibleBindingsForEachNodeSpec <-
         ZIO
-          .foldLeft(subgraphSpec.allUniqueNodeSpecs)(EmptyCombinationInput.bindingInProgress) {
-            // If some nodeSpec failed to have any matches then there is no need to evaluate any more nodeSpecs
-            case (s1, _) if s1.nonEmpty && s1.last.isEmpty => ZIO.succeed(s1)
-
-            case (s1, nodeSpec) =>
-              ZIO
-                .foldLeft(mutations)(Vector.empty[BindingInProgress]) { (s2, id) =>
-                  (nodeSpec.name, id).possibleBindings.map(s2 ++ _)
+          .foldLeft(subgraphSpec.allUniqueNodeSpecs)(Vector.empty[Seq[BindingInProgress]]) { (s1, nodeSpec) =>
+            ZIO
+              .foldLeft(mutations)(Vector.empty[Seq[BindingInProgress]]) { (s2, id) =>
+                (nodeSpec.name, id).possibleBindings.map { bindingsForSpecIdPair =>
+                  if bindingsForSpecIdPair.nonEmpty then s2 :+ bindingsForSpecIdPair else s2
                 }
-                .map(s1 :+ _)
+              }
+              .map { allBindingsForSpec =>
+                s1 :+ generateCombinations(allBindingsForSpec).flatten
+              }
           }
-    yield generateCombinations(possibleBindingsForEachNodeSpec)
-      .flatMap(BindingInProgress.combineBindingsInProgress)
+    yield
+    // Generate combinations that use one group of bindings for matched nodeSpec
+    generateCombinations(possibleBindingsForEachNodeSpec)
+      .flatMap(x => BindingInProgress.combineBindingsInProgress(x))
       .filter(resolvedBindingExistsForEveryMutation)
 
   /** Match the given nodes using each node spec in the subgraph spec as a starting point.
@@ -128,7 +131,7 @@ final case class MatcherLive(
     *   duplicate matches.
     */
   override def matchNodesToSubgraphSpec(nodes: Seq[Node]): NodeIO[Seq[SpecNodeBindings]] =
-  
+
     val mutations = nodes.map(_.id)
     tracing.root("Matcher.matchNodesInMutationGroupToSubgraphSpec2") {
       for
@@ -207,20 +210,13 @@ final case class MatcherLive(
   def nextRoundOfProofs(bindingInProgress: BindingInProgress): NodeIO[Seq[BindingInProgress]] =
     for bindingsToProveUnresolvedBindings <-
         ZIO
-          .foldLeft(bindingInProgress.unresolved)(EmptyCombinationInput.bindingInProgress) {
+          .foldLeft(bindingInProgress.unresolved)(Vector.empty[Seq[BindingInProgress]]) {
             case (s, _) if s.nonEmpty && s.last.isEmpty => ZIO.succeed(s)
             case (s, binding)                           => binding.possibleBindings.map(s :+ _)
           }
-          .map(optimizeIfEmpty(EmptyCombinationInput.bindingInProgress))
+          .map(optimizeIfEmpty)
     yield generateCombinations(bindingsToProveUnresolvedBindings)
       .flatMap(BindingInProgress.combineBindingsInProgress)
-
-object EmptyCombinationInput:
-
-  import CombinationGenerator.*
-
-  val shallowMatch: GeneratorInput[SpecNodeBinding] = emptyInput[SpecNodeBinding]
-  val bindingInProgress: GeneratorInput[BindingInProgress] = emptyInput[BindingInProgress]
 
 object Matcher:
 

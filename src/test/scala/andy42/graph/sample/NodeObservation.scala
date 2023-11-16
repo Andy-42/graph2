@@ -25,9 +25,14 @@ object NodeObservation:
           .via(ZPipeline.utf8Decode >>> ZPipeline.splitLines)
           .map(_.fromJson[T])
           .collect { case Right(nodeObservation) => nodeObservation } // FIXME: Discarding decode failures - log it!
-          .tap(ZIO.debug(_))
+//          .tap(ZIO.debug(_))
           .mapZIOPar(parallelism)(nodeObservation =>
-            graph.append(nodeObservation.eventTime, nodeObservation.produceEvents)
+            for
+              start <- Clock.nanoTime
+              matches <- graph.append(nodeObservation.eventTime, nodeObservation.produceEvents)
+              end <- Clock.nanoTime
+              _ <- ZIO.debug(s"${end - start} ns")
+            yield matches
           )
           .flatMap(ZStream.fromIterable(_))
       }

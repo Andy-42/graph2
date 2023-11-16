@@ -63,15 +63,14 @@ object APTDetectionOptimizedApp extends APTDetectionApp:
   val config: ULayer[AppConfig] = ZLayer.succeed {
     AppConfig(
       matcher = MatcherConfig(allNodesInMutationGroupMustMatch = true),
-      tracer = TracerConfig(enabled = false),
-      ingestConfig = IngestConfig(parallelism = 8)
+      tracer = TracerConfig(enabled = true)
     )
   }
 
   override def run: ZIO[ZIOAppArgs with Scope, Any, Any] =
     (for
       config <- ZIO.service[AppConfig]
-      matches <- ingestJsonFromFile[Endpoint](path = endpointPath, parallelism = config.ingestConfig.parallelism)(using
+      matches <- ingestJsonFromFile[Endpoint](path = endpointPath, parallelism = 8)(using
         Endpoint.decoder
       )
         .tap(subgraphMatch => ZIO.debug(s"Match: $subgraphMatch"))
