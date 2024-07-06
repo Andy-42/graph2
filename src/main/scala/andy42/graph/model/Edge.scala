@@ -3,8 +3,6 @@ package andy42.graph.model
 import org.msgpack.core.*
 import zio.*
 
-import scala.util.hashing.MurmurHash3
-
 trait Edge extends Packable:
   val k: String
   val other: NodeId

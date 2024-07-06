@@ -1,10 +1,8 @@
 package andy42.graph.model
 
 import org.msgpack.core.*
-import org.msgpack.value.ValueType
 import zio.*
 
-import java.io.IOException
 import scala.collection.compat.immutable.ArraySeq
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer

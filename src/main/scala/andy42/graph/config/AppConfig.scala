@@ -1,9 +1,8 @@
 package andy42.graph.config
 
 import eu.timepit.refined.api.Refined
-import eu.timepit.refined.auto.autoUnwrap
 import eu.timepit.refined.boolean.And
-import eu.timepit.refined.numeric.{GreaterEqual, LessEqual, Positive}
+import eu.timepit.refined.numeric.{GreaterEqual, LessEqual}
 import zio.*
 import zio.config.magnolia.deriveConfig
 

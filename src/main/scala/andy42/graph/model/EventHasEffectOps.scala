@@ -1,7 +1,5 @@
 package andy42.graph.model
 
-import zio.Task
-
 object EventHasEffectOps:
 
   /** Remove any events that would have no effect on the given snapshot. This is calculated in a way that does not copy

@@ -4,8 +4,6 @@ import andy42.graph.model.*
 import org.msgpack.core.*
 import zio.*
 
-import java.io.IOException
-
 enum Event extends Packable:
   case NodeRemoved
 

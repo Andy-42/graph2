@@ -1,7 +1,6 @@
 package andy42.graph.model
 
 import scala.annotation.tailrec
-import scala.collection.mutable
 
 object EventDeduplication:
 

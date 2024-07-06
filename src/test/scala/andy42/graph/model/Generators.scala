@@ -1,6 +1,5 @@
 package andy42.graph.model
 
-import andy42.graph.model.NodeId
 import zio.*
 import zio.test.Gen
 

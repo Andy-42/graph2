@@ -90,7 +90,7 @@ case class SubgraphSpec(
 
   def where(filter: SubgraphPostFilter): SubgraphSpec = copy(filter = Some(filter))
 
-  val nodeMermaid: String =
+  private val nodeMermaid: String =
     edges
       .flatMap { edge => List(edge.direction.from, edge.direction.to) }
       .map(spec => spec.name -> spec)

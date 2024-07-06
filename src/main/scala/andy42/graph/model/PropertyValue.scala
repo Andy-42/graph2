@@ -5,7 +5,6 @@ import org.msgpack.core.{MessagePacker, MessageUnpacker}
 import org.msgpack.value.ValueType
 import zio.*
 
-import java.io.IOException
 import java.time.Instant
 
 object PropertyValue extends Unpackable[PropertyValueType]:

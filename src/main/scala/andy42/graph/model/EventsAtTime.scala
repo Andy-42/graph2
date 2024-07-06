@@ -4,8 +4,6 @@ import andy42.graph.model.UnpackOperations.unpackCountedToSeq
 import org.msgpack.core.*
 import zio.*
 
-import java.io.IOException
-
 /** A group of events that changed the state of a node at a given time. This corresponds to a single row that would be
   * appended to the persistent store as a result of ingesting mutation events.
   *

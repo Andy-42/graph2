@@ -1,6 +1,6 @@
 package andy42.graph.sample.aptdetection
 
-import andy42.graph.config.{AppConfig, IngestConfig, MatcherConfig, TracerConfig}
+import andy42.graph.config.{AppConfig, MatcherConfig, TracerConfig}
 import andy42.graph.matcher.*
 import andy42.graph.matcher.EdgeSpecs.*
 import andy42.graph.model.*

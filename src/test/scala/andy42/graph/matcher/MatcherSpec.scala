@@ -1,7 +1,7 @@
 package andy42.graph.matcher
 
-import andy42.graph.config.{AppConfig, TracerConfig, MatcherConfig}
-import andy42.graph.matcher.EdgeSpecs.{directedEdge, undirectedEdge}
+import andy42.graph.config.{AppConfig, MatcherConfig}
+import andy42.graph.matcher.EdgeSpecs.undirectedEdge
 import andy42.graph.model.*
 import andy42.graph.model.Generators.*
 import andy42.graph.persistence.PersistenceFailure

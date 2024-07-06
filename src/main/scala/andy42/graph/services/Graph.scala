@@ -3,7 +3,7 @@ package andy42.graph.services
 import andy42.graph.config.AppConfig
 import andy42.graph.matcher.{Matcher, SpecNodeBindings, SubgraphSpec}
 import andy42.graph.model.*
-import andy42.graph.persistence.{NodeRepository, PersistenceFailure}
+import andy42.graph.persistence.NodeRepository
 import andy42.graph.services.NodeMutationCompletion.completeAndValidate
 import zio.*
 import zio.stm.*

@@ -4,8 +4,6 @@ import org.msgpack.value.ValueType
 import zio.*
 
 import java.io.IOException
-import scala.collection.mutable.ArrayBuffer
-import scala.reflect.ClassTag
 
 sealed trait UnpackFailure
 

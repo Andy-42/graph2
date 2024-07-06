@@ -1,7 +1,6 @@
 package andy42.graph.matcher
 
 import andy42.graph.matcher.EdgeSpecs.*
-import andy42.graph.model.*
 import zio.test.*
 
 import scala.collection.immutable.List

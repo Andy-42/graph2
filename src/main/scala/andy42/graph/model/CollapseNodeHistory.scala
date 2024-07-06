@@ -1,8 +1,5 @@
 package andy42.graph.model
 
-import scala.annotation.tailrec
-import scala.collection.mutable
-
 object CollapseNodeHistory:
 
   /** Collapse a Node's history to the state of the properties and edges at a given time.

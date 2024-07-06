@@ -4,7 +4,7 @@ import org.apache.commons.io.FileUtils
 import org.rocksdb.{Options, RocksDB, RocksDBException}
 import zio.*
 
-import java.io.{File, IOException}
+import java.io.IOException
 import java.nio.file.{Files, Path}
 
 object TemporaryRocksDB:

@@ -45,17 +45,15 @@ final case class NodeCacheLive(
         }
       )
 
-      optionNode <- optionCacheItem.fold(ZIO.succeed(None)) { cacheItem =>
+      optionNode <- optionCacheItem.fold(ZIO.none) { cacheItem =>
         if cacheItem.current != null then
-          ZIO.succeed(
-            Some(
-              Node.fromPackedHistory(
-                id = id,
-                packed = cacheItem.packed,
-                current = cacheItem.current
-              )
+          ZIO.some {
+            Node.fromPackedHistory(
+              id = id,
+              packed = cacheItem.packed,
+              current = cacheItem.current
             )
-          )
+          }
         else
           for
             history <- NodeHistory.unpackNodeHistory(cacheItem.packed)
@@ -117,7 +115,6 @@ final case class NodeCacheLive(
       _ <- trimIfOverCapacity(now) // TODO: fork - use the config!
     yield ()
 
-
   // TODO: Avoid a cascade of trims by capturing the watermark and comparing before trim
 
   private def trimIfOverCapacity(now: AccessTime): UIO[Unit] =
@@ -137,7 +134,7 @@ final case class NodeCacheLive(
       )
     yield ()
 
-  case class TrimOutcome(
+  private case class TrimOutcome(
       previousWatermark: AccessTime,
       nextWatermark: AccessTime,
       previousSize: Int,

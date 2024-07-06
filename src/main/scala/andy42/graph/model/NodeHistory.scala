@@ -4,8 +4,6 @@ import andy42.graph.model.UnpackOperations.unpackUncountedToSeq
 import org.msgpack.core.*
 import zio.*
 
-import java.io.IOException
-
 type NodeHistory = Vector[EventsAtTime]
 
 extension (nodeHistory: NodeHistory)
