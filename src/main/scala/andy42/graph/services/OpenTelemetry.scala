@@ -57,7 +57,7 @@ object OpenTelemetry:
       yield tracer
     }
 
-  val configurableTracingLayer: ZLayer[AppConfig, Throwable, Tracing] =
+  val configurableTracingLayer: RLayer[AppConfig, Tracing] =
     ZLayer.makeSome[AppConfig, Tracing](
       openTelemetryLayer,
       tracerLayer,

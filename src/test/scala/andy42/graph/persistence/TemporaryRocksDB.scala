@@ -9,7 +9,7 @@ import java.nio.file.{Files, Path}
 
 object TemporaryRocksDB:
 
-  val layer: ZLayer[Any, IOException | RocksDBException, RocksDB] =
+  val layer: Layer[IOException | RocksDBException, RocksDB] =
     ZLayer.scoped {
       for
         dir <- managedPath(s"graph-temp-rocksdb")
