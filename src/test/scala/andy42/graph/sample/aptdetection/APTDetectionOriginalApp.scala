@@ -10,7 +10,7 @@ import andy42.graph.sample.NodeObservation.ingestJsonFromFile
 import andy42.graph.services.*
 import zio.*
 import zio.json.*
-import zio.telemetry.opentelemetry.context.ContextStorage
+import zio.telemetry.opentelemetry.tracing.Tracing
 
 object APTDetectionOriginalSpec:
 
@@ -43,7 +43,7 @@ object APTDetectionOriginalSpec:
     directedEdge(from = deleteEvent, to = f).edgeKeyIs("EVENT"),
     directedEdge(from = p2, to = sendEvent).edgeKeyIs("EVENT"),
     directedEdge(from = sendEvent, to = ip).edgeKeyIs("EVENT")
-  ) where new SubgraphPostFilter:
+  ).where(new SubgraphPostFilter:
     override def description: String = "write.time <= read.time <= delete.time <= sendTime"
 
     override def p: SnapshotProvider ?=> NodeIO[Boolean] =
@@ -55,6 +55,7 @@ object APTDetectionOriginalSpec:
       // In the Quine APT Detection recipe, this expression uses '<',
       // which would not match events happening within a 1 ms resolution.
       yield writeTime <= readTime && readTime <= deleteTime && deleteTime <= sendTime
+  )
 
 object APTDetectionOriginalApp extends APTDetectionApp:
 
@@ -65,7 +66,7 @@ object APTDetectionOriginalApp extends APTDetectionApp:
     )
   }
 
-  override def run: ZIO[ZIOAppArgs with Scope, Any, Any] =
+  override def run: ZIO[ZIOAppArgs & Scope, Any, Any] =
     (for matches <- ingestJsonFromFile[Endpoint](path = endpointPath, parallelism = 8)(using Endpoint.decoder)
         .tap(subgraphMatch => ZIO.debug(s"Match: $subgraphMatch"))
         .runCollect
@@ -76,9 +77,8 @@ object APTDetectionOriginalApp extends APTDetectionApp:
       RocksDBNodeRepository.layer,
       NodeCache.layer,
       ZLayer.succeed(APTDetectionOriginalSpec.subgraphSpec),
-      TracingService.live,
       Graph.layer,
-      ContextStorage.fiberRef
+      andy42.graph.services.OpenTelemetry.configurableTracerLayer
     )
 
   case class Endpoint(

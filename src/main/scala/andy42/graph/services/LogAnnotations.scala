@@ -21,4 +21,4 @@ object LogAnnotations:
   val nextSize: LogAnnotation[Int] =
     LogAnnotation[Int]("nextSize", (_, x) => x, _.toString)
   val trimCount: LogAnnotation[Int] =
-    LogAnnotation[Int]("trimCount", (_, x) => x, _.toString)  
+    LogAnnotation[Int]("trimCount", (_, x) => x, _.toString)

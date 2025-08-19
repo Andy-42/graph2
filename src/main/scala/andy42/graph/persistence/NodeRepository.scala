@@ -6,8 +6,8 @@ import zio.stream.Stream
 
 /** NodeRepositoryEntry is one row in the persistent data store.
   *
-  * TODO: Define a canonical ordering that should be the same as the repository ordering
-  * TODO: Describe how this relates to EventsAtTime and NodeHistory
+  * TODO: Define a canonical ordering that should be the same as the repository ordering TODO: Describe how this relates
+  * to EventsAtTime and NodeHistory
   *
   * @param id
   *   The Node identifier; clustering key.
@@ -21,9 +21,10 @@ import zio.stream.Stream
 case class NodeRepositoryEntry(id: NodeId, time: EventTime, sequence: Int, events: Vector[Event])
 
 implicit val nodeRepositoryEntryOrdering: Ordering[NodeRepositoryEntry] =
-    Ordering.by[NodeRepositoryEntry, NodeId](_.id)
-      .orElseBy(_.time)
-      .orElseBy(_.sequence)
+  Ordering
+    .by[NodeRepositoryEntry, NodeId](_.id)
+    .orElseBy(_.time)
+    .orElseBy(_.sequence)
 
 trait NodeRepository:
 

@@ -3,11 +3,9 @@ package andy42.graph.services
 import andy42.graph.config.{AppConfig, GraphConfig, TracerConfig}
 import andy42.graph.matcher.*
 import andy42.graph.model.*
-import andy42.graph.persistence.{TestNodeRepository, TestNodeRepositoryLive}
-import io.opentelemetry.api.trace.Tracer
+import andy42.graph.persistence.{NodeRepository, TestNodeRepository, TestNodeRepositoryLive}
+import andy42.graph.services.OpenTelemetry
 import zio.*
-import zio.telemetry.opentelemetry.context.ContextStorage
-import zio.telemetry.opentelemetry.tracing.Tracing
 import zio.test.*
 import zio.test.Assertion.*
 import zio.test.TestAspect.timed
@@ -63,24 +61,25 @@ object GraphSpec extends ZIOSpecDefault:
 
   val appConfigLayer: ULayer[AppConfig] =
     ZLayer.succeed(
-      AppConfig(tracer = TracerConfig(enabled = true))
+      AppConfig(tracer = TracerConfig(enabled = false))  // Enable tracing to debug this!
     )
-  val trace: TaskLayer[Tracing & Tracer] = appConfigLayer >>> TracingService.live
 
   val nodeSpecA: NodeSpec = node("a").hasProperty("x")
   val subgraphSpec: SubgraphSpec =
     subgraph("No matching")(EdgeSpecs.directedEdge(from = nodeSpecA, to = nodeSpecA))
 
-  val graphLayer: TaskLayer[Graph] =
-    (appConfigLayer ++
-      TestNodeRepository.layer ++
-      TestNodeCache.layer ++
-      ZLayer.succeed(subgraphSpec) ++
-      trace ++ ContextStorage.fiberRef) >>> Graph.layer
-
   val genNodeId: Gen[Any, NodeId] =
     for id <- Gen.vectorOfN(NodeId.byteLength)(Gen.byte)
     yield NodeId(id)
+
+  val graphLayer: TaskLayer[Graph] = ZLayer.make[Graph](
+    appConfigLayer,
+    TestNodeRepository.layer,
+    TestNodeCache.layer,
+    ZLayer.succeed(subgraphSpec),
+    OpenTelemetry.configurableTracerLayer,
+    Graph.layer
+  )
 
   override def spec: Spec[Any, Any] =
     suite("Graph")(
@@ -98,7 +97,9 @@ object GraphSpec extends ZIOSpecDefault:
           val expectedNode = Node.fromHistory(id, expectedHistory)
           val expectedMutationOutput = Vector(time -> Vector(NodeMutationOutput(expectedNode, inputEvents)))
 
-          testGraphDataFlow(id, time, inputMutations, expectedNode, expectedCurrent, expectedMutationOutput)
+          testGraphDataFlow(id, time, inputMutations, expectedNode, expectedCurrent, expectedMutationOutput).provide(
+            graphLayer
+          )
         }
-      ).provide(graphLayer)
+      )
     ) @@ timed

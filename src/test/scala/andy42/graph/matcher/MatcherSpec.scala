@@ -1,14 +1,13 @@
 package andy42.graph.matcher
 
-import andy42.graph.config.{AppConfig, MatcherConfig}
+import andy42.graph.config.{AppConfig, MatcherConfig, TracerConfig}
 import andy42.graph.matcher.EdgeSpecs.undirectedEdge
 import andy42.graph.model.*
 import andy42.graph.model.Generators.*
 import andy42.graph.persistence.PersistenceFailure
-import andy42.graph.services.TracingService
-import io.opentelemetry.api.trace.Tracer
+import andy42.graph.services.OpenTelemetry
+import io.opentelemetry.api
 import zio.*
-import zio.telemetry.opentelemetry.context.ContextStorage
 import zio.telemetry.opentelemetry.tracing.Tracing
 import zio.test.*
 
@@ -17,7 +16,7 @@ object MatcherSpec extends ZIOSpecDefault:
   /** All tests in this fixture use a test at a single event time, the value of which doesn't matter in these tests. */
   val time: EventTime = 42
 
-  val appConfig: ULayer[AppConfig] = ZLayer.succeed(AppConfig())
+  val appConfig: ULayer[AppConfig] = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = false)))
 
   val matcherConfig1: MatcherConfig =
     MatcherConfig(
@@ -32,9 +31,8 @@ object MatcherSpec extends ZIOSpecDefault:
     MatcherConfig(
       allNodesInMutationGroupMustMatch = false
     )
-
-  val trace: TaskLayer[Tracing & Tracer] = appConfig >>> TracingService.live
-
+  
+  
   /** Match the nodes in a mutationGroup to a SubgraphSpec.
     * @param subgraphSpec
     *   The SubgraphSpec that is being matched against.
@@ -53,10 +51,9 @@ object MatcherSpec extends ZIOSpecDefault:
       graphNodes: Vector[Node],
       nodes: Vector[Node],
       matcherConfig: MatcherConfig
-  ): ZIO[AppConfig & Tracing & ContextStorage, PersistenceFailure | UnpackFailure, Seq[SpecNodeBindings]] =
+  ): ZIO[AppConfig & Tracing, PersistenceFailure | UnpackFailure, Seq[SpecNodeBindings]] =
     for
       tracing <- ZIO.service[Tracing]
-      contextStorage <- ZIO.service[ContextStorage]
       matcher <- Matcher.make(
         config = matcherConfig, // Using specific MatcherConfig for testing different cases
         time = time,
@@ -64,7 +61,6 @@ object MatcherSpec extends ZIOSpecDefault:
         subgraphSpec = subgraphSpec,
         affectedNodes = graphNodes,
         tracing = tracing,
-        contextStorage = contextStorage
       )
       subgraphMatches <- matcher.matchNodesToSubgraphSpec(nodes)
     yield subgraphMatches
@@ -274,4 +270,7 @@ object MatcherSpec extends ZIOSpecDefault:
         matchesWithFullyMatchedMutationGroupWithConfig3.toSet == expectedMatches
       )
     }
-  ).provide(trace, appConfig, ContextStorage.fiberRef) @@ TestAspect.ignore
+  ).provide(
+    appConfig, 
+    andy42.graph.services.OpenTelemetry.configurableTracerLayer,
+  ) @@ TestAspect.ignore

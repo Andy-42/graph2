@@ -26,7 +26,7 @@ object Generators:
       edgeDirection <- genEdgeDirection
     yield EdgeImpl(propertyName, other, edgeDirection)
 
-  val genEdgeEvent: Gen[Any, Event.EdgeAdded | Event.EdgeRemoved ] =
+  val genEdgeEvent: Gen[Any, Event.EdgeAdded | Event.EdgeRemoved] =
     for
       edge <- genEdge
       isAdded <- Gen.boolean
@@ -92,11 +92,11 @@ object Generators:
     )
 
   val genEventTime: Gen[Any, EventTime] = Gen.long
-  
+
   val genSequence: Gen[Any, Int] = Gen.int(min = 0, max = Int.MaxValue)
-  
+
   val genEvents: Gen[Any, Vector[Event]] = Gen.vectorOf1(genEvent)
-  
+
   val genEventsAtTime: Gen[Any, EventsAtTime] =
     for
       time <- genEventTime

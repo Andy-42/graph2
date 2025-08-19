@@ -1,5 +1,3 @@
-
-
 The project implements a framework for streaming graph analysis.
 It uses an idea from [Quine](https://quine.io) to build a graph from a stream,
 and to implement _standing queries_ that are run on the graph data as the graph changes.
@@ -14,11 +12,12 @@ against a specification of a subgraph, producing a stream of matches.
 This project was started as an exercise to learn Scala 3 and ZIO 2.
 
 Some of the ideas that I wanted to explore include:
+
 * Using _Software Transactional Memory_ to create a completely lock-free implementation.
 * Implement a strong eventual consistency model for edge
-maintenance while at the same time completely avoiding deadlock.
+  maintenance while at the same time completely avoiding deadlock.
 * Maximize parallelism, especially for standing query evaluation.
-How much continuous query evaluation can we manage for a given rate of change.
+  How much continuous query evaluation can we manage for a given rate of change.
 * Return every possible match that happens at every point in time.
 * Support idempotent batch update operations (e.g., for committing a stream window).
 
@@ -53,11 +52,13 @@ While it can source changes from Kafka, it does not implement any idea of backpr
 ensure than the those changes have been consumed successfully by the graph.
 This implementation is designed to provide accurate feedback to Kafka so that when an append
 request sent to the graph is completed successfully:
-* Any changes have been persisted to the graph state, and
-* All standing queries that could be affected by the change have been evaluated, 
-and any matches have been committed to the query output stream.
 
-The goal is that a Kafka Consumer could send a window of changes to the graph, and once they are complete, it would commit the offset for that window.
+* Any changes have been persisted to the graph state, and
+* All standing queries that could be affected by the change have been evaluated,
+  and any matches have been committed to the query output stream.
+
+The goal is that a Kafka Consumer could send a window of changes to the graph, and once they are complete, it would
+commit the offset for that window.
 
 # Service Architecture
 
@@ -69,25 +70,24 @@ that the *Matcher* component which is instantiated each a group of node mutation
 processed. The *Graph* service has a dependency on *Match Sink* which is not shown
 on this diagram (it is passed to the *Matcher* each a *Matcher* is instantiated).
 
-
 The services that *Graph* collaborates with are:
+
 * *NodeCache* - An in-memory cache tuned to the requirements of graph.
 * *EdgeSynchronization* - Ensures that when a half-edge is created (by appending events to the graph),
-that the other corresponding half-edge is also added to the graph model. This is done in an eventually-consistent
-way, so the edge synchronization service collaborates with the edge reconciliation processor to provide an audit
-trail of reconciliation (i.e., to ensure that the graph reaches consistency).
-Note that the lines between *Graph* and *Edge Synchronization* are shown as dotted lines
-since the circular reference cannot be implemented as a normal ZIO service dependency.
+  that the other corresponding half-edge is also added to the graph model. This is done in an eventually-consistent
+  way, so the edge synchronization service collaborates with the edge reconciliation processor to provide an audit
+  trail of reconciliation (i.e., to ensure that the graph reaches consistency).
+  Note that the lines between *Graph* and *Edge Synchronization* are shown as dotted lines
+  since the circular reference cannot be implemented as a normal ZIO service dependency.
 * *Matcher* - As the graph changes, changed nodes are matched against a subgraph specification
-and any subgraphs that match the subgraph spec are emitted to the Match Sink, which is
-the output for this system.
+  and any subgraphs that match the subgraph spec are emitted to the Match Sink, which is
+  the output for this system.
 * *Node Repository* - Implements a persistent store for graph nodes.
 
 ```mermaid
 flowchart TD
     subgraph Services[Services]
         g[Graph]
-
         nodeCache[Node Cache]
         nodeRepository[Node Repository]
         matcher(Matcher)
@@ -96,30 +96,20 @@ flowchart TD
     %%config[AppConfig]
         dataSource[Data Source]
         edgeSynchronization[Edge Synchronization]
-
         matchSink[Match Sink]
-
-
         matcher --> g
         matcher --> matchSink
-
         g --> nodeCache
         g -.-> edgeSynchronization
         g --> matcher
         g --> nodeRepository
-
         edgeReconciliationProcessor --> edgeReconciliationRepository
-
-
         edgeReconciliationRepository --> dataSource
-
     %% edgeReconciliationProcessor --> config
     %% edgeSynchronization --> config
     %% nodeCache --> config
-
         edgeSynchronization --> edgeReconciliationProcessor
         edgeSynchronization -.-> g
-
         nodeRepository --> dataSource
 
     end

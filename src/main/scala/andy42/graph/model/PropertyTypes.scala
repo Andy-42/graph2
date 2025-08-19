@@ -2,7 +2,6 @@ package andy42.graph.model
 
 import java.time.Instant
 
-
 type ScalarType = Unit | Boolean | Long | Double | String | BinaryValue | Instant
 
 final case class BinaryValue(value: Vector[Byte])

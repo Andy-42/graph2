@@ -1,11 +1,13 @@
 # Matcher Requirements
 
-The `matchNodes` method is called with a `Vector[NodeId]` that is all the node `ids` that changed in some `Graph.append`.
+The `matchNodes` method is called with a `Vector[NodeId]` that is all the node `ids` that changed in some
+`Graph.append`.
 The `matchNodes` matches those nodes against the `SubgraphSpec` it is configured with.
 
 The design goal of the algorithm are:
-* For every combination of nodes that satisfy the constraints of the `SubgraphSpec` at any given event time, 
-a match event is generated. This is addressing completeness - we find all the matches.
+
+* For every combination of nodes that satisfy the constraints of the `SubgraphSpec` at any given event time,
+  a match event is generated. This is addressing completeness - we find all the matches.
 * Matches can be generated within the scope of the fiber that is calling the `Graph.append` API.
 
 For example, we could construct a program that successful completion of a `Graph.append` would mean that any

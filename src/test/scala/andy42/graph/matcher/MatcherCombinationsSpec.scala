@@ -187,4 +187,5 @@ object MatcherCombinationsSpec extends ZIOSpecDefault:
       BindingInProgress(resolved = Map("a" -> nodeId1, "b" -> nodeId2, "c" -> nodeId3), unresolved = Map())
     )
 
-  override def spec: Spec[TestEnvironment with Scope, Any] = ???
+  // TODO
+  override def spec: Spec[TestEnvironment & Scope, Any] = ???

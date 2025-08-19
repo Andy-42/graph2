@@ -2,7 +2,7 @@ name := "graph2"
 
 version := "0.1"
 
-scalaVersion := "3.3.1"
+scalaVersion := "3.6.3"
 
 libraryDependencies ++=
   Dependencies.zio ++

@@ -1,9 +1,9 @@
-
-This is example attempts to reproduce the behaviour of the [APT Detection](https://quine.io/recipes/apt-detection) from Quine.
+This is example attempts to reproduce the behaviour of the [APT Detection](https://quine.io/recipes/apt-detection) from
+Quine.
 Only the standing query logic is reproduced in this case.
 
 The original Quine recipe include two input files [endpoint.json](https://recipes.quine.io/apt-detection/endpoint-json)
-and [network.json](https://recipes.quine.io/apt-detection/network-json). 
+and [network.json](https://recipes.quine.io/apt-detection/network-json).
 I have implemented the ingestion of both of these files into the graph, but it appears
 that only the `endpoint.json` data is relevant to this example.
 
@@ -11,6 +11,7 @@ that only the `endpoint.json` data is relevant to this example.
 - TODO: Use a different key on the events - reduces number of nodes to be matched
 
 Here is the original standing query from the Quine APT Detection example:
+
 ```yaml
 standingQueries:
   - pattern:
@@ -47,29 +48,30 @@ standingQueries:
 ```
 
 Here is a graphical representation of this query:
+
 ```mermaid
 flowchart TD
-subgraph Subgraph["APT Detection: write.time <= read.time <= delete.time <= sendTime"]
-ip[ip]
-e1[e1\nproperty: type = WRITE\nlabel: EndpointEvent]
-f[f]
-e4[e4\nproperty: type = SEND\nlabel: EndpointEvent]
-e3[e3\nproperty: type = DELETE\nlabel: EndpointEvent]
-p2[p2]
-e2[e2\nproperty: type = READ\nlabel: EndpointEvent]
-p1[p1]
-p1 --> |EVENT| e1
-e1 --> |EVENT| f
-p2 --> |EVENT| e2
-e2 --> |EVENT| f
-p2 --> |EVENT| e3
-e3 --> |EVENT| f
-p2 --> |EVENT| e4
-e4 --> |EVENT| ip
-end
+    subgraph Subgraph["APT Detection: write.time <= read.time <= delete.time <= sendTime"]
+        ip[ip]
+        e1[e1\nproperty: type = WRITE\nlabel: EndpointEvent]
+        f[f]
+        e4[e4\nproperty: type = SEND\nlabel: EndpointEvent]
+        e3[e3\nproperty: type = DELETE\nlabel: EndpointEvent]
+        p2[p2]
+        e2[e2\nproperty: type = READ\nlabel: EndpointEvent]
+        p1[p1]
+        p1 -->|EVENT| e1
+        e1 -->|EVENT| f
+        p2 -->|EVENT| e2
+        e2 -->|EVENT| f
+        p2 -->|EVENT| e3
+        e3 -->|EVENT| f
+        p2 -->|EVENT| e4
+        e4 -->|EVENT| ip
+    end
 ```
 
-This also adds property existence qualifiers on the 
+This also adds property existence qualifiers on the
 *f* and *ip* nodes. These properties
 are known to be used for output (i.e., for analysis of graph matches)
 so we include predicates for them to make this clearer.
@@ -85,7 +87,7 @@ edge predicates.
 
 - Include the type of the event in the edges from p1, p2 to the event nodes.
 - Reduces complexity of matching: initial comparison in SQE can filter on properties of nodes directly
-without needing to do any deep analysis (potentially fetching more nodes from cache).
+  without needing to do any deep analysis (potentially fetching more nodes from cache).
 
 # Edge predicate re-write
 

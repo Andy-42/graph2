@@ -5,9 +5,9 @@ import andy42.graph.matcher.{Matcher, SpecNodeBindings, SubgraphSpec}
 import andy42.graph.model.*
 import andy42.graph.persistence.NodeRepository
 import andy42.graph.services.NodeMutationCompletion.completeAndValidate
+import io.opentelemetry.api
 import zio.*
 import zio.stm.*
-import zio.telemetry.opentelemetry.context.ContextStorage
 import zio.telemetry.opentelemetry.tracing.Tracing
 
 /** The Graph service represents the entire state of a graph.
@@ -89,7 +89,6 @@ final case class GraphLive(
     nodeRepositoryService: NodeRepository,
     subgraphSpec: SubgraphSpec,
     tracing: Tracing,
-    contextStorage: ContextStorage
 ) extends Graph:
 
   override def get(
@@ -158,7 +157,6 @@ final case class GraphLive(
         subgraphSpec = subgraphSpec,
         affectedNodes = nodes,
         tracing = tracing,
-        contextStorage = contextStorage
       )
       .flatMap(_.matchNodesToSubgraphSpec(nodes))
 
@@ -179,18 +177,17 @@ final case class GraphLive(
   private def withNodePermit(id: => NodeId): ZIO[Scope, Nothing, NodeId] =
     ZIO.acquireRelease(acquirePermit(id))(releasePermit(_))
 
-type GraphEnvironment = AppConfig & NodeCache & NodeRepository & SubgraphSpec & Tracing & ContextStorage
+type GraphEnvironment = AppConfig & NodeCache & NodeRepository & SubgraphSpec & Tracing
 
 object Graph:
-  val layer: URLayer[GraphEnvironment, Graph] =
+  val layer: RLayer[GraphEnvironment, Graph] =
     ZLayer {
       for
         config <- ZIO.service[AppConfig]
         nodeCache <- ZIO.service[NodeCache]
         nodeDataService <- ZIO.service[NodeRepository]
-        tracing <- ZIO.service[Tracing]
-        contextStorage <- ZIO.service[ContextStorage]
         subgraphSpec <- ZIO.service[SubgraphSpec]
+        tracing <- ZIO.service[Tracing]
         inFlight <- TSet.empty[NodeId].commit
       yield GraphLive(
         config = config,
@@ -199,6 +196,5 @@ object Graph:
         nodeRepositoryService = nodeDataService,
         subgraphSpec = subgraphSpec,
         tracing = tracing,
-        contextStorage = contextStorage
       )
     }

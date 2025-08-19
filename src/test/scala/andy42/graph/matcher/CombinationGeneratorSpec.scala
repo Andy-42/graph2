@@ -6,7 +6,7 @@ import zio.test.*
 
 object CombinationGeneratorSpec extends ZIOSpecDefault:
 
-  def spec: Spec[TestEnvironment with Scope, Any] = suite("CombinationGenerator")(
+  def spec: Spec[TestEnvironment & Scope, Any] = suite("CombinationGenerator")(
     test("All combinations") {
 
       val x = Vector(
