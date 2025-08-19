@@ -1,6 +1,6 @@
 package andy42.graph.sample.aptdetection
 
-import andy42.graph.config.{AppConfig, MatcherConfig, TracerConfig}
+import andy42.graph.config.{AppConfig, MatcherConfig, TracingConfig}
 import andy42.graph.matcher.*
 import andy42.graph.matcher.EdgeSpecs.*
 import andy42.graph.model.*
@@ -62,7 +62,7 @@ object APTDetectionOriginalApp extends APTDetectionApp:
   val config: ULayer[AppConfig] = ZLayer.succeed {
     AppConfig(
       matcher = MatcherConfig(allNodesInMutationGroupMustMatch = false),
-      tracer = TracerConfig(enabled = false)
+      tracing = TracingConfig(enabled = false)
     )
   }
 
@@ -78,7 +78,7 @@ object APTDetectionOriginalApp extends APTDetectionApp:
       NodeCache.layer,
       ZLayer.succeed(APTDetectionOriginalSpec.subgraphSpec),
       Graph.layer,
-      andy42.graph.services.OpenTelemetry.configurableTracerLayer
+      andy42.graph.services.OpenTelemetry.configurableTracingLayer
     )
 
   case class Endpoint(

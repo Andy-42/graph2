@@ -36,7 +36,7 @@ object OpenTelemetry:
     ZLayer.scoped {
       for
         config <- ZIO.service[AppConfig]
-        tracerProvider <- jaegerTracerProvider(config.tracer.host)
+        tracerProvider <- jaegerTracerProvider(config.tracing.host)
         sdk <- ZIO.fromAutoCloseable(
           ZIO.succeed(
             OpenTelemetrySdk
@@ -45,19 +45,19 @@ object OpenTelemetry:
               .build()
           )
         )
-      yield if config.tracer.enabled then sdk else api.OpenTelemetry.noop()
+      yield if config.tracing.enabled then sdk else api.OpenTelemetry.noop()
     }
 
-  private val tracerLayer: RLayer[AppConfig & api.OpenTelemetry, io.opentelemetry.api.trace.Tracer] =
+  private val tracerLayer: RLayer[AppConfig & api.OpenTelemetry, Tracer] =
     ZLayer {
       for
         sdk <- ZIO.service[api.OpenTelemetry]
         config <- ZIO.service[AppConfig]
-        tracer = sdk.getTracer(config.tracer.instrumentationScopeName)
+        tracer = sdk.getTracer(config.tracing.instrumentationScopeName)
       yield tracer
     }
 
-  val configurableTracerLayer: ZLayer[AppConfig, Throwable, Tracing] =
+  val configurableTracingLayer: ZLayer[AppConfig, Throwable, Tracing] =
     ZLayer.makeSome[AppConfig, Tracing](
       openTelemetryLayer,
       tracerLayer,

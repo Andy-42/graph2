@@ -34,7 +34,7 @@ final case class MatcherConfig(
     allNodesInMutationGroupMustMatch: Boolean = false
 )
 
-final case class TracerConfig(
+final case class TracingConfig(
     enabled: Boolean = false,
     host: String = "http://localhost:14250",
     instrumentationScopeName: String = "streaming-graph"
@@ -44,7 +44,7 @@ final case class AppConfig(
     graph: GraphConfig = GraphConfig(),
     nodeCache: NodeCacheConfig = NodeCacheConfig(),
     matcher: MatcherConfig = MatcherConfig(),
-    tracer: TracerConfig = TracerConfig()
+    tracing: TracingConfig = TracingConfig()
 )
 
 object AppConfig:
@@ -52,5 +52,5 @@ object AppConfig:
   val matcherConfig: Config[MatcherConfig] = deriveConfig[MatcherConfig]
   val graphConfigDescriptor: Config[GraphConfig] = deriveConfig[GraphConfig]
   val lruCacheDescriptor: Config[NodeCacheConfig] = deriveConfig[NodeCacheConfig]
-  val tracerConfigDescriptor: Config[TracerConfig] = deriveConfig[TracerConfig]
+  val tracingConfigDescriptor: Config[TracingConfig] = deriveConfig[TracingConfig]
   val ingestConfigDescriptor: Config[IngestConfig] = deriveConfig[IngestConfig]

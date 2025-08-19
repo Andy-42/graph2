@@ -1,6 +1,6 @@
 package andy42.graph.sample.aptdetection
 
-import andy42.graph.config.{AppConfig, MatcherConfig, TracerConfig}
+import andy42.graph.config.{AppConfig, MatcherConfig, TracingConfig}
 import andy42.graph.matcher.*
 import andy42.graph.matcher.EdgeSpecs.*
 import andy42.graph.model.*
@@ -56,15 +56,14 @@ object APTDetectionOptimizedSpec:
       // In the Quine APT Detection recipe, this expression uses '<',
       // which would not match events happening within a 1 ms resolution.
       yield writeTime <= readTime && readTime <= deleteTime && deleteTime <= sendTime
-
-    )
+  )
 
 object APTDetectionOptimizedApp extends APTDetectionApp:
 
   val config: ULayer[AppConfig] = ZLayer.succeed {
     AppConfig(
       matcher = MatcherConfig(allNodesInMutationGroupMustMatch = true),
-      tracer = TracerConfig(enabled = true)
+      tracing = TracingConfig(enabled = true)
     )
   }
 
@@ -82,7 +81,7 @@ object APTDetectionOptimizedApp extends APTDetectionApp:
       NodeCache.layer,
       ZLayer.succeed(APTDetectionOptimizedSpec.subgraphSpec),
       Graph.layer,
-      andy42.graph.services.OpenTelemetry.configurableTracerLayer,
+      andy42.graph.services.OpenTelemetry.configurableTracingLayer
     )
 
   case class Endpoint(

@@ -1,6 +1,6 @@
 package andy42.graph.services
 
-import andy42.graph.config.{AppConfig, GraphConfig, TracerConfig}
+import andy42.graph.config.{AppConfig, GraphConfig, TracingConfig}
 import andy42.graph.matcher.*
 import andy42.graph.model.*
 import andy42.graph.persistence.{NodeRepository, TestNodeRepository, TestNodeRepositoryLive}
@@ -61,7 +61,7 @@ object GraphSpec extends ZIOSpecDefault:
 
   val appConfigLayer: ULayer[AppConfig] =
     ZLayer.succeed(
-      AppConfig(tracer = TracerConfig(enabled = false))  // Enable tracing to debug this!
+      AppConfig(tracing = TracingConfig(enabled = false)) // Enable tracing to debug this!
     )
 
   val nodeSpecA: NodeSpec = node("a").hasProperty("x")
@@ -77,7 +77,7 @@ object GraphSpec extends ZIOSpecDefault:
     TestNodeRepository.layer,
     TestNodeCache.layer,
     ZLayer.succeed(subgraphSpec),
-    OpenTelemetry.configurableTracerLayer,
+    OpenTelemetry.configurableTracingLayer,
     Graph.layer
   )
 

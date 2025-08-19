@@ -1,6 +1,6 @@
 package andy42.graph.matcher
 
-import andy42.graph.config.{AppConfig, MatcherConfig, TracerConfig}
+import andy42.graph.config.{AppConfig, MatcherConfig, TracingConfig}
 import andy42.graph.matcher.EdgeSpecs.undirectedEdge
 import andy42.graph.model.*
 import andy42.graph.model.Generators.*
@@ -16,7 +16,7 @@ object MatcherSpec extends ZIOSpecDefault:
   /** All tests in this fixture use a test at a single event time, the value of which doesn't matter in these tests. */
   val time: EventTime = 42
 
-  val appConfig: ULayer[AppConfig] = ZLayer.succeed(AppConfig(tracer = TracerConfig(enabled = false)))
+  val appConfig: ULayer[AppConfig] = ZLayer.succeed(AppConfig(tracing = TracingConfig(enabled = false)))
 
   val matcherConfig1: MatcherConfig =
     MatcherConfig(
@@ -31,8 +31,7 @@ object MatcherSpec extends ZIOSpecDefault:
     MatcherConfig(
       allNodesInMutationGroupMustMatch = false
     )
-  
-  
+
   /** Match the nodes in a mutationGroup to a SubgraphSpec.
     * @param subgraphSpec
     *   The SubgraphSpec that is being matched against.
@@ -60,7 +59,7 @@ object MatcherSpec extends ZIOSpecDefault:
         graph = UnimplementedGraph(),
         subgraphSpec = subgraphSpec,
         affectedNodes = graphNodes,
-        tracing = tracing,
+        tracing = tracing
       )
       subgraphMatches <- matcher.matchNodesToSubgraphSpec(nodes)
     yield subgraphMatches
@@ -271,6 +270,6 @@ object MatcherSpec extends ZIOSpecDefault:
       )
     }
   ).provide(
-    appConfig, 
-    andy42.graph.services.OpenTelemetry.configurableTracerLayer,
+    appConfig,
+    andy42.graph.services.OpenTelemetry.configurableTracingLayer
   ) @@ TestAspect.ignore

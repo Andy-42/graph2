@@ -27,7 +27,6 @@ flowchart TD
     a
     b
     c
-
     a --> b --> c
  ```
 
@@ -35,11 +34,9 @@ And four nodes in the group of mutated nodes: a, b, c, d. We do a shallow match 
 matches:
 
 ```scala
-
 Vector(
   Vector(
     "p1" -> "a"
   )
-  
 )
 ```

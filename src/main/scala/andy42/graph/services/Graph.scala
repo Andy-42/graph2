@@ -88,7 +88,7 @@ final case class GraphLive(
     cache: NodeCache,
     nodeRepositoryService: NodeRepository,
     subgraphSpec: SubgraphSpec,
-    tracing: Tracing,
+    tracing: Tracing
 ) extends Graph:
 
   override def get(
@@ -156,7 +156,7 @@ final case class GraphLive(
         graph = this,
         subgraphSpec = subgraphSpec,
         affectedNodes = nodes,
-        tracing = tracing,
+        tracing = tracing
       )
       .flatMap(_.matchNodesToSubgraphSpec(nodes))
 
@@ -195,6 +195,6 @@ object Graph:
         cache = nodeCache,
         nodeRepositoryService = nodeDataService,
         subgraphSpec = subgraphSpec,
-        tracing = tracing,
+        tracing = tracing
       )
     }
