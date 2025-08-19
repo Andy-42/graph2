@@ -85,8 +85,8 @@ final case class SubgraphMatchAtTime(time: EventTime, subgraphSpec: SubgraphSpec
 final case class GraphLive(
     config: AppConfig,
     inFlight: TSet[NodeId],
-    cache: NodeCache,
-    nodeRepositoryService: NodeRepository,
+    nodeCache: NodeCache,
+    nodeRepository: NodeRepository,
     subgraphSpec: SubgraphSpec,
     tracing: Tracing
 ) extends Graph:
@@ -95,11 +95,11 @@ final case class GraphLive(
       id: NodeId
   ): NodeIO[Node] =
     for
-      optionNode <- cache.get(id)
+      optionNode <- nodeCache.get(id)
       node <- optionNode.fold(
         for
-          node <- nodeRepositoryService.get(id)
-          _ <- cache.putIfAbsent(node)
+          node <- nodeRepository.get(id)
+          _ <- nodeCache.putIfAbsent(node)
         yield node
       )(ZIO.succeed)
     yield node
@@ -133,15 +133,15 @@ final case class GraphLive(
       for
         _ <- withNodePermit(id)
 
-        maybeCachedNode <- cache.get(id)
-        node <- maybeCachedNode.fold(nodeRepositoryService.get(id))(ZIO.succeed)
+        maybeCachedNode <- nodeCache.get(id)
+        node <- maybeCachedNode.fold(nodeRepository.get(id))(ZIO.succeed)
 
         x <- node.appendWithEventsAtTime(time, events)
         (nextNode, maybeEventsAtTime) = x
 
-        _ <- maybeEventsAtTime.fold(ZIO.unit)(nodeRepositoryService.append(nextNode.id, _))
+        _ <- maybeEventsAtTime.fold(ZIO.unit)(nodeRepository.append(nextNode.id, _))
 
-        _ <- cache.put(nextNode).when(maybeEventsAtTime.nonEmpty || maybeCachedNode.isEmpty)
+        _ <- nodeCache.put(nextNode).when(maybeEventsAtTime.nonEmpty || maybeCachedNode.isEmpty)
       yield nextNode
     }
 
@@ -184,16 +184,16 @@ object Graph:
     ZLayer {
       for
         config <- ZIO.service[AppConfig]
+        inFlight <- TSet.empty[NodeId].commit
         nodeCache <- ZIO.service[NodeCache]
-        nodeDataService <- ZIO.service[NodeRepository]
+        nodeRepository <- ZIO.service[NodeRepository]
         subgraphSpec <- ZIO.service[SubgraphSpec]
         tracing <- ZIO.service[Tracing]
-        inFlight <- TSet.empty[NodeId].commit
       yield GraphLive(
         config = config,
         inFlight = inFlight,
-        cache = nodeCache,
-        nodeRepositoryService = nodeDataService,
+        nodeCache = nodeCache,
+        nodeRepository = nodeRepository,
         subgraphSpec = subgraphSpec,
         tracing = tracing
       )

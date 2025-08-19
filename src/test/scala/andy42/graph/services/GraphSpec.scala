@@ -25,8 +25,8 @@ object GraphSpec extends ZIOSpecDefault:
 
       // Get mock services used for testing from GraphLive
       graphLive = graph.asInstanceOf[GraphLive]
-      testNodeRepository = graphLive.nodeRepositoryService.asInstanceOf[TestNodeRepositoryLive]
-      testNodeCache = graphLive.cache.asInstanceOf[TestNodeCacheLive]
+      testNodeRepository = graphLive.nodeRepository.asInstanceOf[TestNodeRepositoryLive]
+      testNodeCache = graphLive.nodeCache.asInstanceOf[TestNodeCacheLive]
 
       _ <- testNodeCache.clear() *> testNodeRepository.clear()
 
