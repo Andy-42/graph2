@@ -251,7 +251,7 @@ object NodeCache:
         now <- Clock.currentTime(MILLIS)
         oldest <- TRef.make(now).commit
         items <- TMap.empty[NodeId, CacheItem].commit
-        nodeCache = NodeCacheLive(config.nodeCache, oldest, items)
+        nodeCache = NodeCacheLive(config = config.nodeCache, watermark = oldest, items = items)
         _ <- nodeCache.startCurrentSnapshotTrimDaemon
       yield nodeCache
     }

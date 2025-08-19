@@ -226,4 +226,4 @@ object Matcher:
       tracing: Tracing
   ): IO[NodeIOFailure, MatcherLive] =
     for snapshotCache <- MatcherSnapshotCache.make(time, graph, affectedNodes, tracing)
-    yield MatcherLive(config, subgraphSpec, snapshotCache, tracing)
+    yield MatcherLive(config = config, subgraphSpec = subgraphSpec, snapshotCache = snapshotCache, tracing = tracing)
