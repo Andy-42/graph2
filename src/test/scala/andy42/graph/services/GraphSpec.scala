@@ -4,7 +4,6 @@ import andy42.graph.config.{AppConfig, GraphConfig, TracingConfig}
 import andy42.graph.matcher.*
 import andy42.graph.model.*
 import andy42.graph.persistence.{NodeRepository, TestNodeRepository, TestNodeRepositoryLive}
-import andy42.graph.services.OpenTelemetry
 import zio.*
 import zio.test.*
 import zio.test.Assertion.*

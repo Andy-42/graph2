@@ -63,7 +63,7 @@ object APTDetectionOptimizedApp extends APTDetectionApp:
   val config: ULayer[AppConfig] = ZLayer.succeed {
     AppConfig(
       matcher = MatcherConfig(allNodesInMutationGroupMustMatch = true),
-      tracing = TracingConfig(enabled = true)
+      tracing = TracingConfig(enabled = false)
     )
   }
 
@@ -81,7 +81,7 @@ object APTDetectionOptimizedApp extends APTDetectionApp:
       NodeCache.layer,
       ZLayer.succeed(APTDetectionOptimizedSpec.subgraphSpec),
       Graph.layer,
-      andy42.graph.services.OpenTelemetry.configurableTracingLayer
+      OpenTelemetry.configurableTracingLayer
     )
 
   case class Endpoint(

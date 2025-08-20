@@ -5,7 +5,6 @@ import andy42.graph.matcher.{Matcher, SpecNodeBindings, SubgraphSpec}
 import andy42.graph.model.*
 import andy42.graph.persistence.NodeRepository
 import andy42.graph.services.NodeMutationCompletion.completeAndValidate
-import io.opentelemetry.api
 import zio.*
 import zio.stm.*
 import zio.telemetry.opentelemetry.tracing.Tracing

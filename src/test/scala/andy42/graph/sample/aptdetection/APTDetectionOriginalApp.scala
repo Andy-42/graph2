@@ -78,7 +78,7 @@ object APTDetectionOriginalApp extends APTDetectionApp:
       NodeCache.layer,
       ZLayer.succeed(APTDetectionOriginalSpec.subgraphSpec),
       Graph.layer,
-      andy42.graph.services.OpenTelemetry.configurableTracingLayer
+      OpenTelemetry.configurableTracingLayer
     )
 
   case class Endpoint(
