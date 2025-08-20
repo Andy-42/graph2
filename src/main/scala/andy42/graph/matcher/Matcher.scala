@@ -4,7 +4,7 @@ import andy42.graph.config.MatcherConfig
 import andy42.graph.matcher.BindingInProgress.*
 import andy42.graph.matcher.CombinationGenerator.*
 import andy42.graph.model.*
-import andy42.graph.services.{Graph, OpenTelemetry}
+import andy42.graph.services.Graph
 import zio.*
 import zio.telemetry.opentelemetry.tracing.Tracing
 

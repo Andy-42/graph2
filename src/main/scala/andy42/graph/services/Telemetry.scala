@@ -12,10 +12,10 @@ import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.`export`.SimpleSpanProcessor
 import io.opentelemetry.semconv.ServiceAttributes
 import zio.*
-import zio.telemetry.opentelemetry.OpenTelemetry as ZOpenTelemetry
+import zio.telemetry.opentelemetry.OpenTelemetry
 import zio.telemetry.opentelemetry.tracing.Tracing
 
-object OpenTelemetry:
+object Telemetry:
 
   private def jaegerTracerProvider(host: String): RIO[Scope, SdkTracerProvider] =
     for
@@ -62,6 +62,6 @@ object OpenTelemetry:
     ZLayer.makeSome[AppConfig, Tracing](
       openTelemetryLayer,
       tracerLayer,
-      ZOpenTelemetry.contextZIO,
+      OpenTelemetry.contextZIO,
       Tracing.live()
     )

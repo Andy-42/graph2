@@ -81,7 +81,7 @@ object APTDetectionOptimizedApp extends APTDetectionApp:
       NodeCache.layer,
       ZLayer.succeed(APTDetectionOptimizedSpec.subgraphSpec),
       Graph.layer,
-      OpenTelemetry.configurableTracingLayer
+      Telemetry.configurableTracingLayer
     )
 
   case class Endpoint(

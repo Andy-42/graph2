@@ -76,7 +76,7 @@ object GraphSpec extends ZIOSpecDefault:
     TestNodeRepository.layer,
     TestNodeCache.layer,
     ZLayer.succeed(subgraphSpec),
-    OpenTelemetry.configurableTracingLayer,
+    Telemetry.configurableTracingLayer,
     Graph.layer
   )
 

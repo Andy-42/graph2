@@ -5,7 +5,7 @@ import andy42.graph.matcher.EdgeSpecs.undirectedEdge
 import andy42.graph.model.*
 import andy42.graph.model.Generators.*
 import andy42.graph.persistence.PersistenceFailure
-import andy42.graph.services.OpenTelemetry
+import andy42.graph.services.Telemetry
 import zio.*
 import zio.telemetry.opentelemetry.tracing.Tracing
 import zio.test.*
@@ -270,5 +270,5 @@ object MatcherSpec extends ZIOSpecDefault:
     }
   ).provide(
     appConfig,
-    OpenTelemetry.configurableTracingLayer
+    Telemetry.configurableTracingLayer
   ) @@ TestAspect.ignore
