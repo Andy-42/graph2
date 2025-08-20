@@ -1,7 +1,6 @@
 package andy42.graph.persistence
 
 import andy42.graph.model.*
-import org.apache.commons.io.FileUtils
 import org.rocksdb.*
 import zio.*
 import zio.stream.*

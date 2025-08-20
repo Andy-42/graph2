@@ -1,6 +1,6 @@
 package andy42.graph.services
 
-import andy42.graph.model.{Event, EventTime, NodeId}
+import andy42.graph.model.EventTime
 import zio.logging.LogAnnotation
 
 object LogAnnotations:

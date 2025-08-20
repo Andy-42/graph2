@@ -2,7 +2,6 @@ package andy42.graph.persistence
 
 import andy42.graph.model.{EventTime, NodeId}
 import org.rocksdb.RocksDBException
-import zio.*
 
 import java.sql.SQLException
 
