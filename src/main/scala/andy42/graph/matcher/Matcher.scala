@@ -23,6 +23,8 @@ final case class MatcherLive(
     tracing: Tracing
 ) extends Matcher:
 
+  import tracing.aspects.{root, span}
+
   extension (binding: SpecNodeBinding)
 
     /** Shallow match a `NodeSpec` to a `Node`.
@@ -128,9 +130,8 @@ final case class MatcherLive(
     *   duplicate matches.
     */
   override def matchNodesToSubgraphSpec(nodes: Seq[Node]): NodeIO[Seq[SpecNodeBindings]] =
-
     val mutations = nodes.map(_.id)
-    tracing.root("Matcher.matchNodesInMutationGroupToSubgraphSpec2") {
+    {
       for
         _ <- tracing.setAttribute("nodeSpecs", subgraphSpec.allUniqueNodeSpecs.map(_.name))
         _ <- tracing.setAttribute("mutations", mutations.map(_.toString))
@@ -156,7 +157,7 @@ final case class MatcherLive(
           (s, bindingInProgress) => prove(bindingInProgress).map(s ++ _)
         }
       yield fullyResolved ++ resolvedRecursively
-    }
+    } @@ root("Matcher.matchNodesToSubgraphSpec")
 
   /** Expand the proof for a node by traversing its unproven dependencies.
     *
@@ -174,35 +175,34 @@ final case class MatcherLive(
     *   All the possible resolved matches. More than one possible solution may be possible if an edge spec matches more
     *   than one edge.
     */
-  private def prove(bindingInProgress: BindingInProgress): NodeIO[Seq[SpecNodeBindings]] =
-    tracing.span("Matcher.prove") {
-      for
-        context <- tracing.getCurrentContextUnsafe
-        _ <- tracing.setAttribute(
-          "resolvedBindings",
-          bindingInProgress.resolved.map((spec, id) => s"$spec -> $id").mkString("\n")
-        )
-        _ <- tracing.setAttribute(
-          "unresolvedBindings",
-          bindingInProgress.unresolved.map((spec, id) => s"$spec -> $id").mkString("\n")
-        )
+  private def prove(bindingInProgress: BindingInProgress): NodeIO[Seq[SpecNodeBindings]] = {
+    for
+      context <- tracing.getCurrentContextUnsafe
+      _ <- tracing.setAttribute(
+        "resolvedBindings",
+        bindingInProgress.resolved.map((spec, id) => s"$spec -> $id").mkString("\n")
+      )
+      _ <- tracing.setAttribute(
+        "unresolvedBindings",
+        bindingInProgress.unresolved.map((spec, id) => s"$spec -> $id").mkString("\n")
+      )
 
-        nextRound <- nextRoundOfProofs(bindingInProgress)
+      nextRound <- nextRoundOfProofs(bindingInProgress)
 
-        fullyResolved = nextRound collect {
-          case binding if binding.isFullyResolved => binding.resolved
-        }
+      fullyResolved = nextRound collect {
+        case binding if binding.isFullyResolved => binding.resolved
+      }
 
-        partiallyResolved = nextRound.filter(_.isPartiallyResolved)
+      partiallyResolved = nextRound.filter(_.isPartiallyResolved)
 
-        // Start fetching all the nodes that we are going to need up front
-        _ <- snapshotCache.prefetch(partiallyResolved.flatMap(_.unresolved.values))
+      // Start fetching all the nodes that we are going to need up front
+      _ <- snapshotCache.prefetch(partiallyResolved.flatMap(_.unresolved.values))
 
-        resolvedRecursively <- ZIO.foldLeft(partiallyResolved)(Vector.empty[SpecNodeBindings]) { (s, binding) =>
-          prove(binding).map(s ++ _)
-        }
-      yield fullyResolved ++ resolvedRecursively
-    }
+      resolvedRecursively <- ZIO.foldLeft(partiallyResolved)(Vector.empty[SpecNodeBindings]) { (s, binding) =>
+        prove(binding).map(s ++ _)
+      }
+    yield fullyResolved ++ resolvedRecursively
+  } @@ span("Matcher.prove")
 
   def nextRoundOfProofs(bindingInProgress: BindingInProgress): NodeIO[Seq[BindingInProgress]] =
     for bindingsToProveUnresolvedBindings <-

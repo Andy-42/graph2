@@ -20,7 +20,7 @@ case class MatcherSnapshotCacheLive(
     tracing: Tracing
 ) extends MatcherSnapshotCache:
 
-  import tracing.aspects.*
+  import tracing.aspects.span
 
   override def prefetch(ids: Seq[NodeId]): NodeIO[Unit] =
     (
@@ -39,23 +39,22 @@ case class MatcherSnapshotCacheLive(
       yield ()
     ).unless(ids.isEmpty).unit
 
-  override def get(id: NodeId): NodeIO[NodeSnapshot] =
-    (
-      for
-        _ <- tracing.setAttribute("id", id.toString)
+  override def get(id: NodeId): NodeIO[NodeSnapshot] = {
+    for
+      _ <- tracing.setAttribute("id", id.toString)
 
-        newPromise <- Promise.make[NodeIOFailure, NodeSnapshot]
+      newPromise <- Promise.make[NodeIOFailure, NodeSnapshot]
 
-        promiseForThisId <- snapshotCache.modify(cache =>
-          cache
-            .get(id)
-            .fold(newPromise -> cache.updated(id, newPromise))(existingPromise => existingPromise -> cache)
-        )
+      promiseForThisId <- snapshotCache.modify(cache =>
+        cache
+          .get(id)
+          .fold(newPromise -> cache.updated(id, newPromise))(existingPromise => existingPromise -> cache)
+      )
 
-        _ <- initiateFetch(id, newPromise).when(promiseForThisId eq newPromise)
-        snapshot <- promiseForThisId.await
-      yield snapshot
-    ) @@ span("SnapshotCache.get")
+      _ <- initiateFetch(id, newPromise).when(promiseForThisId eq newPromise)
+      snapshot <- promiseForThisId.await
+    yield snapshot
+  } @@ span("MatcherSnapshotCache.get")
 
   private def initiateFetch(id: NodeId, promise: NodeIOSnapshotPromise): NodeIO[Unit] =
     fetchSnapshot(id)
