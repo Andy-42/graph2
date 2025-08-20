@@ -17,16 +17,21 @@ import zio.telemetry.opentelemetry.tracing.Tracing
 
 object Telemetry:
 
-  private def jaegerTracerProvider(host: String): RIO[Scope, SdkTracerProvider] =
+  private val jaegerTracerProvider: RIO[Scope & AppConfig, SdkTracerProvider] =
     for
-      spanExporter <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpGrpcSpanExporter.builder().setEndpoint(host).build()))
+      config <- ZIO.service[AppConfig]
+      spanExporter <- ZIO.fromAutoCloseable(
+        ZIO.succeed(OtlpGrpcSpanExporter.builder().setEndpoint(config.tracing.host).build())
+      )
       spanProcessor <- ZIO.fromAutoCloseable(ZIO.succeed(SimpleSpanProcessor.create(spanExporter)))
       tracerProvider <-
         ZIO.fromAutoCloseable(
           ZIO.succeed(
             SdkTracerProvider
               .builder()
-              .setResource(Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME, "opentelemetry-example")))
+              .setResource(
+                Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME, config.tracing.instrumentationScopeName))
+              )
               .addSpanProcessor(spanProcessor)
               .build()
           )
@@ -37,7 +42,7 @@ object Telemetry:
     ZLayer.scoped {
       for
         config <- ZIO.service[AppConfig]
-        tracerProvider <- jaegerTracerProvider(config.tracing.host)
+        tracerProvider <- jaegerTracerProvider
         sdk <- ZIO.fromAutoCloseable(
           ZIO.succeed(
             OpenTelemetrySdk
@@ -52,8 +57,8 @@ object Telemetry:
   private val tracerLayer: RLayer[AppConfig & api.OpenTelemetry, Tracer] =
     ZLayer {
       for
-        sdk <- ZIO.service[api.OpenTelemetry]
         config <- ZIO.service[AppConfig]
+        sdk <- ZIO.service[api.OpenTelemetry]
         tracer = sdk.getTracer(config.tracing.instrumentationScopeName)
       yield tracer
     }
