@@ -4,12 +4,13 @@ object Dependencies {
   object Versions {
     val zio = "2.1.20"
     val zioLogging = "2.5.1"
-    val zioOpentelemetry = "3.1.7"
+    val zioOpentelemetry = "3.1.8"
     val zioJson = "0.7.44"
     val zioConfig = "4.0.4"
     val zioConfigRefined = "4.0.4"
     val opentelemetry = "1.53.0"
     val openTelemetrySemconv = "1.34.0"
+    val opentelemetryExportersLogging = "0.9.1"
     val jaeger = "1.8.1"
     val rocksDB = "10.2.1"
     val quill = "4.8.6"
@@ -20,7 +21,7 @@ object Dependencies {
   object Orgs {
     val zio = "dev.zio"
     val opentelemetry = "io.opentelemetry"
-    val jaegerTracing = "io.jaegertracing"
+    val opentelemetrySemconv = "io.opentelemetry.semconv"
     val quill = "io.getquill"
     val msgpack = "org.msgpack"
     val commonsIo = "commons-io"
@@ -36,7 +37,7 @@ object Dependencies {
     Orgs.zio %% "zio-json" % Versions.zioJson,
     Orgs.zio %% "zio-logging" % Versions.zioLogging,
     Orgs.zio %% "zio-opentelemetry" % Versions.zioOpentelemetry,
-    Orgs.zio %% "zio-opentracing" % Versions.zioOpentelemetry,
+    Orgs.zio %% "zio-opentelemetry-zio-logging" % Versions.zioOpentelemetry,
     Orgs.zio %% "zio-test" % Versions.zio % Test,
     Orgs.zio %% "zio-test-sbt" % Versions.zio % Test
   )
@@ -44,16 +45,11 @@ object Dependencies {
   lazy val opentelemetry: Seq[ModuleID] = Seq(
     Orgs.opentelemetry % "opentelemetry-api" % Versions.opentelemetry,
     Orgs.opentelemetry % "opentelemetry-context" % Versions.opentelemetry,
+    Orgs.opentelemetry % "opentelemetry-sdk" % Versions.opentelemetry,
     Orgs.opentelemetry % "opentelemetry-sdk-trace" % Versions.opentelemetry,
     Orgs.opentelemetry % "opentelemetry-exporter-otlp" % Versions.opentelemetry,
-    Orgs.opentelemetry % "opentelemetry-sdk" % Versions.opentelemetry,
-    "io.opentelemetry.semconv" % "opentelemetry-semconv" % Versions.openTelemetrySemconv
-  )
-
-  lazy val jaegertracing: Seq[ModuleID] = Seq(
-    Orgs.jaegerTracing % "jaeger-core" % Versions.jaeger,
-    Orgs.jaegerTracing % "jaeger-client" % Versions.jaeger,
-    Orgs.jaegerTracing % "jaeger-zipkin" % Versions.jaeger
+    Orgs.opentelemetry % "opentelemetry-exporter-logging-otlp" % Versions.opentelemetry,
+    Orgs.opentelemetrySemconv % "opentelemetry-semconv" % Versions.openTelemetrySemconv
   )
 
   lazy val persistence: Seq[ModuleID] = Seq(

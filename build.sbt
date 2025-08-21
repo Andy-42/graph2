@@ -7,7 +7,6 @@ scalaVersion := "3.6.3"
 libraryDependencies ++=
   Dependencies.zio ++
     Dependencies.opentelemetry ++
-    Dependencies.jaegertracing ++
     Dependencies.persistence
 
 scalacOptions ++= Seq("-deprecation")

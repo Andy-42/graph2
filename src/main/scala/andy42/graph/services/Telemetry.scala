@@ -5,6 +5,7 @@ import andy42.graph.config.AppConfig
 import io.opentelemetry.api
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.exporter.logging.otlp.OtlpJsonLoggingSpanExporter
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
 import io.opentelemetry.sdk.OpenTelemetrySdk
 import io.opentelemetry.sdk.resources.Resource
@@ -38,9 +39,42 @@ object Telemetry:
         )
     yield tracerProvider
 
+  private val jsonLoggingTracerProvider: RIO[Scope & AppConfig, SdkTracerProvider] =
+    for
+      config <- ZIO.service[AppConfig]
+      spanExporter   <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpJsonLoggingSpanExporter.create()))
+      spanProcessor <- ZIO.fromAutoCloseable(ZIO.succeed(SimpleSpanProcessor.create(spanExporter)))
+      tracerProvider <-
+        ZIO.fromAutoCloseable(
+          ZIO.succeed(
+            SdkTracerProvider
+              .builder()
+              .setResource(
+                Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME, config.tracing.instrumentationScopeName))
+              )
+              .addSpanProcessor(spanProcessor)
+              .build()
+          )
+        )
+    yield tracerProvider
+
+
   private val grpcOpenTelemetry: RIO[Scope & AppConfig, api.OpenTelemetry] =
     for
       tracerProvider <- grpcTracerProvider
+      sdk <- ZIO.fromAutoCloseable(
+        ZIO.succeed(
+          OpenTelemetrySdk
+            .builder()
+            .setTracerProvider(tracerProvider)
+            .build()
+        )
+      )
+    yield sdk
+
+  private val jsonLoggingOpenTelemetry: RIO[Scope & AppConfig, api.OpenTelemetry] =
+    for
+      tracerProvider <- jsonLoggingTracerProvider
       sdk <- ZIO.fromAutoCloseable(
         ZIO.succeed(
           OpenTelemetrySdk
@@ -58,6 +92,7 @@ object Telemetry:
         otel <- config.tracing.exporter match
           case "noop" => ZIO.succeed(api.OpenTelemetry.noop())
           case "grpc" => grpcOpenTelemetry
+          case "json-logging" => jsonLoggingOpenTelemetry
           case _      => ZIO.dieMessage(s"Invalid config.tracing.exporter: ${config.tracing.exporter}")
       yield otel
     }
