@@ -17,7 +17,7 @@ import zio.telemetry.opentelemetry.tracing.Tracing
 
 object Telemetry:
 
-  private val jaegerTracerProvider: RIO[Scope & AppConfig, SdkTracerProvider] =
+  private val grpcTracerProvider: RIO[Scope & AppConfig, SdkTracerProvider] =
     for
       config <- ZIO.service[AppConfig]
       spanExporter <- ZIO.fromAutoCloseable(
@@ -38,20 +38,28 @@ object Telemetry:
         )
     yield tracerProvider
 
+  private val grpcOpenTelemetry: RIO[Scope & AppConfig, api.OpenTelemetry] =
+    for
+      tracerProvider <- grpcTracerProvider
+      sdk <- ZIO.fromAutoCloseable(
+        ZIO.succeed(
+          OpenTelemetrySdk
+            .builder()
+            .setTracerProvider(tracerProvider)
+            .build()
+        )
+      )
+    yield sdk
+
   private val openTelemetryLayer: RLayer[AppConfig, api.OpenTelemetry] =
     ZLayer.scoped {
       for
         config <- ZIO.service[AppConfig]
-        tracerProvider <- jaegerTracerProvider
-        sdk <- ZIO.fromAutoCloseable(
-          ZIO.succeed(
-            OpenTelemetrySdk
-              .builder()
-              .setTracerProvider(tracerProvider)
-              .build()
-          )
-        )
-      yield if config.tracing.enabled then sdk else api.OpenTelemetry.noop()
+        otel <- config.tracing.exporter match
+          case "noop" => ZIO.succeed(api.OpenTelemetry.noop())
+          case "grpc" => grpcOpenTelemetry
+          case _      => ZIO.dieMessage(s"Invalid config.tracing.exporter: ${config.tracing.exporter}")
+      yield otel
     }
 
   private val tracerLayer: RLayer[AppConfig & api.OpenTelemetry, Tracer] =
@@ -59,8 +67,7 @@ object Telemetry:
       for
         config <- ZIO.service[AppConfig]
         sdk <- ZIO.service[api.OpenTelemetry]
-        tracer = sdk.getTracer(config.tracing.instrumentationScopeName)
-      yield tracer
+      yield sdk.getTracer(config.tracing.instrumentationScopeName)
     }
 
   val configurableTracingLayer: RLayer[AppConfig, Tracing] =

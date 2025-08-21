@@ -60,7 +60,7 @@ object GraphSpec extends ZIOSpecDefault:
 
   val appConfigLayer: ULayer[AppConfig] =
     ZLayer.succeed(
-      AppConfig(tracing = TracingConfig(enabled = false)) // Enable tracing to debug this!
+      AppConfig(tracing = TracingConfig()) // Enable tracing to debug this!
     )
 
   val nodeSpecA: NodeSpec = node("a").hasProperty("x")

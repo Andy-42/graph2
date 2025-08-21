@@ -5,6 +5,7 @@ import eu.timepit.refined.boolean.And
 import eu.timepit.refined.numeric.{GreaterEqual, LessEqual}
 import zio.*
 import zio.config.magnolia.deriveConfig
+import zio.config.magnolia.describe
 
 // TODO: The the Refined integration with ZIO 2/Scala 3 is incomplete (4.0.0-RC13) - substitute refined types when fixed
 
@@ -35,8 +36,8 @@ final case class MatcherConfig(
 )
 
 final case class TracingConfig(
-    enabled: Boolean = false,
-    host: String = "http://localhost:14250",
+    @describe("Telemetry exporter: noop | stdout-json | grpc") exporter: String = "noop",
+    @describe("Host address of grpc telemetry collector") host: String = "http://localhost:14250",
     instrumentationScopeName: String = "streaming-graph"
 )
 

@@ -15,7 +15,7 @@ object MatcherSpec extends ZIOSpecDefault:
   /** All tests in this fixture use a test at a single event time, the value of which doesn't matter in these tests. */
   val time: EventTime = 42
 
-  val appConfig: ULayer[AppConfig] = ZLayer.succeed(AppConfig(tracing = TracingConfig(enabled = false)))
+  val appConfig: ULayer[AppConfig] = ZLayer.succeed(AppConfig())
 
   val matcherConfig1: MatcherConfig =
     MatcherConfig(

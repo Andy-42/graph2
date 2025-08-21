@@ -63,7 +63,6 @@ object APTDetectionOptimizedApp extends APTDetectionApp:
   val config: ULayer[AppConfig] = ZLayer.succeed {
     AppConfig(
       matcher = MatcherConfig(allNodesInMutationGroupMustMatch = true),
-      tracing = TracingConfig(enabled = false)
     )
   }
 

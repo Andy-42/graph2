@@ -62,7 +62,6 @@ object APTDetectionOriginalApp extends APTDetectionApp:
   val config: ULayer[AppConfig] = ZLayer.succeed {
     AppConfig(
       matcher = MatcherConfig(allNodesInMutationGroupMustMatch = false),
-      tracing = TracingConfig(enabled = false)
     )
   }
 
