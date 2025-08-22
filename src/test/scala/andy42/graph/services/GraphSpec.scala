@@ -61,7 +61,7 @@ object GraphSpec extends ZIOSpecDefault:
   val appConfigLayer: ULayer[AppConfig] =
     ZLayer.succeed(
       AppConfig(
-//        tracing = TracingConfig(exporter = "json-logging")  // Enable tracing to debug this!
+        tracing = TracingConfig(exporter = "json-logging")  // Enable tracing to debug this!
       ) 
     )
 

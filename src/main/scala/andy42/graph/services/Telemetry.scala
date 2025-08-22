@@ -18,47 +18,42 @@ import zio.telemetry.opentelemetry.tracing.Tracing
 
 object Telemetry:
 
+  /** Create a `SdkTracerProvider` that exports via gRPC, typically Jaeger.
+    *
+    * Both the `SdkTracerProvider` and the `SpanExporter` constructed are `Closable`, but they are specifically not
+    * handled with ZIO resource management since the OpenTelemetry SDK implementation manages these resources.
+    */
   private val grpcTracerProvider: RIO[Scope & AppConfig, SdkTracerProvider] =
-    for
-      config <- ZIO.service[AppConfig]
-      spanExporter <- ZIO.fromAutoCloseable(
-        ZIO.succeed(OtlpGrpcSpanExporter.builder().setEndpoint(config.tracing.host).build())
+    for config <- ZIO.service[AppConfig]
+    yield SdkTracerProvider
+      .builder()
+      .setResource(
+        Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME, config.tracing.instrumentationScopeName))
       )
-      spanProcessor <- ZIO.fromAutoCloseable(ZIO.succeed(SimpleSpanProcessor.create(spanExporter)))
-      tracerProvider <-
-        ZIO.fromAutoCloseable(
-          ZIO.succeed(
-            SdkTracerProvider
-              .builder()
-              .setResource(
-                Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME, config.tracing.instrumentationScopeName))
-              )
-              .addSpanProcessor(spanProcessor)
-              .build()
-          )
+      .addSpanProcessor(
+        SimpleSpanProcessor.create(
+          OtlpGrpcSpanExporter.builder().setEndpoint(config.tracing.host).build()
         )
-    yield tracerProvider
+      )
+      .build()
 
+  /** Create a `SdkTracerProvider` that exports via JSON logging.
+    *
+    * Both the `SdkTracerProvider` and the `SpanExporter` constructed are `Closable`, but they are specifically not
+    * handled with ZIO resource management since the OpenTelemetry SDK implementation manages these resources.
+    */
   private val jsonLoggingTracerProvider: RIO[Scope & AppConfig, SdkTracerProvider] =
-    for
-      config <- ZIO.service[AppConfig]
-      spanExporter   <- ZIO.fromAutoCloseable(ZIO.succeed(OtlpJsonLoggingSpanExporter.create()))
-      spanProcessor <- ZIO.fromAutoCloseable(ZIO.succeed(SimpleSpanProcessor.create(spanExporter)))
-      tracerProvider <-
-        ZIO.fromAutoCloseable(
-          ZIO.succeed(
-            SdkTracerProvider
-              .builder()
-              .setResource(
-                Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME, config.tracing.instrumentationScopeName))
-              )
-              .addSpanProcessor(spanProcessor)
-              .build()
-          )
-        )
-    yield tracerProvider
+    for config <- ZIO.service[AppConfig]
+    yield SdkTracerProvider
+      .builder()
+      .setResource(
+        Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME, config.tracing.instrumentationScopeName))
+      )
+      .addSpanProcessor(SimpleSpanProcessor.create(OtlpJsonLoggingSpanExporter.create()))
+      .build()
 
-
+  /** Create an `OpenTelemetry` with a `TraceProvider` that exports via gRPC.
+    */
   private val grpcOpenTelemetry: RIO[Scope & AppConfig, api.OpenTelemetry] =
     for
       tracerProvider <- grpcTracerProvider
@@ -72,6 +67,8 @@ object Telemetry:
       )
     yield sdk
 
+  /** Create an `OpenTelemetry` with a `TraceProvider` that exports via JSON logging.
+    */
   private val jsonLoggingOpenTelemetry: RIO[Scope & AppConfig, api.OpenTelemetry] =
     for
       tracerProvider <- jsonLoggingTracerProvider
@@ -85,18 +82,26 @@ object Telemetry:
       )
     yield sdk
 
+  /** Create an `OpenTelemetry` with a configured exporter.
+    *
+    * ZIO resource management is only applied to the `OpenTelemetry` object, and not all the object references it
+    * contains (tracer providers, span exporters) since these are managed internally by the OpenTelemetry SDK.
+    */
   private val openTelemetryLayer: RLayer[AppConfig, api.OpenTelemetry] =
     ZLayer.scoped {
       for
         config <- ZIO.service[AppConfig]
         otel <- config.tracing.exporter match
-          case "noop" => ZIO.succeed(api.OpenTelemetry.noop())
-          case "grpc" => grpcOpenTelemetry
+          case "noop"         => ZIO.succeed(api.OpenTelemetry.noop())
+          case "grpc"         => grpcOpenTelemetry
           case "json-logging" => jsonLoggingOpenTelemetry
-          case _      => ZIO.dieMessage(s"Invalid config.tracing.exporter: ${config.tracing.exporter}")
+          case _ => ZIO.dieMessage(s"Invalid configuration for tracing.exporter: ${config.tracing.exporter}")
       yield otel
     }
 
+  /** A service that produces a configured `Tracer`.
+    * This service is only used internally by ZIO Telemetry.
+    */
   private val tracerLayer: RLayer[AppConfig & api.OpenTelemetry, Tracer] =
     ZLayer {
       for
@@ -105,6 +110,8 @@ object Telemetry:
       yield sdk.getTracer(config.tracing.instrumentationScopeName)
     }
 
+  /** A service that produces a configured `Tracing` object that is used to instrument code.
+    */
   val configurableTracingLayer: RLayer[AppConfig, Tracing] =
     ZLayer.makeSome[AppConfig, Tracing](
       openTelemetryLayer,
