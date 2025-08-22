@@ -18,65 +18,59 @@ import zio.telemetry.opentelemetry.tracing.Tracing
 
 object Telemetry:
 
-  /** Create a `SdkTracerProvider` that exports via gRPC, typically Jaeger.
-    *
-    * Both the `SdkTracerProvider` and the `SpanExporter` constructed are `Closable`, but they are specifically not
-    * handled with ZIO resource management since the OpenTelemetry SDK implementation manages these resources.
-    */
-  private val grpcTracerProvider: RIO[Scope & AppConfig, SdkTracerProvider] =
-    for config <- ZIO.service[AppConfig]
-    yield SdkTracerProvider
-      .builder()
-      .setResource(
-        Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME, config.tracing.instrumentationScopeName))
-      )
-      .addSpanProcessor(
-        SimpleSpanProcessor.create(
-          OtlpGrpcSpanExporter.builder().setEndpoint(config.tracing.host).build()
-        )
-      )
-      .build()
-
-  /** Create a `SdkTracerProvider` that exports via JSON logging.
-    *
-    * Both the `SdkTracerProvider` and the `SpanExporter` constructed are `Closable`, but they are specifically not
-    * handled with ZIO resource management since the OpenTelemetry SDK implementation manages these resources.
-    */
-  private val jsonLoggingTracerProvider: RIO[Scope & AppConfig, SdkTracerProvider] =
-    for config <- ZIO.service[AppConfig]
-    yield SdkTracerProvider
-      .builder()
-      .setResource(
-        Resource.create(Attributes.of(ServiceAttributes.SERVICE_NAME, config.tracing.instrumentationScopeName))
-      )
-      .addSpanProcessor(SimpleSpanProcessor.create(OtlpJsonLoggingSpanExporter.create()))
-      .build()
-
   /** Create an `OpenTelemetry` with a `TraceProvider` that exports via gRPC.
+    *
+    * The trace provider and span exporter resources are managed internally by the `OpenTelemetrySdk`.
     */
   private val grpcOpenTelemetry: RIO[Scope & AppConfig, api.OpenTelemetry] =
     for
-      tracerProvider <- grpcTracerProvider
+      config <- ZIO.service[AppConfig]
       sdk <- ZIO.fromAutoCloseable(
         ZIO.succeed(
           OpenTelemetrySdk
             .builder()
-            .setTracerProvider(tracerProvider)
+            .setTracerProvider(
+              SdkTracerProvider
+                .builder()
+                .setResource(
+                  Resource.create(
+                    Attributes.of(ServiceAttributes.SERVICE_NAME, config.tracing.instrumentationScopeName)
+                  )
+                )
+                .addSpanProcessor(
+                  SimpleSpanProcessor.create(
+                    OtlpGrpcSpanExporter.builder().setEndpoint(config.tracing.host).build()
+                  )
+                )
+                .build()
+            )
             .build()
         )
       )
     yield sdk
 
   /** Create an `OpenTelemetry` with a `TraceProvider` that exports via JSON logging.
+    *
+    * The trace provider and span exporter resources are managed internally by the `OpenTelemetrySdk`.
     */
   private val jsonLoggingOpenTelemetry: RIO[Scope & AppConfig, api.OpenTelemetry] =
     for
-      tracerProvider <- jsonLoggingTracerProvider
+      config <- ZIO.service[AppConfig]
       sdk <- ZIO.fromAutoCloseable(
         ZIO.succeed(
           OpenTelemetrySdk
             .builder()
-            .setTracerProvider(tracerProvider)
+            .setTracerProvider(
+              SdkTracerProvider
+                .builder()
+                .setResource(
+                  Resource.create(
+                    Attributes.of(ServiceAttributes.SERVICE_NAME, config.tracing.instrumentationScopeName)
+                  )
+                )
+                .addSpanProcessor(SimpleSpanProcessor.create(OtlpJsonLoggingSpanExporter.create()))
+                .build()
+            )
             .build()
         )
       )
@@ -99,8 +93,7 @@ object Telemetry:
       yield otel
     }
 
-  /** A service that produces a configured `Tracer`.
-    * This service is only used internally by ZIO Telemetry.
+  /** A service that produces a configured `Tracer`. This service is only used internally by ZIO Telemetry.
     */
   private val tracerLayer: RLayer[AppConfig & api.OpenTelemetry, Tracer] =
     ZLayer {
